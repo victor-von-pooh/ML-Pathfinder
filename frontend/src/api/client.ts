@@ -1,4 +1,4 @@
-import type { Info, Listing, Problem, ProblemItem, ProjectResult } from './types'
+import type { Info, Insight, Listing, Problem, ProblemItem, ProjectResult } from './types'
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -56,6 +56,10 @@ export const api = {
     request<Problem>(`/api/problems/${id}/answers`, json('PUT', { id: question, value })),
   rename: (id: string, name: string) =>
     request<Problem>(`/api/problems/${id}/name`, json('PUT', { name })),
+  attachData: (id: string, path: string) =>
+    request<Problem>(`/api/problems/${id}/data`, json('POST', { path })),
+  detachData: (id: string) => request<Problem>(`/api/problems/${id}/data`, { method: 'DELETE' }),
+  insight: (id: string) => request<Insight>(`/api/problems/${id}/insight`),
   readColumns: (id: string, path: string) =>
     request<Problem>(`/api/problems/${id}/columns`, json('POST', { path })),
   writeProject: (id: string, body: { path: string; name?: string; overwrite?: boolean }) =>

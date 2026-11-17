@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import ml_quest
 import pandas as pd
 import pytest
 import yaml
@@ -278,3 +279,74 @@ def test_broken_files(client: TestClient, tmp_path: Path) -> None:
     # ダウンロードの応答のヘッダー
     download = client.get(f"/api/problems/{good['id']}/download")
     assert download.headers["x-content-type-options"] == "nosniff"
+
+
+def test_data_and_insight(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    手元のデータを入れると列が入り, 答えの候補と確かめが出ることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        分析の呼び出しの置き換え (覚えた結果を返すかの確かめ)
+
+    Returns
+    ----------
+    None
+    """
+    # 店ごとの売上と, 売上から作った客数
+    days = pd.date_range("2025-01-01", periods=60).strftime("%Y-%m-%d")
+    sales = [float(50 + i % 7 * 10) for i in range(120)]
+    pd.DataFrame({
+        "date": list(days) * 2, "shop": ["a"] * 60 + ["b"] * 60,
+        "sales": sales, "customers": [v * 3 + 1 for v in sales],
+    }).to_csv(tmp_path / "shop.csv", index=False)
+    view = client.post("/api/problems", json={"name": "店"}).json()
+    url = f"/api/problems/{view['id']}"
+    client.put(f"{url}/answers", json={"id": "ml.use", "value": True})
+
+    # 入れる前は空, 入れると列と読み方
+    assert client.get(f"{url}/insight").json()["suggestions"] == []
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "shop.csv")}).json()
+    columns = next(q for q in view["questions"]
+                   if q["id"] == "information.columns")
+    assert columns["value"] == ["date", "shop", "sales", "customers"]
+    found = client.get(f"{url}/insight").json()
+    assert found["overview"]["rows"] == 120
+    ids = {item["id"] for item in found["suggestions"]}
+    assert {"ml.target", "ml.time_column"} <= ids
+
+    # 目的の列を答えると漏れの疑いが確かめに出る. 同じ答えなら覚えたもの
+    client.put(f"{url}/answers", json={"id": "ml.target", "value": "sales"})
+    found = client.get(f"{url}/insight").json()
+    unknown = next(item for item in found["findings"]
+                   if item["id"] == "information.unknown")
+    assert "customers" in unknown["message"]
+    calls = []
+    monkeypatch.setattr(ml_quest, "inspect_data",
+                        lambda problem: calls.append(1) or {})
+    assert client.get(f"{url}/insight").json() == found
+    assert calls == []
+
+    # 場所は答えの PUT では変えられない. 外すと読み方も消える
+    direct = client.put(f"{url}/answers",
+                        json={"id": "data.source", "value": "/x.csv"})
+    assert direct.status_code == 400
+    removed = client.delete(f"{url}/data").json()
+    source = next(q for q in removed["questions"] if q["id"] == "data.source")
+    assert source["value"] is None
+
+    # 相対パスと読めないファイルは誤り
+    assert client.post(f"{url}/data",
+                       json={"path": "shop.csv"}).status_code == 400
+    assert client.post(f"{url}/data", json={
+        "path": str(tmp_path / "none.csv")
+    }).status_code == 400

@@ -1,8 +1,8 @@
 import clsx from 'clsx'
-import { FileSpreadsheet, Plus, Save, Trash2 } from 'lucide-react'
+import { Database, FileSpreadsheet, Plus, Save, Trash2 } from 'lucide-react'
 import { useRef, useState, type ReactNode } from 'react'
 
-import type { Decision, Finding, Lever, Question } from '../../api/types'
+import type { Decision, Finding, Insight, Lever, Question, Suggestion } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
 import { Button } from '../../components/ui'
 import { decisionDraft, sameDecision, splitLines, toLevers } from '../../lib/draft'
@@ -372,6 +372,134 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
   )
 }
 
+/** 手元のデータ: 場所を選んで入れる (データは写さず, 場所と読み方だけ) */
+function SourceInput({
+  question,
+  saving,
+  overview,
+  onAttach,
+  onDetach,
+}: InputState & {
+  overview: Insight['overview'] | undefined
+  onAttach?: (path: string) => void
+  onDetach?: () => void
+}) {
+  const [picking, setPicking] = useState(false)
+  const value = typeof question.value === 'string' ? question.value : ''
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span id={`q-${question.id}`} tabIndex={-1} className="font-mono text-sm break-all">
+          {value || '入れていません'}
+        </span>
+        {onAttach && (
+          <Button icon={Database} disabled={saving} onClick={() => setPicking(true)}>
+            {value ? 'データを入れ直す' : 'データを入れる'}
+          </Button>
+        )}
+        {value && onDetach && (
+          <Button
+            variant="ghost"
+            disabled={saving}
+            onClick={() =>
+              window.confirm('データを外しますか? (データのファイルは変わりません)') && onDetach()
+            }
+          >
+            データを外す
+          </Button>
+        )}
+      </div>
+      {overview && (
+        <p className="text-xs text-ink-2">
+          {overview.rows.toLocaleString()} 行, {overview.columns} 列 (
+          {overview.kind === 'timeseries' ? '時系列' : '表'}
+          {overview.start && overview.end
+            ? `. ${overview.start.slice(0, 10)} から ${overview.end.slice(0, 10)}`
+            : ''}
+          {overview.sampled && overview.sample_rows
+            ? `. 分析は ${overview.sample_rows.toLocaleString()} 行の見本で`
+            : ''}
+          )
+        </p>
+      )}
+      {picking && onAttach && (
+        <PathPicker
+          title="手元のデータを選ぶ"
+          description="データの分析の段階 (ML-Fathom) と同じ読み方で読みます. データは写さず, 場所と読み方だけを問題の設定に持ちます."
+          onClose={() => setPicking(false)}
+          onPick={(path) => {
+            setPicking(false)
+            onAttach(path)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/** データからの答えの候補 (押すと答える. 列の並びの問いは今の答えに足す) */
+function Suggestions({
+  question,
+  suggestion,
+  onAnswer,
+  saving,
+}: {
+  question: Question
+  suggestion: Suggestion
+  onAnswer: Answer
+  saving: boolean
+}) {
+  const many = question.kind === 'columns'
+  const current = Array.isArray(question.value)
+    ? question.value.filter((v): v is string => typeof v === 'string')
+    : []
+  const pick = (value: string) => onAnswer(many ? Array.from(new Set([...current, value])) : value)
+  // 選択肢の問い (タスクなど) は, 値でなく選択肢の名前で出す
+  const labelOf = (value: string) =>
+    question.choices.find((c) => c.value === value)?.label.split(' (')[0] ?? value
+  const labelId = `s-${question.id}`
+  return (
+    <div className="mt-2 rounded-lg border border-dashed border-line px-3 py-2">
+      <p id={labelId} className="mb-1 text-xs text-ink-2">
+        データからの候補: <span className="text-ink-3">{suggestion.reason}</span>
+      </p>
+      <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-1.5">
+        {suggestion.values.map((value) => {
+          const chosen = many ? current.includes(value) : question.value === value
+          return (
+            <button
+              key={value}
+              type="button"
+              disabled={saving}
+              aria-disabled={chosen}
+              onClick={() => !chosen && pick(value)}
+              className={clsx(
+                'rounded-full border px-2.5 py-0.5 font-mono text-xs',
+                chosen
+                  ? 'border-accent bg-accent-soft text-accent-text'
+                  : 'border-line hover:bg-surface-2',
+              )}
+            >
+              {labelOf(value)}
+              {chosen ? ' (答えた)' : ''}
+            </button>
+          )
+        })}
+        {many && suggestion.values.some((v) => !current.includes(v)) && (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => onAnswer(Array.from(new Set([...current, ...suggestion.values])))}
+            className="rounded-full px-2.5 py-0.5 text-xs text-accent-text underline"
+          >
+            全て入れる
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /** 確かめの重さの見た目 */
 const LEVEL_STYLE: Record<Finding['level'], string> = {
   error: 'text-critical-text',
@@ -388,6 +516,10 @@ export function QuestionField({
   error,
   onAnswer,
   onReadColumns,
+  suggestion,
+  overview,
+  onAttach,
+  onDetach,
 }: {
   question: Question
   columns: string[]
@@ -396,6 +528,10 @@ export function QuestionField({
   error: string | null
   onAnswer: Answer
   onReadColumns?: (path: string) => void
+  suggestion?: Suggestion
+  overview?: Insight['overview']
+  onAttach?: (path: string) => void
+  onDetach?: () => void
 }) {
   // 保存した答えが変わったら書きかけの入力を作り直す. 列から選ぶ問いは, 使える列が
   // 変わったときも作り直す
@@ -413,6 +549,8 @@ export function QuestionField({
   else if (question.kind === 'column') input = <TextInput key={key} {...state} multiline={false} />
   else if (question.kind === 'columns' || question.kind === 'list')
     input = <ListInput key={key} {...state} onReadColumns={onReadColumns} />
+  else if (question.kind === 'source')
+    input = <SourceInput {...state} overview={overview} onAttach={onAttach} onDetach={onDetach} />
   else if (question.kind === 'levers') input = <LeversInput key={key} {...state} />
   else input = <DecisionInput key={key} {...state} />
   return (
@@ -433,6 +571,14 @@ export function QuestionField({
         </p>
       )}
       {input}
+      {suggestion && suggestion.values.length > 0 && (
+        <Suggestions
+          question={question}
+          suggestion={suggestion}
+          onAnswer={onAnswer}
+          saving={saving}
+        />
+      )}
       {error && (
         <p id={errorId} role="alert" className="mt-2 text-xs text-critical-text">
           保存できませんでした: {error}

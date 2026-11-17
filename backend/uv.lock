@@ -400,13 +400,26 @@ wheels = [
 ]
 
 [[package]]
+name = "ml-eda"
+version = "0.1.0"
+source = { git = "https://github.com/victor-von-pooh/ML-EDA.git?rev=b08a5bc#b08a5bc080ec06336c3bc963de90216319f94277" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pyyaml" },
+]
+
+[[package]]
 name = "ml-pathfinder"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi", version = "0.162.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "fastapi", version = "0.163.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "ml-quest" },
+    { name = "ml-quest", extra = ["data"] },
     { name = "openpyxl" },
     { name = "pyarrow", version = "25.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pyarrow", version = "26.0.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -429,7 +442,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "ml-quest", editable = "../ML-Quest" },
+    { name = "ml-quest", extras = ["data"], editable = "../ML-Quest" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "pyarrow", specifier = ">=15" },
     { name = "pydantic", specifier = ">=2.9" },
@@ -457,13 +470,19 @@ dependencies = [
     { name = "pyyaml" },
 ]
 
+[package.optional-dependencies]
+data = [
+    { name = "ml-eda" },
+]
+
 [package.metadata]
 requires-dist = [
+    { name = "ml-eda", marker = "extra == 'data'", git = "https://github.com/victor-von-pooh/ML-EDA.git?rev=b08a5bc" },
     { name = "pandas", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pyyaml" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["data", "dev"]
 
 [[package]]
 name = "mypy"

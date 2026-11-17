@@ -75,6 +75,11 @@ export function HandoffCard({ problem }: { problem: Problem }) {
             <span className="flex flex-wrap items-center gap-1">
               除く列 <Names names={data.drop} />
             </span>
+            {data.source && (
+              <span>
+                データ <Code>{data.source.source}</Code> (後ろの段階も同じ場所を同じ読み方で開く)
+              </span>
+            )}
           </dd>
         </div>
         <div>

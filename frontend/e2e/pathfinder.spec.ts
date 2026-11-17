@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs'
+
 import { expect, test } from '@playwright/test'
 
 // 作業用の置き場で, 見本を開き, 答えを変えて確かめが変わり, 骨組みを書き出す
@@ -74,4 +76,45 @@ test('確かめから問いへ移ると, その入力に移る', async ({ page }
     .first()
     .click()
   await expect(page.getByRole('textbox', { name: '何が変われば解けたと言えますか' })).toBeFocused()
+})
+
+test('手元のデータを入れると, 答えの候補が出て押すと答えになる', async ({ page }) => {
+  // 2 店の 60 日の売上と, 売上から作った客数
+  const rows = ['date,shop,sales,customers']
+  for (const shop of ['a', 'b'])
+    for (let day = 0; day < 60; day++) {
+      const date = new Date(Date.UTC(2025, 0, 1 + day)).toISOString().slice(0, 10)
+      const sales = 50 + (day % 7) * 10
+      rows.push(`${date},${shop},${sales},${sales * 3 + 1}`)
+    }
+  const file = `${process.cwd()}/e2e/.work/shop.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('データ')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^4\b/ })
+    .click()
+  await page.getByRole('radiogroup', { name: '機械学習を使いますか' }).getByLabel('はい').check()
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('パス').fill(file)
+  await dialog.getByRole('button', { name: '移動' }).click()
+  await dialog.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(page.getByText('120 行, 4 列')).toBeVisible()
+
+  // 目的の列の候補を押すと答えになり, 漏れの疑いが確かめに出る
+  await page.getByRole('button', { name: 'sales', exact: true }).click()
+  await expect(page.getByText('「目的の列は」を保存しました')).toBeVisible()
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^6\b/ })
+    .click()
+  await expect(
+    page
+      .getByRole('list', { name: '確かめ', exact: true })
+      .getByText(/customers は目的の列とほぼ同じ動き/),
+  ).toBeVisible({ timeout: 20_000 })
 })
