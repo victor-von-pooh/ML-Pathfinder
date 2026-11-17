@@ -1,2 +1,55 @@
 # ML-Pathfinder
-機械学習に向けた問題を設計するアプリ.
+
+機械学習に向けた問題を設計するローカルの Web アプリ.
+
+機械学習は課題を解く手段の 1 つにすぎない. [ML-Quest](https://github.com/victor-von-pooh/ML-Quest) を使い, 課題から始めて, 決まった順の問い (課題, 解けたと言える指標, 課題の分解, 機械学習の受け持ち, 予測から行動へ, 予測の時点で使える情報, 損得と制約, 学習で見る指標, 効果の確かめ方, 運用) に答える. 答えるたびに, 答えどうしの食い違いと足りない答え, 課題から行動までの筋道, 後ろの段階 (データの分析, モデルの作成, 学習, 推論) で選ぶ値が出る. 直すところが無くなれば, [ML-Found](https://github.com/victor-von-pooh/ML-Found) のプロジェクトの骨組み (config と学習のスクリプト) を書き出せる. 機械学習が要らないと分かれば, そこで終える.
+
+設計の方針は [docs/DESIGN.md](docs/DESIGN.md) を参照.
+
+## 必要なもの
+
+- [uv](https://docs.astral.sh/uv/) (Python は uv が用意する. 3.10 以上)
+- Node.js 24 以上と [pnpm](https://pnpm.io/) 11 以上 (`corepack enable` で `package.json` の版が入る)
+
+## 導入と起動
+
+```bash
+git clone --recursive https://github.com/victor-von-pooh/ML-Pathfinder.git
+cd ML-Pathfinder
+make setup   # submodule, Python と Node.js の依存
+make serve   # 画面をビルドして http://127.0.0.1:8770 で起動 (使う間は端末を開いたままにする. Ctrl+C で止める)
+```
+
+起動すると `ML-Pathfinder を開く: http://127.0.0.1:8770/api/auth?token=...` の行が出るので, その URL をブラウザで開く (トークンは起動ごとに変わる). 毎回同じトークンにする場合は環境変数 `ML_PATHFINDER_TOKEN` で指定する. ポートは `make serve PORT=8800` のように変えられる.
+
+## 使い方
+
+1. 「問題の設定」で, 名前を書いて「作る」. 試すだけなら「見本を開く」で, 架空の課題で答えを埋めた見本 (総菜の作る量, 解約の引き止め, 機械学習を使わない問い合わせの振り分け) の写しが開く. 書き出した `problem.yaml` は「ファイルから取り込む」で取り込める
+2. 問題の設定の画面で, 左の節を 1 から順に選び, 問いに答える. 文と数は欄を離れたとき, 選択肢は選んだときに保存される. 要因と打てる手, 損得と制約は「保存」を押す. 4 の「使えるデータの列は」は「データのファイルから読む」で, csv, tsv, Excel, parquet の 1 行目から読める
+3. 右の欄で, 課題から行動までの筋道, 確かめ (直す, 見直す, 知らせ), 後ろの段階に渡す値を見る. 確かめの「n へ」で, その問いの節に移る. 前の答えで要らなくなった問い (タスクを回帰にした後の時刻の列など) は出ず, 古い答えは使わない
+4. 直すところが無くなると「学習のプロジェクトを書き出す」を押せる. 書き出すディレクトリを選ぶと, config, `train.py`, README, `problem.yaml` の写しが書かれる. 書き出した README の「次にすること」の順に, データセット (ML-Fathom) とモデルの定義 (ML-CreateArchitecture) を置いて学習 (ML-Found, ML-Dashboard) し, 実験の中の推論の一式を ML-Provide に登録する
+5. 「problem.yaml」で, 問題の設定のファイルを保存する
+
+止めるときは, 起動した端末で Ctrl+C を押す. 画面は API を使って動くが, API は画面のためのもので, スクリプトから問題を設定する場合は ML-Quest を直接使う.
+
+置き場は `~/.ml-pathfinder/` (環境変数 `ML_PATHFINDER_HOME` で変えられる). 問題の設定は `problems/<識別子>/problem.yaml` に置く. 取り込んだ元のファイルは書き換えない. 骨組みは選んだディレクトリに書き, 既にあるファイルは上書きを選んだときだけ上書きする.
+
+## 開発
+
+```bash
+make dev-backend    # API (変更を自動で読み直す. 開く URL を出す)
+make dev-frontend   # 画面 (別の端末で)
+make check          # lint, 型検査, テスト
+cd frontend && pnpm e2e   # 画面の通しのテスト
+```
+
+| ディレクトリ | 内容 |
+| --- | --- |
+| `backend/` | API (Python, FastAPI). ML-Quest を呼び, 問題の設定を保存する |
+| `frontend/` | 画面 (TypeScript, React, Vite) |
+| `ML-Quest/` | submodule |
+| `docs/DESIGN.md` | 設計の方針と段階 |
+
+## ライセンス
+
+MIT
