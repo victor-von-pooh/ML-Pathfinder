@@ -118,3 +118,40 @@ test('手元のデータを入れると, 答えの候補が出て押すと答え
       .getByText(/customers は目的の列とほぼ同じ動き/),
   ).toBeVisible({ timeout: 20_000 })
 })
+
+test('今のやり方をデータで書くと, 損と指標の今の値の候補が出る', async ({ page }) => {
+  // 総菜の見本と同じ列の 40 日 × 2 店 × 2 品 (曜日で決まる売れた数)
+  const rows = ['date,store,item,sales,temperature_forecast,promo,customers']
+  for (let day = 0; day < 40; day++) {
+    const date = new Date(Date.UTC(2025, 0, 1 + day))
+    for (const store of ['east', 'west'])
+      for (const item of ['a', 'b']) {
+        const sales = 10 + date.getUTCDay()
+        rows.push(`${date.toISOString().slice(0, 10)},${store},${item},${sales},15,0,${sales * 3}`)
+      }
+  }
+  const file = `${process.cwd()}/e2e/.work/sozai.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^4\b/ }).click()
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('パス').fill(file)
+  await dialog.getByRole('button', { name: '移動' }).click()
+  await dialog.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(page.getByText('160 行, 7 列')).toBeVisible()
+
+  // 7 の節で「1 日前と同じ」と書くと, 曜日の差の分の損が出る
+  await nav.getByRole('button', { name: /^7\b/ }).click()
+  await page.getByLabel('今のやり方をデータで書くと').selectOption('lag')
+  await page.getByLabel(/k \(期の数/).fill('1')
+  await page.getByRole('button', { name: '保存' }).last().click()
+  await expect(page.getByText(/今のやり方の損は, 39 日で/).first()).toBeVisible({ timeout: 20_000 })
+
+  // 2 の節の指標の今の値に, データからの候補が出る
+  await nav.getByRole('button', { name: /^2\b/ }).click()
+  await expect(page.getByRole('group', { name: /今のやり方の損をデータで求めた値/ })).toBeVisible()
+})

@@ -1,5 +1,8 @@
+import json
+import shutil
 import threading
-from collections import OrderedDict
+import uuid
+from collections import Counter, OrderedDict
 from pathlib import Path
 from typing import Any, Optional
 
@@ -7,9 +10,10 @@ import ml_quest
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
+from ml_quest.data import COPY_NAME
 from pydantic import BaseModel, Field
 
-from ml_pathfinder.store import READ_ERRORS, Store
+from ml_pathfinder.store import ID_PATTERN, READ_ERRORS, Store
 
 router = APIRouter(prefix="/api")
 
@@ -23,6 +27,10 @@ MAX_NAME = 80
 INSIGHT_CACHE_SIZE = 16
 INSIGHTS: OrderedDict[str, dict[str, Any]] = OrderedDict()
 INSIGHT_LOCK = threading.Lock()
+
+# 問題の設定ごとの, データを写している途中の数 (古い写しの片付けは 0 の
+# ときだけ. 途中の写しを消さないように)
+ATTACHING: Counter[str] = Counter()
 
 # 画面に返す誤りとする例外 (手元のファイルの誤りを含む)
 USER_ERRORS = (ValueError, OSError, ImportError, yaml.YAMLError)
@@ -727,18 +735,65 @@ def attach_data(
     view: dict[str, Any]
         入れた後の全て
     """
-    # データは写さず, ML-EDA で読めるかを確かめてから場所と読み方を保存.
+    # ML-EDA で読めるかを確かめてから, 問題の設定の置き場に写して保存.
     # 大きなデータの読み込みの間も他の答えを止めないように, 読むのは鍵の
     # 外で, 書くときに今の問題の設定へ重ねる
+    # 写し終えたら (失敗も), 写している途中が無ければ古い写しの片付け
     store = get_store(request)
     path = local_path(body.path)
     snapshot = load_or_404(store, problem_id)
+    copies = store.problems_dir / problem_id / "data"
+    with EDIT_LOCK:
+        ATTACHING[problem_id] += 1
+    removing: list[Path] = []
     try:
-        attached = ml_quest.attach_data(snapshot, path)
+        saved = attach_and_save(store, problem_id, snapshot, path, copies)
+    finally:
+        with EDIT_LOCK:
+            ATTACHING[problem_id] -= 1
+            if ATTACHING[problem_id] <= 0:
+                del ATTACHING[problem_id]
+                removing = stale_paths(store, problem_id)
+        for stale in removing:
+            shutil.rmtree(stale, ignore_errors=True)
+    view = problem_view(problem_id, saved)
+
+    return view
+
+
+def attach_and_save(
+    store: Store, problem_id: str, snapshot: dict[str, Any], path: Path,
+    copies: Path
+) -> dict[str, Any]:
+    """
+    データを鍵の外で写して読み, 鍵の中で今の問題の設定へ重ねて保存する
+    関数
+
+    Parameters
+    ----------
+    store: Store
+        置き場
+    problem_id: str
+        識別子
+    snapshot: dict[str, Any]
+        写す前に読んだ問題の設定
+    path: Path
+        データの場所
+    copies: Path
+        写し先のディレクトリ
+
+    Returns
+    ----------
+    saved: dict[str, Any]
+        保存した問題の設定
+    """
+    # 写して読む (鍵の外). 要るのに無いデータは今の問題の設定から残す
+    try:
+        attached = ml_quest.attach_data(snapshot, path, copy_to=copies)
     except USER_ERRORS as error:
         raise user_error(error) from error
     with EDIT_LOCK:
-        problem = load_or_404(store, problem_id)
+        problem = load_attached(store, problem_id, attached)
         missing = ml_quest.get_value(problem, "data.missing")
         problem["data"] = dict(attached["data"])
         if missing:
@@ -751,9 +806,101 @@ def attach_data(
         except ValueError as error:
             raise user_error(error) from error
         saved = store.save(problem_id, updated)
-    view = problem_view(problem_id, saved)
 
-    return view
+    return saved
+
+
+def stale_paths(store: Store, problem_id: str) -> list[Path]:
+    """
+    要らなくなった写しを, 消す用の名前に変えて返す関数 (鍵の中で呼ぶ)
+
+    問題の設定が消されていれば, 写しで作り直されたディレクトリごと. 残って
+    いれば, 今のデータの場所の写し以外の写しと, 前に消し損ねたもの
+
+    Parameters
+    ----------
+    store: Store
+        置き場
+    problem_id: str
+        識別子
+
+    Returns
+    ----------
+    removing: list[Path]
+        鍵の外で消す場所
+    """
+    # 消された問題の設定 (形の違う識別子は触らない)
+    place = store.problems_dir / problem_id
+    removing: list[Path] = []
+    if not ID_PATTERN.fullmatch(problem_id) or not place.is_dir():
+        return removing
+    if not (place / "problem.yaml").exists():
+        moved = store.problems_dir / f".removing-{uuid.uuid4().hex}"
+        place.rename(moved)
+        removing.append(moved)
+        return removing
+
+    # 今の写し以外 (読めなければ写しは触らない) と, 消し損ねたもの
+    removing.extend(place.glob(".removing-*"))
+    try:
+        source = ml_quest.get_value(store.load(problem_id), "data.source")
+    except (KeyError, *READ_ERRORS):
+        return removing
+    keep = Path(source).resolve() if isinstance(source, str) else None
+    copies = place / "data"
+    children = list(copies.iterdir()) if copies.is_dir() else []
+    for child in children:
+        if not COPY_NAME.fullmatch(child.name) or child.is_symlink() or (
+            not child.is_dir()
+        ):
+            continue
+        if keep is not None and keep.is_relative_to(child.resolve()):
+            continue
+        moved = place / f".removing-{uuid.uuid4().hex}"
+        child.rename(moved)
+        removing.append(moved)
+
+    return removing
+
+
+def load_attached(
+    store: Store, problem_id: str, attached: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    データを写した後に, 鍵の中で今の問題の設定を読む関数
+
+    写している間に問題の設定が消されたか, データを外されたか別のデータを
+    入れられて写しが消えた場合は誤りにする (片付けは呼び出し側)
+
+    Parameters
+    ----------
+    store: Store
+        置き場
+    problem_id: str
+        識別子
+    attached: dict[str, Any]
+        写した後の問題の設定
+
+    Returns
+    ----------
+    problem: dict[str, Any]
+        今の問題の設定
+
+    Raises
+    ----------
+    HTTPException
+        消された場合は 404, 壊れた場合は 422, 写しが消えた場合は 409
+    """
+    # 今の問題の設定と, 写しが残っているか
+    problem = load_or_404(store, problem_id)
+    source = ml_quest.get_value(attached, "data.source")
+    if not (isinstance(source, str) and Path(source).exists()):
+        raise HTTPException(
+            409, "データを入れている間に, 外されたか別のデータが入れられ"
+            "ました. もう一度入れてください"
+        )
+
+    return problem
 
 
 def insight_key(problem_id: str, problem: dict[str, Any]) -> str:
@@ -783,14 +930,13 @@ def insight_key(problem_id: str, problem: dict[str, Any]) -> str:
             stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
         except OSError:
             stamp = "missing"
-    answers = [
-        ml_quest.get_value(problem, name) for name in (
-            "data.loader", "data.options", "data.size", "data.modified",
-            "information.columns", "ml.use", "ml.target", "ml.task",
-            "ml.time_column", "ml.series_by", "ml.horizon", "ml.positive"
-        )
-    ]
-    key = f"{problem_id}|{source}|{stamp}|{answers!r}"
+    # 候補に効く答えの漏れを防ぐため, 時刻を除く問題の設定の全てを鍵に
+    answers = json.dumps(
+        {k: v for k, v in problem.items()
+         if k not in ("created_at", "updated_at")},
+        ensure_ascii=False, sort_keys=True, default=str
+    )
+    key = f"{problem_id}|{source}|{stamp}|{answers}"
 
     return key
 
@@ -812,15 +958,24 @@ def detach_data(request: Request, problem_id: str) -> dict[str, Any]:
     view: dict[str, Any]
         外した後の全て (要るのに無いデータと, 使えるデータの列は残す)
     """
-    # 場所と読み方だけの消去 (データのファイルは変えない)
+    # 場所と読み方と, 置き場に写したデータの消去 (元のデータは変えない)
+    # (大きな写しを消す間も他の保存を止めないように, 鍵の中では名前を変え
+    # るだけ)
     store = get_store(request)
+    removing = None
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
+        copies = store.place(problem_id) / "data"
+        if copies.exists():
+            removing = copies.with_name(f".removing-{uuid.uuid4().hex}")
+            copies.rename(removing)
         missing = ml_quest.get_value(problem, "data.missing")
         problem.pop("data", None)
         if missing:
             problem["data"] = {"missing": missing}
         saved = store.save(problem_id, problem)
+    if removing is not None:
+        shutil.rmtree(removing, ignore_errors=True)
     view = problem_view(problem_id, saved)
 
     return view
@@ -950,10 +1105,12 @@ def delete_problem(request: Request, problem_id: str) -> Response:
         204
     """
     # 無ければ 404 (壊れたファイルも消せるように中身は読まない)
+    # (大きな写しを消す間も他の保存を止めないように, 消すのは鍵の外)
     store = get_store(request)
     with EDIT_LOCK:
         exists_or_404(store, problem_id)
-        store.delete(problem_id)
+        removing = store.delete(problem_id)
+    shutil.rmtree(removing, ignore_errors=True)
     response = Response(status_code=204)
 
     return response

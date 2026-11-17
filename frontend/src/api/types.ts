@@ -29,6 +29,7 @@ export type QuestionKind =
   | 'levers'
   | 'decision'
   | 'source'
+  | 'baseline'
 
 /** 選択肢 */
 export interface Choice {
@@ -177,4 +178,6 @@ export interface Insight {
   } | null
   suggestions: Suggestion[]
   findings: Finding[]
+  /** 今のやり方の損か得 (書いていなければ null) */
+  baseline?: { kind: string; total: number; per_30_days: number | null; sentence: string } | null
 }

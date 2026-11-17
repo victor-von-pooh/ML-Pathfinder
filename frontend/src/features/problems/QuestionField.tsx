@@ -298,7 +298,9 @@ function LeversInput({ question, onAnswer, saving }: InputState) {
         >
           保存
         </Button>
-        {dirty && <span className="self-center text-xs text-warning-text">保存していません</span>}
+        <span role="status" className="self-center text-xs text-warning-text">
+          {dirty ? '保存していません' : ''}
+        </span>
       </div>
     </div>
   )
@@ -402,7 +404,9 @@ function SourceInput({
             variant="ghost"
             disabled={saving}
             onClick={() =>
-              window.confirm('データを外しますか? (データのファイルは変わりません)') && onDetach()
+              window.confirm(
+                'データを外しますか? (置き場の写しを消します. 元のデータのファイルは変わりません)',
+              ) && onDetach()
             }
           >
             データを外す
@@ -437,6 +441,135 @@ function SourceInput({
   )
 }
 
+/** 今のやり方の書き方の名前 */
+const BASELINE_TYPES = {
+  lag: 'k 期前と同じ (前の週の同じ曜日なら 7)',
+  mean: '直前の k 期の平均',
+  column: '今のやり方の値の列 (置いた量, 行動したか)',
+} as const
+
+/** 期の数の文字の正規化 ("07" や "7.0" を, 保存した値と同じ "7" に) */
+function normalPeriods(text: string): string {
+  const trimmed = text.trim()
+  const number = Number(trimmed)
+  return trimmed !== '' && Number.isFinite(number) ? String(number) : trimmed
+}
+
+/** 今のやり方をデータで書く: 種類を選び, 期の数か列を書いて保存を押す */
+function BaselineInput({
+  question,
+  columns,
+  onAnswer,
+  saving,
+  errorId,
+}: InputState & { columns: string[] }) {
+  const value = question.value
+  const saved =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as { type?: string; periods?: number; column?: string })
+      : null
+  const [kind, setKind] = useState<string>(saved?.type ?? '')
+  const [periods, setPeriods] = useState(saved?.periods ? String(saved.periods) : '7')
+  const [column, setColumn] = useState(saved?.column ?? '')
+  const draft =
+    kind === 'column'
+      ? { type: kind, column: column.trim() }
+      : kind
+        ? { type: kind, periods: normalPeriods(periods) }
+        : null
+  const savedText = JSON.stringify(
+    saved
+      ? saved.type === 'column'
+        ? { type: saved.type, column: saved.column }
+        : { type: saved.type, periods: String(saved.periods) }
+      : null,
+  )
+  const dirty = JSON.stringify(draft) !== savedText
+  return (
+    <div className="flex flex-col gap-2">
+      <select
+        id={`q-${question.id}`}
+        value={kind}
+        aria-invalid={!!errorId}
+        aria-describedby={errorId}
+        onChange={(event) => setKind(event.target.value)}
+        className={clsx(INPUT, 'h-8 max-w-96')}
+      >
+        <option value="">書かない (選ばずに保存すると答えを消す)</option>
+        {Object.entries(BASELINE_TYPES).map(([key, label]) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
+        ))}
+      </select>
+      {(kind === 'lag' || kind === 'mean') && (
+        <label className="flex items-center gap-2 text-sm">
+          k (期の数. データの 1 行の間隔で数える)
+          <input
+            value={periods}
+            type="number"
+            min={1}
+            step={1}
+            aria-invalid={!!errorId}
+            aria-describedby={errorId}
+            onChange={(event) => setPeriods(event.target.value)}
+            className={clsx(INPUT, 'h-8 w-24')}
+          />
+        </label>
+      )}
+      {kind === 'column' && (
+        <label className="flex items-center gap-2 text-sm">
+          列
+          {columns.length === 0 ? (
+            <input
+              value={column}
+              placeholder="列の名前 (4 の使えるデータの列に答えると選べます)"
+              aria-invalid={!!errorId}
+              aria-describedby={errorId}
+              onChange={(event) => setColumn(event.target.value)}
+              className={clsx(INPUT, 'h-8 w-96')}
+            />
+          ) : (
+            <select
+              value={column}
+              aria-invalid={!!errorId}
+              aria-describedby={errorId}
+              onChange={(event) => setColumn(event.target.value)}
+              className={clsx(INPUT, 'h-8 max-w-72')}
+            >
+              <option value="">選ぶ</option>
+              {column && !columns.includes(column) && (
+                <option value={column}>{column} (列にありません)</option>
+              )}
+              {columns.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
+        </label>
+      )}
+      <div className="flex gap-2">
+        <Button
+          variant="primary"
+          icon={Save}
+          disabled={
+            saving ||
+            !dirty ||
+            (kind === 'column' && !column.trim()) ||
+            ((kind === 'lag' || kind === 'mean') && !/^[1-9][0-9]*$/.test(normalPeriods(periods)))
+          }
+          onClick={() => onAnswer(draft)}
+        >
+          保存
+        </Button>
+        {dirty && <span className="self-center text-xs text-warning-text">保存していません</span>}
+      </div>
+    </div>
+  )
+}
+
 /** データからの答えの候補 (押すと答える. 列の並びの問いは今の答えに足す) */
 function Suggestions({
   question,
@@ -465,7 +598,11 @@ function Suggestions({
       </p>
       <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-1.5">
         {suggestion.values.map((value) => {
-          const chosen = many ? current.includes(value) : question.value === value
+          const chosen = many
+            ? current.includes(value)
+            : question.value != null &&
+              typeof question.value !== 'object' &&
+              String(question.value) === value
           return (
             <button
               key={value}
@@ -551,6 +688,8 @@ export function QuestionField({
     input = <ListInput key={key} {...state} onReadColumns={onReadColumns} />
   else if (question.kind === 'source')
     input = <SourceInput {...state} overview={overview} onAttach={onAttach} onDetach={onDetach} />
+  else if (question.kind === 'baseline')
+    input = <BaselineInput key={key} {...state} columns={columns} />
   else if (question.kind === 'levers') input = <LeversInput key={key} {...state} />
   else input = <DecisionInput key={key} {...state} />
   return (
