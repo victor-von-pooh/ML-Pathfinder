@@ -58,6 +58,12 @@ export function HandoffCard({ problem }: { problem: Problem }) {
                 時刻の列 <Code>{data.time_column}</Code> (読み込みで日時の列に指定)
               </span>
             )}
+            {data.min_lag !== null && data.min_lag !== undefined && (
+              <span>
+                過去の値の列は {data.min_lag} 期前より古い値だけで作る
+                (決める時点で分からない値を使わない)
+              </span>
+            )}
             {data.series_by.length > 0 && (
               <span className="flex flex-wrap items-center gap-1">
                 系列を分ける列 <Names names={data.series_by} />
