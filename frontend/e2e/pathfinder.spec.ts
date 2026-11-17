@@ -46,7 +46,7 @@ test('書きかけは節を移っても残り, 列の並びは 1 行に 1 つで
   await page.getByRole('button', { name: '作る', exact: true }).click()
   await expect(page.getByRole('heading', { name: '書きかけ' })).toBeVisible()
 
-  // 3 の分解の書きかけを残して 1 へ移り, 戻る
+  // 3 の分解の書きかけを残して 2 へ移り, 戻る
   await page.getByRole('button', { name: '次の節' }).click()
   await page.getByRole('button', { name: '次の節' }).click()
   await page.getByLabel('要因 1').fill('勘で決める')
