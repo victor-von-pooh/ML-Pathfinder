@@ -36,7 +36,7 @@ export function HandoffCard({ problem }: { problem: Problem }) {
           {problem.finished
             ? '機械学習を使わないので, 渡す値はありません.'
             : problem.uses_ml !== true
-              ? '4 の「機械学習を使いますか」で使うと決めると, データの分析, モデルの作成, 学習, 推論の各段階で選ぶ値がここに出ます.'
+              ? '5 の「機械学習を使いますか」で使うと決めると, データの分析, モデルの作成, 学習, 推論の各段階で選ぶ値がここに出ます.'
               : `まだ渡せません. ${problem.handoff_error ?? ''}`}
         </p>
       </Card>

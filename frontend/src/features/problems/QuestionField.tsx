@@ -705,7 +705,7 @@ export function QuestionField({
       <p className="mb-2 text-xs text-ink-2">{question.help}</p>
       {usesColumns && !columns.length && (
         <p className="mb-2 text-xs text-ink-3">
-          {question.kind === 'columns' ? '1 行に 1 つ書けます. ' : ''}4 の「使えるデータの列は」
+          {question.kind === 'columns' ? '1 行に 1 つ書けます. ' : ''}5 の「使えるデータの列は」
           に答えると, 列から選べます.
         </p>
       )}

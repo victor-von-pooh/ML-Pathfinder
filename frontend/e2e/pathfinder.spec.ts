@@ -56,6 +56,7 @@ test('書きかけは節を移っても残り, 列の並びは 1 行に 1 つで
 
   // 機械学習を使うと, 6 の列の問いが出る. 列の一覧が無くても 1 行に 1 つで答えられる
   await page.getByRole('button', { name: '次の節' }).click()
+  await page.getByRole('button', { name: '次の節' }).click()
   await page.getByRole('radiogroup', { name: '機械学習を使いますか' }).getByLabel('はい').check()
   await expect(page.getByText('「機械学習を使いますか」を保存しました')).toBeVisible()
   await page.getByRole('button', { name: /^6\./ }).first().click()
@@ -95,7 +96,7 @@ test('手元のデータを入れると, 答えの候補が出て押すと答え
   await page.getByRole('button', { name: '作る', exact: true }).click()
   await page
     .getByRole('navigation', { name: '問いの節' })
-    .getByRole('button', { name: /^4\b/ })
+    .getByRole('button', { name: /^5\b/ })
     .click()
   await page.getByRole('radiogroup', { name: '機械学習を使いますか' }).getByLabel('はい').check()
   await page.getByRole('button', { name: 'データを入れる' }).click()
@@ -136,7 +137,7 @@ test('今のやり方をデータで書くと, 損と指標の今の値の候補
   await page.goto('/api/auth?token=e2e-token')
   await page.getByRole('button', { name: '総菜の作る量' }).click()
   const nav = page.getByRole('navigation', { name: '問いの節' })
-  await nav.getByRole('button', { name: /^4\b/ }).click()
+  await nav.getByRole('button', { name: /^5\b/ }).click()
   await page.getByRole('button', { name: 'データを入れる' }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('パス').fill(file)
