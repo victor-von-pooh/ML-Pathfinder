@@ -319,9 +319,11 @@ def test_data_and_insight(
     columns = next(q for q in view["questions"]
                    if q["id"] == "information.columns")
     assert columns["value"] == ["date", "shop", "sales", "customers"]
-    copied = tmp_path / "home" / "problems" / view["id"] / "data" / "shop.csv"
+    copies = tmp_path / "home" / "problems" / view["id"] / "data"
     source = next(q for q in view["questions"] if q["id"] == "data.source")
-    assert source["value"] == str(copied) and copied.is_file()
+    copied = Path(source["value"])
+    assert copied.name == "shop.csv" and copied.is_file()
+    assert copied.parent.parent == copies.resolve()
     found = client.get(f"{url}/insight").json()
     assert found["overview"]["rows"] == 120
     ids = {item["id"] for item in found["suggestions"]}
@@ -347,6 +349,7 @@ def test_data_and_insight(
     source = next(q for q in removed["questions"] if q["id"] == "data.source")
     assert source["value"] is None and not copied.exists()
     assert (tmp_path / "shop.csv").is_file()
+    assert [p.name for p in copies.parent.iterdir()] == ["problem.yaml"]
 
     # 相対パスと読めないファイルは誤り
     assert client.post(f"{url}/data",
@@ -354,3 +357,52 @@ def test_data_and_insight(
     assert client.post(f"{url}/data", json={
         "path": str(tmp_path / "none.csv")
     }).status_code == 400
+
+
+def test_attach_again(client: TestClient, tmp_path: Path) -> None:
+    """
+    入れ直しで, 問題の設定と今の写しを壊さず, 古い写しを残さないことを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # .. で終わる場所でも問題の設定は残る
+    (tmp_path / "d1").mkdir()
+    (tmp_path / "d2").mkdir()
+    pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]}).to_csv(
+        tmp_path / "d1" / "x.csv", index=False
+    )
+    pd.DataFrame({"z": [1, 2, 3]}).to_csv(tmp_path / "d2" / "y.csv",
+                                         index=False)
+    view = client.post("/api/problems", json={"name": "入れ直し"}).json()
+    url = f"/api/problems/{view['id']}"
+    client.post(f"{url}/data", json={"path": str(tmp_path / "d1" / "..")})
+    assert client.get(url).status_code == 200
+
+    # 読めない同じ名前のファイルを入れ直しても, 今の写しは読める
+    first = client.post(f"{url}/data",
+                        json={"path": str(tmp_path / "d1" / "x.csv")})
+    source = next(q for q in first.json()["questions"]
+                  if q["id"] == "data.source")["value"]
+    (tmp_path / "d3").mkdir()
+    (tmp_path / "d3" / "x.csv").write_bytes(b"\x00\x01")
+    assert client.post(f"{url}/data", json={
+        "path": str(tmp_path / "d3" / "x.csv")
+    }).status_code == 400
+    assert Path(source).is_file()
+
+    # 別のファイルに入れ直すと, 古い写しは消える
+    second = client.post(f"{url}/data",
+                         json={"path": str(tmp_path / "d2" / "y.csv")})
+    copies = Path(source).parent.parent
+    assert [p.name for p in copies.rglob("*.csv")] == ["y.csv"]
+    assert second.status_code == 200

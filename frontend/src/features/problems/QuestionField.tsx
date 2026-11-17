@@ -402,7 +402,9 @@ function SourceInput({
             variant="ghost"
             disabled={saving}
             onClick={() =>
-              window.confirm('データを外しますか? (データのファイルは変わりません)') && onDetach()
+              window.confirm(
+                'データを外しますか? (置き場の写しを消します. 元のデータのファイルは変わりません)',
+              ) && onDetach()
             }
           >
             データを外す
@@ -444,12 +446,20 @@ const BASELINE_TYPES = {
   column: '今のやり方の値の列 (置いた量, 行動したか)',
 } as const
 
+/** 期の数の文字の正規化 ("07" や "7.0" を, 保存した値と同じ "7" に) */
+function normalPeriods(text: string): string {
+  const trimmed = text.trim()
+  const number = Number(trimmed)
+  return trimmed !== '' && Number.isFinite(number) ? String(number) : trimmed
+}
+
 /** 今のやり方をデータで書く: 種類を選び, 期の数か列を書いて保存を押す */
 function BaselineInput({
   question,
   columns,
   onAnswer,
   saving,
+  errorId,
 }: InputState & { columns: string[] }) {
   const value = question.value
   const saved =
@@ -463,7 +473,7 @@ function BaselineInput({
     kind === 'column'
       ? { type: kind, column }
       : kind
-        ? { type: kind, periods: periods.trim() }
+        ? { type: kind, periods: normalPeriods(periods) }
         : null
   const savedText = JSON.stringify(
     saved
@@ -493,7 +503,11 @@ function BaselineInput({
           k (期の数. データの 1 行の間隔で数える)
           <input
             value={periods}
-            inputMode="numeric"
+            type="number"
+            min={1}
+            step={1}
+            aria-invalid={!!errorId}
+            aria-describedby={errorId}
             onChange={(event) => setPeriods(event.target.value)}
             className={clsx(INPUT, 'h-8 w-24')}
           />
@@ -502,18 +516,34 @@ function BaselineInput({
       {kind === 'column' && (
         <label className="flex items-center gap-2 text-sm">
           列
-          <select
-            value={column}
-            onChange={(event) => setColumn(event.target.value)}
-            className={clsx(INPUT, 'h-8 max-w-72')}
-          >
-            <option value="">選ぶ</option>
-            {columns.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
+          {columns.length === 0 ? (
+            <input
+              value={column}
+              placeholder="列の名前 (4 の使えるデータの列に答えると選べます)"
+              aria-invalid={!!errorId}
+              aria-describedby={errorId}
+              onChange={(event) => setColumn(event.target.value.trim())}
+              className={clsx(INPUT, 'h-8 w-96')}
+            />
+          ) : (
+            <select
+              value={column}
+              aria-invalid={!!errorId}
+              aria-describedby={errorId}
+              onChange={(event) => setColumn(event.target.value)}
+              className={clsx(INPUT, 'h-8 max-w-72')}
+            >
+              <option value="">選ぶ</option>
+              {column && !columns.includes(column) && (
+                <option value={column}>{column} (列にありません)</option>
+              )}
+              {columns.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
       )}
       <div className="flex gap-2">
@@ -559,7 +589,7 @@ function Suggestions({
       </p>
       <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-1.5">
         {suggestion.values.map((value) => {
-          const chosen = many ? current.includes(value) : question.value === value
+          const chosen = many ? current.includes(value) : String(question.value) === value
           return (
             <button
               key={value}
