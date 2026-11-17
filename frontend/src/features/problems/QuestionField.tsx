@@ -298,7 +298,9 @@ function LeversInput({ question, onAnswer, saving }: InputState) {
         >
           保存
         </Button>
-        {dirty && <span className="self-center text-xs text-warning-text">保存していません</span>}
+        <span role="status" className="self-center text-xs text-warning-text">
+          {dirty ? '保存していません' : ''}
+        </span>
       </div>
     </div>
   )
@@ -471,7 +473,7 @@ function BaselineInput({
   const [column, setColumn] = useState(saved?.column ?? '')
   const draft =
     kind === 'column'
-      ? { type: kind, column }
+      ? { type: kind, column: column.trim() }
       : kind
         ? { type: kind, periods: normalPeriods(periods) }
         : null
@@ -488,6 +490,8 @@ function BaselineInput({
       <select
         id={`q-${question.id}`}
         value={kind}
+        aria-invalid={!!errorId}
+        aria-describedby={errorId}
         onChange={(event) => setKind(event.target.value)}
         className={clsx(INPUT, 'h-8 max-w-96')}
       >
@@ -522,7 +526,7 @@ function BaselineInput({
               placeholder="列の名前 (4 の使えるデータの列に答えると選べます)"
               aria-invalid={!!errorId}
               aria-describedby={errorId}
-              onChange={(event) => setColumn(event.target.value.trim())}
+              onChange={(event) => setColumn(event.target.value)}
               className={clsx(INPUT, 'h-8 w-96')}
             />
           ) : (
@@ -550,7 +554,12 @@ function BaselineInput({
         <Button
           variant="primary"
           icon={Save}
-          disabled={saving || !dirty || (kind === 'column' && !column)}
+          disabled={
+            saving ||
+            !dirty ||
+            (kind === 'column' && !column.trim()) ||
+            ((kind === 'lag' || kind === 'mean') && !/^[1-9][0-9]*$/.test(normalPeriods(periods)))
+          }
           onClick={() => onAnswer(draft)}
         >
           保存
@@ -589,7 +598,11 @@ function Suggestions({
       </p>
       <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-1.5">
         {suggestion.values.map((value) => {
-          const chosen = many ? current.includes(value) : String(question.value) === value
+          const chosen = many
+            ? current.includes(value)
+            : question.value != null &&
+              typeof question.value !== 'object' &&
+              String(question.value) === value
           return (
             <button
               key={value}

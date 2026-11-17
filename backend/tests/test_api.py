@@ -1,3 +1,5 @@
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import ml_quest
@@ -406,3 +408,127 @@ def test_attach_again(client: TestClient, tmp_path: Path) -> None:
     copies = Path(source).parent.parent
     assert [p.name for p in copies.rglob("*.csv")] == ["y.csv"]
     assert second.status_code == 200
+
+
+def test_attach_races(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    写している間に問題の設定が消されても残り物が無く, 写している途中の
+    写しは他の保存で消されないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        写している間の割り込み
+
+    Returns
+    ----------
+    None
+    """
+    # 写している間に消す (写しが消えたディレクトリを作り直す)
+    pd.DataFrame({"x": [1, 2, 3]}).to_csv(tmp_path / "x.csv", index=False)
+    problems = tmp_path / "home" / "problems"
+    view = client.post("/api/problems", json={"name": "消す"}).json()
+    url = f"/api/problems/{view['id']}"
+    original = ml_quest.attach_data
+    monkeypatch.setattr(ml_quest, "attach_data", partial(
+        deleting_attach, client, url, original
+    ))
+    response = client.post(f"{url}/data",
+                           json={"path": str(tmp_path / "x.csv")})
+    assert response.status_code == 404
+    assert list(problems.iterdir()) == []
+
+    # 写している途中に別のデータを入れても, 途中の写しは残って保存できる
+    view = client.post("/api/problems", json={"name": "重ね"}).json()
+    url = f"/api/problems/{view['id']}"
+    pd.DataFrame({"y": [1, 2, 3]}).to_csv(tmp_path / "y.csv", index=False)
+    monkeypatch.setattr(ml_quest, "attach_data", partial(
+        nested_attach, client, url, tmp_path / "y.csv", original, []
+    ))
+    outer = client.post(f"{url}/data", json={"path": str(tmp_path / "x.csv")})
+    assert outer.status_code == 200
+    copies = problems / view["id"] / "data"
+    assert [p.name for p in copies.rglob("*.csv")] == ["x.csv"]
+    assert not list((problems / view["id"]).glob(".removing-*"))
+
+
+def deleting_attach(
+    client: TestClient, url: str, original: Callable[..., dict],
+    problem: dict, path: Path, copy_to: Path
+) -> dict:
+    """
+    写す前に問題の設定を消してから写す関数 (割り込みの再現)
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    url: str
+        問題の設定の URL
+    original: Callable[..., dict]
+        元の attach_data
+    problem: dict
+        問題の設定
+    path: Path
+        データの場所
+    copy_to: Path
+        写し先
+
+    Returns
+    ----------
+    attached: dict
+        写した後の問題の設定
+    """
+    # 消してから写す
+    client.delete(url)
+    attached = original(problem, path, copy_to=copy_to)
+
+    return attached
+
+
+def nested_attach(
+    client: TestClient, url: str, other: Path,
+    original: Callable[..., dict], calls: list[int],
+    problem: dict, path: Path, copy_to: Path
+) -> dict:
+    """
+    1 回目だけ, 写す前に別のデータを入れてから写す関数 (割り込みの再現)
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    url: str
+        問題の設定の URL
+    other: Path
+        割り込んで入れるデータ
+    original: Callable[..., dict]
+        元の attach_data
+    calls: list[int]
+        呼ばれた回数の記録
+    problem: dict
+        問題の設定
+    path: Path
+        データの場所
+    copy_to: Path
+        写し先
+
+    Returns
+    ----------
+    attached: dict
+        写した後の問題の設定
+    """
+    # 1 回目だけの割り込み
+    if not calls:
+        calls.append(1)
+        inner = client.post(f"{url}/data", json={"path": str(other)})
+        assert inner.status_code == 200
+    attached = original(problem, path, copy_to=copy_to)
+
+    return attached

@@ -1,5 +1,4 @@
 import re
-import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -169,9 +168,12 @@ class Store:
 
         return saved
 
-    def delete(self, problem_id: str) -> None:
+    def delete(self, problem_id: str) -> Path:
         """
         問題の設定を消す関数
+
+        大きな写しを消す間も他の保存を止めないように, ここでは識別子の形に
+        合わない名前に変えるだけ. 返した場所は呼び出し側が鍵の外で消す
 
         Parameters
         ----------
@@ -180,11 +182,15 @@ class Store:
 
         Returns
         ----------
-        None
+        removing: Path
+            名前を変えたディレクトリ (一覧には出ない)
         """
-        # ディレクトリごと
+        # ディレクトリごとの名前の変更
         with self.lock:
-            shutil.rmtree(self.place(problem_id))
+            removing = self.problems_dir / f".removing-{uuid.uuid4().hex}"
+            self.place(problem_id).rename(removing)
+
+        return removing
 
 
 def updated_of(item: tuple[str, Any]) -> datetime:
