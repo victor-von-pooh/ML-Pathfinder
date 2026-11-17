@@ -437,6 +437,100 @@ function SourceInput({
   )
 }
 
+/** 今のやり方の書き方の名前 */
+const BASELINE_TYPES = {
+  lag: 'k 期前と同じ (前の週の同じ曜日なら 7)',
+  mean: '直前の k 期の平均',
+  column: '今のやり方の値の列 (置いた量, 行動したか)',
+} as const
+
+/** 今のやり方をデータで書く: 種類を選び, 期の数か列を書いて保存を押す */
+function BaselineInput({
+  question,
+  columns,
+  onAnswer,
+  saving,
+}: InputState & { columns: string[] }) {
+  const value = question.value
+  const saved =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as { type?: string; periods?: number; column?: string })
+      : null
+  const [kind, setKind] = useState<string>(saved?.type ?? '')
+  const [periods, setPeriods] = useState(saved?.periods ? String(saved.periods) : '7')
+  const [column, setColumn] = useState(saved?.column ?? '')
+  const draft =
+    kind === 'column'
+      ? { type: kind, column }
+      : kind
+        ? { type: kind, periods: periods.trim() }
+        : null
+  const savedText = JSON.stringify(
+    saved
+      ? saved.type === 'column'
+        ? { type: saved.type, column: saved.column }
+        : { type: saved.type, periods: String(saved.periods) }
+      : null,
+  )
+  const dirty = JSON.stringify(draft) !== savedText
+  return (
+    <div className="flex flex-col gap-2">
+      <select
+        id={`q-${question.id}`}
+        value={kind}
+        onChange={(event) => setKind(event.target.value)}
+        className={clsx(INPUT, 'h-8 max-w-96')}
+      >
+        <option value="">書かない (選ばずに保存すると答えを消す)</option>
+        {Object.entries(BASELINE_TYPES).map(([key, label]) => (
+          <option key={key} value={key}>
+            {label}
+          </option>
+        ))}
+      </select>
+      {(kind === 'lag' || kind === 'mean') && (
+        <label className="flex items-center gap-2 text-sm">
+          k (期の数. データの 1 行の間隔で数える)
+          <input
+            value={periods}
+            inputMode="numeric"
+            onChange={(event) => setPeriods(event.target.value)}
+            className={clsx(INPUT, 'h-8 w-24')}
+          />
+        </label>
+      )}
+      {kind === 'column' && (
+        <label className="flex items-center gap-2 text-sm">
+          列
+          <select
+            value={column}
+            onChange={(event) => setColumn(event.target.value)}
+            className={clsx(INPUT, 'h-8 max-w-72')}
+          >
+            <option value="">選ぶ</option>
+            {columns.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <div className="flex gap-2">
+        <Button
+          variant="primary"
+          icon={Save}
+          disabled={saving || !dirty || (kind === 'column' && !column)}
+          onClick={() => onAnswer(draft)}
+        >
+          保存
+        </Button>
+        {dirty && <span className="self-center text-xs text-warning-text">保存していません</span>}
+      </div>
+    </div>
+  )
+}
+
 /** データからの答えの候補 (押すと答える. 列の並びの問いは今の答えに足す) */
 function Suggestions({
   question,
@@ -551,6 +645,8 @@ export function QuestionField({
     input = <ListInput key={key} {...state} onReadColumns={onReadColumns} />
   else if (question.kind === 'source')
     input = <SourceInput {...state} overview={overview} onAttach={onAttach} onDetach={onDetach} />
+  else if (question.kind === 'baseline')
+    input = <BaselineInput key={key} {...state} columns={columns} />
   else if (question.kind === 'levers') input = <LeversInput key={key} {...state} />
   else input = <DecisionInput key={key} {...state} />
   return (

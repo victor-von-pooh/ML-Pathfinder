@@ -319,6 +319,9 @@ def test_data_and_insight(
     columns = next(q for q in view["questions"]
                    if q["id"] == "information.columns")
     assert columns["value"] == ["date", "shop", "sales", "customers"]
+    copied = tmp_path / "home" / "problems" / view["id"] / "data" / "shop.csv"
+    source = next(q for q in view["questions"] if q["id"] == "data.source")
+    assert source["value"] == str(copied) and copied.is_file()
     found = client.get(f"{url}/insight").json()
     assert found["overview"]["rows"] == 120
     ids = {item["id"] for item in found["suggestions"]}
@@ -342,7 +345,8 @@ def test_data_and_insight(
     assert direct.status_code == 400
     removed = client.delete(f"{url}/data").json()
     source = next(q for q in removed["questions"] if q["id"] == "data.source")
-    assert source["value"] is None
+    assert source["value"] is None and not copied.exists()
+    assert (tmp_path / "shop.csv").is_file()
 
     # 相対パスと読めないファイルは誤り
     assert client.post(f"{url}/data",

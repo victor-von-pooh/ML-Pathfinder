@@ -1,3 +1,5 @@
+import json
+import shutil
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -727,14 +729,16 @@ def attach_data(
     view: dict[str, Any]
         入れた後の全て
     """
-    # データは写さず, ML-EDA で読めるかを確かめてから場所と読み方を保存.
+    # ML-EDA で読めるかを確かめてから, 問題の設定の置き場に写して保存.
     # 大きなデータの読み込みの間も他の答えを止めないように, 読むのは鍵の
     # 外で, 書くときに今の問題の設定へ重ねる
     store = get_store(request)
     path = local_path(body.path)
     snapshot = load_or_404(store, problem_id)
     try:
-        attached = ml_quest.attach_data(snapshot, path)
+        attached = ml_quest.attach_data(
+            snapshot, path, copy_to=store.place(problem_id) / "data"
+        )
     except USER_ERRORS as error:
         raise user_error(error) from error
     with EDIT_LOCK:
@@ -783,14 +787,13 @@ def insight_key(problem_id: str, problem: dict[str, Any]) -> str:
             stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
         except OSError:
             stamp = "missing"
-    answers = [
-        ml_quest.get_value(problem, name) for name in (
-            "data.loader", "data.options", "data.size", "data.modified",
-            "information.columns", "ml.use", "ml.target", "ml.task",
-            "ml.time_column", "ml.series_by", "ml.horizon", "ml.positive"
-        )
-    ]
-    key = f"{problem_id}|{source}|{stamp}|{answers!r}"
+    # 候補に効く答えの漏れを防ぐため, 時刻を除く問題の設定の全てを鍵に
+    answers = json.dumps(
+        {k: v for k, v in problem.items()
+         if k not in ("created_at", "updated_at")},
+        ensure_ascii=False, sort_keys=True, default=str
+    )
+    key = f"{problem_id}|{source}|{stamp}|{answers}"
 
     return key
 
@@ -812,10 +815,11 @@ def detach_data(request: Request, problem_id: str) -> dict[str, Any]:
     view: dict[str, Any]
         外した後の全て (要るのに無いデータと, 使えるデータの列は残す)
     """
-    # 場所と読み方だけの消去 (データのファイルは変えない)
+    # 場所と読み方と, 置き場に写したデータの消去 (元のデータは変えない)
     store = get_store(request)
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
+        shutil.rmtree(store.place(problem_id) / "data", ignore_errors=True)
         missing = ml_quest.get_value(problem, "data.missing")
         problem.pop("data", None)
         if missing:
