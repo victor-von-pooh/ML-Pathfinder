@@ -57,7 +57,7 @@ def main() -> None:
     if args.host not in ("127.0.0.1", "localhost"):
         print(
             f"警告: {args.host} で待ち受けます. トークンを知る人は, "
-            "手元のファイルを読めます"
+            "手元のファイルを読み, 書き込めます"
         )
 
     # 起動ごとのトークン付きの URL の表示

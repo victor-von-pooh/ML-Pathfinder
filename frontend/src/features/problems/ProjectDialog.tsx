@@ -46,7 +46,10 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
           <input
             id="experiment-name"
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={(event) => {
+              setName(event.target.value)
+              write.reset()
+            }}
             className="h-8 w-full rounded-lg border border-line bg-surface px-2 text-sm"
           />
         </div>
@@ -56,7 +59,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
             checked={overwrite}
             onChange={(event) => setOverwrite(event.target.checked)}
           />
-          既にあるファイルを上書きする
+          既にあるファイル (problem.yaml, README.md, configs, train.py) を上書きする
         </label>
         {write.error && <ErrorBox error={write.error} />}
         {write.data && (
@@ -65,11 +68,21 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
             className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm"
           >
             <p className="mb-1">書き出しました: {write.data.path}</p>
-            <ul className="list-disc pl-5 font-mono text-xs">
+            <ul className="mb-2 list-disc pl-5 font-mono text-xs">
               {write.data.files.map((file) => (
                 <li key={file}>{file}</li>
               ))}
             </ul>
+            <p className="mb-1 font-medium">次にすること (書き出した README.md にも同じ手順)</p>
+            <ol className="list-decimal pl-5 text-xs">
+              <li>
+                ML-Fathom でデータを読み, 右の「データの分析」の値でデータセットを outputs/dataset
+                に書き出す
+              </li>
+              <li>ML-CreateArchitecture でモデルを組み, models/model.yaml に置く</li>
+              <li>ML-Found (か ML-Dashboard) で train.py を動かして学習する</li>
+              <li>実験の中の inference/ を ML-Provide に登録して推論する</li>
+            </ol>
           </div>
         )}
         <div className="flex justify-end gap-2">

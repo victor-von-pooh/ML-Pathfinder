@@ -39,7 +39,7 @@ export function App() {
       </a>
       <nav
         aria-label="移動"
-        className="flex w-56 shrink-0 flex-col gap-1 border-r border-line bg-surface p-3"
+        className="hidden w-56 shrink-0 flex-col gap-1 border-r border-line bg-surface p-3 md:flex"
       >
         <div className="mb-3 flex items-center justify-between px-2">
           <span className="flex items-center gap-2 text-base font-semibold">
@@ -57,7 +57,22 @@ export function App() {
         </div>
         <NavItem to="/" icon={ListChecks} label="問題の設定" />
       </nav>
-      <main id="main" className="min-w-0 flex-1 overflow-auto px-8 py-6">
+      <main id="main" className="min-w-0 flex-1 overflow-auto px-4 py-4 md:px-8 md:py-6">
+        {/* 狭い画面では左の欄の代わりに, 上に名前と一覧への移動 */}
+        <div className="mb-4 flex items-center justify-between md:hidden">
+          <NavLink to="/" className="flex items-center gap-2 font-semibold">
+            <Compass size={18} className="text-accent" aria-hidden />
+            ML-Pathfinder
+          </NavLink>
+          <button
+            type="button"
+            onClick={toggle}
+            aria-label={theme === 'dark' ? '明るい表示にする' : '暗い表示にする'}
+            className="rounded p-1 text-ink-3 hover:bg-surface-2"
+          >
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
         <Routes>
           <Route path="/" element={<ProblemsPage />} />
           <Route path="/problems/:id" element={<ProblemPage />} />

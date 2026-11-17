@@ -1,4 +1,4 @@
-import type { Decision } from '../api/types'
+import type { Decision, Lever } from '../api/types'
 import { DECISION_FIELDS } from './labels'
 
 /** 意思決定の欄の書きかけから, 保存する形を作る (空の欄は除く) */
@@ -28,4 +28,16 @@ export function splitLines(text: string): string[] {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
+}
+
+/** 保存した要因と打てる手を, 形を確かめて行の並びに (崩れた行は除く) */
+export function toLevers(value: unknown): Lever[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+    .map((row) => ({
+      cause: typeof row.cause === 'string' ? row.cause : '',
+      lever: typeof row.lever === 'string' ? row.lever : '',
+      ml: row.ml === true,
+    }))
 }

@@ -1,4 +1,4 @@
-import { decisionDraft, sameDecision, splitLines } from './draft'
+import { decisionDraft, sameDecision, splitLines, toLevers } from './draft'
 
 describe('decisionDraft', () => {
   it('型の項目だけを, 空の欄を除いて残す', () => {
@@ -23,5 +23,14 @@ describe('sameDecision', () => {
 describe('splitLines', () => {
   it('空の行と前後の空白を除く', () => {
     expect(splitLines(' a \n\nb\n ')).toEqual(['a', 'b'])
+  })
+})
+
+describe('toLevers', () => {
+  it('崩れた行と値を除いて行にする', () => {
+    expect(toLevers([{ cause: 'a', lever: 1, ml: 'yes' }, 'x', null])).toEqual([
+      { cause: 'a', lever: '', ml: false },
+    ])
+    expect(toLevers('x')).toEqual([])
   })
 })

@@ -211,3 +211,70 @@ def test_browse(client: TestClient, tmp_path: Path) -> None:
     assert client.get("/api/browse", params={
         "path": str(tmp_path / "none")
     }).status_code == 404
+
+
+def test_broken_files(client: TestClient, tmp_path: Path) -> None:
+    """
+    置き場の壊れた問題の設定が, 一覧を止めずに印付きで出て, 消せることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # YAML として壊れたものと, 形の崩れたもの
+    good = client.post("/api/problems", json={"name": "良い"}).json()
+    home = tmp_path / "home" / "problems"
+    (home / "aaaaaaaaaaaa").mkdir(parents=True)
+    (home / "aaaaaaaaaaaa" / "problem.yaml").write_text(
+        "a: [", encoding="utf-8"
+    )
+    (home / "bbbbbbbbbbbb").mkdir()
+    (home / "bbbbbbbbbbbb" / "problem.yaml").write_text(
+        "format_version: 1\nname: x\nml: {use: true, task: [1]}\n",
+        encoding="utf-8",
+    )
+    items = {item["id"]: item for item in client.get("/api/problems").json()}
+    assert items[good["id"]]["broken"] is None
+    assert "YAML" in items["aaaaaaaaaaaa"]["broken"]
+    assert items["bbbbbbbbbbbb"]["errors"] >= 1
+
+    # 壊れたものは開けないが 422 で理由が出て, 消せる
+    opened = client.get("/api/problems/aaaaaaaaaaaa")
+    assert opened.status_code == 422 and "壊れて" in opened.json()["detail"]
+    assert client.delete("/api/problems/aaaaaaaaaaaa").status_code == 204
+
+    # 相対パスと, 無い識別子での列の読み込みは誤り
+    relative = client.post(f"/api/problems/{good['id']}/columns",
+                           json={"path": "data.csv"})
+    assert relative.status_code == 400 and "絶対パス" in relative.json()[
+        "detail"
+    ]
+    assert client.post("/api/problems/cccccccccccc/columns",
+                       json={"path": str(tmp_path / "x.csv")}
+                       ).status_code == 404
+    missing = client.post(f"/api/problems/{good['id']}/columns",
+                          json={"path": str(tmp_path / "none.csv")})
+    assert missing.json()["detail"] == "none.csv が見つかりません"
+
+    # 取り込めない形と, 文字列でない名前
+    broken = tmp_path / "broken.yaml"
+    broken.write_text("format_version: 1\nml: {task: [1]}\n", "utf-8")
+    assert client.post("/api/problems/import",
+                       json={"path": str(broken)}).status_code == 201
+    odd = tmp_path / "odd.yaml"
+    odd.write_text("format_version: 1\nname: {a: 1}\n", "utf-8")
+    imported = client.post("/api/problems/import",
+                           json={"path": str(odd)}).json()
+    assert imported["name"] == "odd"
+
+    # ダウンロードの応答のヘッダー
+    download = client.get(f"/api/problems/{good['id']}/download")
+    assert download.headers["x-content-type-options"] == "nosniff"

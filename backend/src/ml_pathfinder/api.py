@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from ml_pathfinder.store import Store
+from ml_pathfinder.store import READ_ERRORS, Store
 
 router = APIRouter(prefix="/api")
 
@@ -18,13 +18,17 @@ EDIT_LOCK = threading.Lock()
 # 名前に使える長さ
 MAX_NAME = 80
 
-# 画面に返す誤りとする例外
-USER_ERRORS = (ValueError, FileNotFoundError, yaml.YAMLError)
+# 画面に返す誤りとする例外 (手元のファイルの誤りを含む)
+USER_ERRORS = (ValueError, OSError, yaml.YAMLError)
 
 
 class ProblemCreate(BaseModel):
     name: Optional[str] = Field(default=None, max_length=MAX_NAME)
     example: Optional[str] = None
+
+
+class NameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=MAX_NAME)
 
 
 class AnswerRequest(BaseModel):
@@ -38,7 +42,7 @@ class PathRequest(BaseModel):
 
 class ProjectRequest(BaseModel):
     path: str = Field(min_length=1)
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, max_length=MAX_NAME)
     overwrite: bool = False
 
 
@@ -75,8 +79,22 @@ def user_error(error: Exception) -> HTTPException:
     exception: HTTPException
         400 の例外 (文は元の誤りの文)
     """
-    # 誤りの文をそのまま
-    message = str(error) or type(error).__name__
+    # 手元のファイルの誤りは日本語に, 他は誤りの文をそのまま
+    name = Path(str(getattr(error, "filename", "") or "")).name or "ファイル"
+    if isinstance(error, FileNotFoundError):
+        message = f"{name} が見つかりません"
+    elif isinstance(error, PermissionError):
+        message = f"{name} を読み書きする権限がありません"
+    elif isinstance(error, IsADirectoryError):
+        message = f"{name} はディレクトリです"
+    elif isinstance(error, UnicodeDecodeError):
+        message = "文字コードを読めません (UTF-8 で保存してください)"
+    elif isinstance(error, yaml.YAMLError):
+        message = "YAML として読めません"
+    elif isinstance(error, OSError):
+        message = f"{name} を読み書きできません"
+    else:
+        message = str(error) or type(error).__name__
     exception = HTTPException(400, message)
 
     return exception
@@ -101,15 +119,74 @@ def load_or_404(store: Store, problem_id: str) -> dict[str, Any]:
     Raises
     ----------
     HTTPException
-        無い場合は 404
+        無い場合は 404, ファイルが壊れている場合は 422
     """
-    # 形の違う識別子も無いものと同じ
+    # 形の違う識別子も無いものと同じ. 壊れたファイルは消せるように 422
     try:
         problem = store.load(problem_id)
     except KeyError as error:
         raise HTTPException(404, "問題の設定が見つかりません") from error
+    except READ_ERRORS as error:
+        raise HTTPException(
+            422, "問題の設定のファイルが壊れています "
+            f"({user_error(error).detail}). 消すか, ファイルを直してください"
+        ) from error
 
     return problem
+
+
+def exists_or_404(store: Store, problem_id: str) -> None:
+    """
+    問題の設定のファイルがあるかだけを確かめる関数 (中身は読まない)
+
+    Parameters
+    ----------
+    store: Store
+        置き場
+    problem_id: str
+        識別子
+
+    Returns
+    ----------
+    None
+
+    Raises
+    ----------
+    HTTPException
+        無い場合は 404
+    """
+    # 壊れたファイルも消せるように, 場所だけ
+    try:
+        store.place(problem_id)
+    except KeyError as error:
+        raise HTTPException(404, "問題の設定が見つかりません") from error
+
+
+def local_path(text: str) -> Path:
+    """
+    画面から受け取った場所を, 絶対パスにして返す関数
+
+    Parameters
+    ----------
+    text: str
+        場所 (~ から書ける)
+
+    Returns
+    ----------
+    path: Path
+        絶対パス
+
+    Raises
+    ----------
+    HTTPException
+        相対パスの場合は 400 (起動した場所で意味が変わるため)
+    """
+    # ~ を展開した後に絶対パスであること
+    path = Path(text.strip()).expanduser()
+    if not path.is_absolute():
+        raise HTTPException(400, f"{text} は絶対パスで書いてください")
+
+    return path
 
 
 def progress_of(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -126,7 +203,7 @@ def progress_of(items: list[dict[str, Any]]) -> dict[str, Any]:
     progress: dict[str, Any]
         answered, required (全体) と, sections (節ごとの同じ数)
     """
-    # 今要る問いの, 要るものだけを数える
+    # 今要る問いのうち, 要るものだけの数え上げ
     sections: dict[int, dict[str, int]] = {
         number: {"answered": 0, "required": 0}
         for number in ml_quest.SECTIONS
@@ -166,7 +243,7 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         画面に出す全て (受け渡せない場合は handoff が None で, 理由を
         handoff_error に)
     """
-    # 機械学習を使わない出口と, 直すところの残る問題の設定は受け渡せない
+    # 機械学習を使わない出口と, 直すところの残る問題の設定は受け渡し不可
     items = ml_quest.questions(problem)
     findings = ml_quest.check(problem)
     try:
@@ -219,6 +296,35 @@ def list_item(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         "finished"
     )}
     item["errors"] = sum(1 for f in view["findings"] if f["level"] == "error")
+    item["broken"] = None
+
+    return item
+
+
+def broken_item(problem_id: str, error: Exception) -> dict[str, Any]:
+    """
+    読めない問題の設定の一覧の 1 行を作る関数
+
+    Parameters
+    ----------
+    problem_id: str
+        識別子
+    error: Exception
+        読めない理由
+
+    Returns
+    ----------
+    item: dict[str, Any]
+        broken に理由を入れた 1 行 (消せるように識別子は残す)
+    """
+    # 名前は分からないので識別子
+    item = {
+        "id": problem_id, "name": f"(読めない問題の設定 {problem_id})",
+        "updated_at": None, "uses_ml": None,
+        "progress": {"answered": 0, "required": 0, "sections": []},
+        "ready": False, "finished": False, "errors": 0,
+        "broken": user_error(error).detail,
+    }
 
     return item
 
@@ -226,7 +332,7 @@ def list_item(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
 @router.get("/info")
 def get_info() -> dict[str, Any]:
     """
-    問いの節, タスク, 指標, 見本の名前を返す関数
+    問いの節, 見本の名前, 問題の設定の形の版を返す関数
 
     Parameters
     ----------
@@ -251,7 +357,7 @@ def get_info() -> dict[str, Any]:
 @router.get("/browse")
 def browse(path: str = "~") -> dict[str, Any]:
     """
-    ディレクトリの中身を返す関数 (ファイルとディレクトリを選ぶため)
+    ファイルとディレクトリを選ぶための, ディレクトリの中身を返す関数
 
     Parameters
     ----------
@@ -269,30 +375,18 @@ def browse(path: str = "~") -> dict[str, Any]:
     HTTPException
         ディレクトリでない場合は 404
     """
-    # 隠しファイルを除いて, ディレクトリを先に名前の順で並べる
+    # 隠しファイルを除いて, ディレクトリを先に名前の順 (読めない子は除く)
     target = Path(path).expanduser().resolve()
     if not target.is_dir():
         raise HTTPException(404, f"{target} はディレクトリではありません")
     try:
-        children = sorted(
-            target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
-        )
+        children = [entry_of(c) for c in target.iterdir()
+                    if not c.name.startswith(".")]
     except PermissionError as error:
         raise HTTPException(403, "読む権限がありません") from error
-    visible = [c for c in children if not c.name.startswith(".")]
-    entries = []
-    for child in visible[:1000]:
-        try:
-            size = child.stat().st_size if child.is_file() else None
-        except OSError:
-            continue
-        entries.append({
-            "name": child.name, "path": str(child),
-            "is_dir": child.is_dir(), "size": size,
-            "project": child.is_dir() and (
-                child / "configs" / "default" / "train.yaml"
-            ).is_file(),
-        })
+    visible = sorted((e for e in children if e is not None),
+                     key=entry_order)
+    entries = visible[:1000]
     listing = {
         "path": str(target),
         "parent": str(target.parent) if target.parent != target else None,
@@ -302,6 +396,57 @@ def browse(path: str = "~") -> dict[str, Any]:
     }
 
     return listing
+
+
+def entry_of(child: Path) -> Optional[dict[str, Any]]:
+    """
+    ディレクトリの中の 1 つを, 一覧の 1 件にする関数
+
+    Parameters
+    ----------
+    child: Path
+        ファイルかディレクトリ
+
+    Returns
+    ----------
+    entry: Optional[dict[str, Any]]
+        名前, 場所, ディレクトリか, 大きさ, ML-Found のプロジェクトか
+        (読めなければ None)
+    """
+    # 権限の無い子は除く (macOS の守られたディレクトリなど)
+    try:
+        is_dir = child.is_dir()
+        entry: Optional[dict[str, Any]] = {
+            "name": child.name, "path": str(child), "is_dir": is_dir,
+            "size": None if is_dir else child.stat().st_size,
+            "project": is_dir and (
+                child / "configs" / "default" / "train.yaml"
+            ).is_file(),
+        }
+    except OSError:
+        entry = None
+
+    return entry
+
+
+def entry_order(entry: dict[str, Any]) -> tuple[bool, str]:
+    """
+    一覧の並びの鍵を返す関数
+
+    Parameters
+    ----------
+    entry: dict[str, Any]
+        一覧の 1 件
+
+    Returns
+    ----------
+    key: tuple[bool, str]
+        ディレクトリが先, 名前の順
+    """
+    # 大文字と小文字を区別しない名前の順
+    key = (not entry["is_dir"], entry["name"].lower())
+
+    return key
 
 
 @router.get("/problems")
@@ -319,9 +464,16 @@ def list_problems(request: Request) -> list[dict[str, Any]]:
     items: list[dict[str, Any]]
         更新の新しい順の一覧
     """
-    # 置き場の全て
-    items = [list_item(problem_id, problem)
-             for problem_id, problem in get_store(request).list()]
+    # 置き場の全て (読めないファイルと, 形の崩れで確かめが落ちるものも
+    # 消せるように行に残す)
+    items = []
+    for problem_id, problem in get_store(request).list_all():
+        try:
+            if isinstance(problem, Exception):
+                raise problem
+            items.append(list_item(problem_id, problem))
+        except (*READ_ERRORS, TypeError, KeyError, AttributeError) as error:
+            items.append(broken_item(problem_id, error))
 
     return items
 
@@ -384,13 +536,21 @@ def import_problem(request: Request, body: PathRequest) -> dict[str, Any]:
     view: dict[str, Any]
         取り込んだ問題の設定
     """
-    # 元のファイルは変えない (置き場に写す)
+    # 元のファイルは変えず, 置き場への写し. 確かめが落ちる形は取り込まない
+    path = local_path(body.path)
     try:
-        problem = ml_quest.load_problem(Path(body.path).expanduser())
-    except (*USER_ERRORS, OSError) as error:
+        problem = ml_quest.load_problem(path)
+        if not isinstance(problem.get("name"), str) or not problem[
+            "name"
+        ].strip():
+            problem["name"] = path.stem if path.is_file() else path.name
+        problem_view("0" * 12, problem)
+    except USER_ERRORS as error:
         raise user_error(error) from error
-    if not str(problem.get("name") or "").strip():
-        problem["name"] = Path(body.path).stem
+    except (TypeError, KeyError, AttributeError) as error:
+        raise HTTPException(
+            400, f"問題の設定の形が崩れていて取り込めません ({error})"
+        ) from error
     store = get_store(request)
     problem_id = store.create(problem)
     view = problem_view(problem_id, store.load(problem_id))
@@ -415,7 +575,7 @@ def get_problem(request: Request, problem_id: str) -> dict[str, Any]:
     view: dict[str, Any]
         画面に出す全て
     """
-    # 読むだけ
+    # 読み込みだけ
     problem = load_or_404(get_store(request), problem_id)
     view = problem_view(problem_id, problem)
 
@@ -443,7 +603,7 @@ def put_answer(
     view: dict[str, Any]
         答えた後の全て
     """
-    # 読んで答えて書く (形の誤りは 400)
+    # 読み込み, 答え, 書き込み (形の誤りは 400)
     store = get_store(request)
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
@@ -459,7 +619,7 @@ def put_answer(
 
 @router.put("/problems/{problem_id}/name")
 def rename_problem(
-    request: Request, problem_id: str, body: ProblemCreate
+    request: Request, problem_id: str, body: NameRequest
 ) -> dict[str, Any]:
     """
     問題の名前を変える関数
@@ -470,7 +630,7 @@ def rename_problem(
         リクエスト
     problem_id: str
         識別子
-    body: ProblemCreate
+    body: NameRequest
         新しい名前
 
     Returns
@@ -479,7 +639,7 @@ def rename_problem(
         名前を変えた後の全て
     """
     # 空の名前は誤り
-    name = (body.name or "").strip()
+    name = body.name.strip()
     if not name:
         raise HTTPException(400, "問題の名前を書いてください")
     store = get_store(request)
@@ -513,12 +673,13 @@ def read_columns(
     view: dict[str, Any]
         答えた後の全て
     """
-    # 先頭の行だけを読む
-    try:
-        columns = ml_quest.read_columns(Path(body.path).expanduser())
-    except (*USER_ERRORS, OSError) as error:
-        raise user_error(error) from error
+    # 問題の設定があってから, 先頭の行だけの読み込み
     store = get_store(request)
+    exists_or_404(store, problem_id)
+    try:
+        columns = ml_quest.read_columns(local_path(body.path))
+    except USER_ERRORS as error:
+        raise user_error(error) from error
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
         try:
@@ -555,11 +716,11 @@ def write_project(
     """
     # 渡せない問題の設定と, 上書きしない既にあるファイルは 400
     problem = load_or_404(get_store(request), problem_id)
-    target = Path(body.path).expanduser().resolve()
+    target = local_path(body.path).resolve()
     try:
         files = ml_quest.make_project(problem, target, name=body.name,
                                       overwrite=body.overwrite)
-    except (*USER_ERRORS, OSError) as error:
+    except USER_ERRORS as error:
         raise user_error(error) from error
     result = {"path": str(target), "files": files}
 
@@ -583,13 +744,18 @@ def download_problem(request: Request, problem_id: str) -> Response:
     response: Response
         problem.yaml (添付として)
     """
-    # 置き場のファイルをそのまま
+    # 置き場のファイルをそのまま (中身で表示を変えないように添付で)
     store = get_store(request)
-    load_or_404(store, problem_id)
-    text = (store.place(problem_id) / "problem.yaml").read_text("utf-8")
+    with EDIT_LOCK:
+        exists_or_404(store, problem_id)
+        data = (store.place(problem_id) / "problem.yaml").read_bytes()
     response = Response(
-        text, media_type="application/x-yaml",
-        headers={"Content-Disposition": 'attachment; filename="problem.yaml"'}
+        data, media_type="application/x-yaml; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="problem.yaml"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+        }
     )
 
     return response
@@ -612,10 +778,10 @@ def delete_problem(request: Request, problem_id: str) -> Response:
     response: Response
         204
     """
-    # 無ければ 404
+    # 無ければ 404 (壊れたファイルも消せるように中身は読まない)
     store = get_store(request)
     with EDIT_LOCK:
-        load_or_404(store, problem_id)
+        exists_or_404(store, problem_id)
         store.delete(problem_id)
     response = Response(status_code=204)
 

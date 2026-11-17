@@ -1,6 +1,6 @@
 import type { Problem } from '../../api/types'
 import { Card } from '../../components/ui'
-import { DECISION_NAMES } from '../../lib/labels'
+import { DECISION_FIELDS, DECISION_NAMES } from '../../lib/labels'
 
 /** タスクの名前 */
 const TASKS: Record<string, string> = {
@@ -35,7 +35,9 @@ export function HandoffCard({ problem }: { problem: Problem }) {
         <p className="text-sm text-ink-3">
           {problem.finished
             ? '機械学習を使わないので, 渡す値はありません.'
-            : '直すところが無くなると, データの分析, モデルの作成, 学習, 推論の各段階で選ぶ値がここに出ます.'}
+            : problem.uses_ml !== true
+              ? '4 の「機械学習を使いますか」で使うと決めると, データの分析, モデルの作成, 学習, 推論の各段階で選ぶ値がここに出ます.'
+              : `まだ渡せません. ${problem.handoff_error ?? ''}`}
         </p>
       </Card>
     )
@@ -74,7 +76,8 @@ export function HandoffCard({ problem }: { problem: Problem }) {
             モデルの作成 (ML-CreateArchitecture)
           </dt>
           <dd>
-            出力の大きさ {model.outputs ?? 'クラスの数 (softmax を付けない値)'}.
+            出力の大きさ{' '}
+            {model.outputs ?? 'クラスの数 (確率にする前の値を出す. softmax は付けない)'}.
             入力の大きさは書き出したデータセットの学習に使う列の数
           </dd>
         </div>
@@ -97,7 +100,10 @@ export function HandoffCard({ problem }: { problem: Problem }) {
                 {Object.entries(decision)
                   .filter(([key]) => key !== 'type')
                   .map(([key, value]) => (
-                    <Code key={key}>{`${key}: ${String(value)}`}</Code>
+                    <Code key={key}>{`${
+                      DECISION_FIELDS[decision.type]?.find((f) => f.key === key)?.label ??
+                      (key === 'positive' ? '当たりのクラス' : key)
+                    }: ${String(value)}`}</Code>
                   ))}
               </span>
             )}

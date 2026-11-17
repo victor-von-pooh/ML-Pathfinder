@@ -8,9 +8,9 @@ import { api } from '../../api/client'
 import type { Finding, Problem } from '../../api/types'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatTime } from '../../lib/format'
+import { LEVEL_NAMES } from '../../lib/labels'
 import { HandoffCard } from './HandoffCard'
 import { ProjectDialog } from './ProjectDialog'
-import { LEVEL_NAMES } from '../../lib/labels'
 import { QuestionField } from './QuestionField'
 
 /** 確かめの重さの見た目 */
@@ -20,7 +20,18 @@ const LEVEL_STYLE: Record<Finding['level'], string> = {
   info: 'border-line bg-surface-2',
 }
 
-/** 問いの節の一覧 (答えた数と要る数) */
+/** 節ごとの直すところ (error) の数 */
+function errorsBySection(problem: Problem): Record<number, number> {
+  const counts: Record<number, number> = {}
+  for (const finding of problem.findings) {
+    if (finding.level !== 'error') continue
+    const section = problem.questions.find((q) => q.id === finding.id)?.section
+    if (section !== undefined) counts[section] = (counts[section] ?? 0) + 1
+  }
+  return counts
+}
+
+/** 問いの節の一覧 (広い画面は縦の一覧, 狭い画面は選ぶ欄) */
 function SectionList({
   problem,
   current,
@@ -30,57 +41,93 @@ function SectionList({
   current: number
   onSelect: (section: number) => void
 }) {
-  // 今の答えのもとで問いの無い節 (機械学習を使わない出口の 4 以降) は薄く
+  const errors = errorsBySection(problem)
+  const isEmpty = (number: number) =>
+    !problem.questions.some((q) => q.section === number && q.applies)
   return (
-    <nav aria-label="問いの節">
-      <ol className="flex flex-col gap-1">
-        {problem.progress.sections.map((section) => {
-          const done = section.required > 0 && section.answered === section.required
-          const empty = !problem.questions.some((q) => q.section === section.number && q.applies)
-          return (
-            <li key={section.number}>
-              <button
-                type="button"
-                aria-current={section.number === current ? 'step' : undefined}
-                onClick={() => onSelect(section.number)}
-                className={clsx(
-                  'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm',
-                  section.number === current
-                    ? 'bg-accent-soft font-medium text-accent-text'
-                    : 'text-ink-2 hover:bg-surface-2',
-                  empty && 'opacity-50',
-                )}
-              >
-                <span className="tabular w-5 text-right text-xs text-ink-3">{section.number}</span>
-                <span className="flex-1">{section.title}</span>
-                {done ? (
-                  <CheckCircle2 size={14} className="text-good-text" aria-label="答えた" />
-                ) : (
-                  section.required > 0 && (
-                    <span className="tabular text-xs text-ink-3">
-                      {section.answered}/{section.required}
+    <>
+      <div className="xl:hidden">
+        <label htmlFor="section-select" className="mb-1 block text-xs text-ink-2">
+          節
+        </label>
+        <select
+          id="section-select"
+          value={current}
+          onChange={(event) => onSelect(Number(event.target.value))}
+          className="h-9 w-full rounded-lg border border-line bg-surface px-2 text-sm"
+        >
+          {problem.progress.sections.map((s) => (
+            <option key={s.number} value={s.number}>
+              {s.number}. {s.title}
+              {isEmpty(s.number)
+                ? ' (今は問いなし)'
+                : errors[s.number]
+                  ? ` (直す ${errors[s.number]})`
+                  : ` (${s.answered}/${s.required})`}
+            </option>
+          ))}
+        </select>
+      </div>
+      <nav aria-label="問いの節" className="hidden xl:block">
+        <ol className="flex flex-col gap-1">
+          {problem.progress.sections.map((section) => {
+            const empty = isEmpty(section.number)
+            const count = errors[section.number] ?? 0
+            const done =
+              section.required > 0 && section.answered === section.required && count === 0
+            return (
+              <li key={section.number}>
+                <button
+                  type="button"
+                  aria-current={section.number === current ? 'step' : undefined}
+                  onClick={() => onSelect(section.number)}
+                  className={clsx(
+                    'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm',
+                    section.number === current
+                      ? 'bg-accent-soft font-medium text-accent-text'
+                      : 'text-ink-2 hover:bg-surface-2',
+                  )}
+                >
+                  <span className="tabular w-5 text-right text-xs text-ink-3">
+                    {section.number}
+                  </span>
+                  <span className={clsx('flex-1', empty && 'text-ink-3')}>{section.title}</span>
+                  {empty ? (
+                    <span className="text-xs text-ink-3">問いなし</span>
+                  ) : count > 0 ? (
+                    <span className="text-xs text-critical-text">直す {count}</span>
+                  ) : done ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-good-text">
+                      <CheckCircle2 size={14} aria-hidden />
+                      答えた
                     </span>
-                  )
-                )}
-              </button>
-            </li>
-          )
-        })}
-      </ol>
-    </nav>
+                  ) : (
+                    section.required > 0 && (
+                      <span className="tabular text-xs text-ink-3">
+                        {section.answered}/{section.required}
+                      </span>
+                    )
+                  )}
+                </button>
+              </li>
+            )
+          })}
+        </ol>
+      </nav>
+    </>
   )
 }
 
-/** 全体の確かめ (直す, 見直す, 知らせ) */
+/** 全体の確かめ (直す, 見直す, 知らせ). 押すとその問いへ移る */
 function FindingsCard({
-  findings,
-  sectionOf,
-  onSelect,
+  problem,
+  onJump,
 }: {
-  findings: Finding[]
-  sectionOf: (id: string) => number | undefined
-  onSelect: (section: number) => void
+  problem: Problem
+  onJump: (questionId: string) => void
 }) {
+  const findings = problem.findings
+  const titles = Object.fromEntries(problem.progress.sections.map((s) => [s.number, s.title]))
   return (
     <Card title={`確かめ (${findings.length})`}>
       {findings.length === 0 ? (
@@ -88,7 +135,7 @@ function FindingsCard({
       ) : (
         <ul aria-label="確かめ" className="flex flex-col gap-2">
           {findings.map((finding) => {
-            const section = sectionOf(finding.id)
+            const target = problem.questions.find((q) => q.id === finding.id)
             return (
               <li
                 key={`${finding.id}:${finding.message}`}
@@ -97,14 +144,15 @@ function FindingsCard({
                 <span className="mr-1 text-xs font-medium text-ink-2">
                   {LEVEL_NAMES[finding.level]}
                 </span>
+                {target && <span className="mr-1 text-xs text-ink-2">「{target.title}」</span>}
                 {finding.message}
-                {section !== undefined && (
+                {target && (
                   <button
                     type="button"
-                    onClick={() => onSelect(section)}
+                    onClick={() => onJump(target.id)}
                     className="ml-1 text-xs text-accent-text underline"
                   >
-                    {section} へ
+                    {target.section}. {titles[target.section]} の問いへ
                   </button>
                 )}
               </li>
@@ -125,6 +173,7 @@ export function ProblemPage() {
   const [section, setSection] = useState(1)
   const [exporting, setExporting] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
+  const [saved, setSaved] = useState('')
   // 保存した結果を画面に入れ, 一覧も読み直す
   const store = (view: Problem) => {
     client.setQueryData(['problem', id], view)
@@ -133,11 +182,17 @@ export function ProblemPage() {
   const answer = useMutation({
     mutationFn: ({ question, value }: { question: string; value: unknown }) =>
       api.answer(id, question, value),
-    onSuccess: store,
+    onSuccess: (view, { question }) => {
+      store(view)
+      setSaved(view.questions.find((q) => q.id === question)?.title ?? '')
+    },
   })
   const columns = useMutation({
     mutationFn: (path: string) => api.readColumns(id, path),
-    onSuccess: store,
+    onSuccess: (view) => {
+      store(view)
+      setSaved('使えるデータの列は')
+    },
   })
   const rename = useMutation({
     mutationFn: (name: string) => api.rename(id, name),
@@ -153,17 +208,42 @@ export function ProblemPage() {
       navigate('/')
     },
   })
+
   if (query.isPending) return <Spinner />
   if (query.error) return <ErrorBox error={query.error} live={false} />
   const problem = query.data
-  const busy = answer.isPending || columns.isPending
-  const shown = problem.questions.filter((q) => q.section === section)
-  const visible = shown.filter((q) => q.applies)
   const columnValue = problem.questions.find((q) => q.id === 'information.columns')?.value
-  const columnNames = Array.isArray(columnValue) ? (columnValue as string[]) : []
-  const sectionOf = (key: string) => problem.questions.find((q) => q.id === key)?.section
+  const columnNames = Array.isArray(columnValue)
+    ? columnValue.filter((v): v is string => typeof v === 'string')
+    : []
   const title = problem.progress.sections.find((s) => s.number === section)?.title ?? ''
-  const error = answer.error ?? columns.error
+  const visible = problem.questions.filter((q) => q.applies)
+  const here = visible.filter((q) => q.section === section)
+  const errorCount = problem.findings.filter((f) => f.level === 'error').length
+  // 保存中と誤りは, その問いだけに出す
+  const savingId = answer.isPending ? answer.variables?.question : undefined
+  const failedId = answer.isError ? answer.variables?.question : undefined
+  const select = (number: number) => {
+    setSection(number)
+    setSaved('')
+    answer.reset()
+    columns.reset()
+  }
+  const jump = (questionId: string) => {
+    const target = problem.questions.find((q) => q.id === questionId)
+    if (!target) return
+    select(target.section)
+    // 節を出し直した後に, その問いを見える所に出して入力へ
+    window.setTimeout(() => {
+      const field = document.getElementById(`field-${questionId}`)
+      field?.scrollIntoView({ block: 'center' })
+      ;(document.getElementById(`q-${questionId}`) ?? field)?.focus()
+    }, 0)
+  }
+  const closeRename = () => {
+    setRenaming(null)
+    rename.reset()
+  }
   return (
     <>
       <PageHeader
@@ -171,7 +251,7 @@ export function ProblemPage() {
         title={problem.name}
         subtitle={`更新 ${formatTime(problem.updated_at)}. 答えた問い ${problem.progress.answered} / ${problem.progress.required}`}
         actions={
-          <>
+          <div className="flex flex-wrap gap-2">
             <Button icon={Pencil} onClick={() => setRenaming(problem.name)}>
               名前を変える
             </Button>
@@ -186,7 +266,7 @@ export function ProblemPage() {
               variant="primary"
               icon={FolderOutput}
               disabled={!problem.ready}
-              title={problem.ready ? undefined : '直すところが残っていると書き出せません'}
+              aria-describedby={problem.ready ? undefined : 'export-reason'}
               onClick={() => setExporting(true)}
             >
               学習のプロジェクトを書き出す
@@ -198,16 +278,24 @@ export function ProblemPage() {
               disabled={remove.isPending}
               onClick={() => window.confirm(`「${problem.name}」を消しますか?`) && remove.mutate()}
             />
-          </>
+          </div>
         }
       />
+      {!problem.ready && !problem.finished && (
+        <p id="export-reason" className="-mt-4 mb-4 text-xs text-ink-3">
+          {errorCount > 0
+            ? `直すところが ${errorCount} 件残っているので, 学習のプロジェクトはまだ書き出せません.`
+            : '学習のプロジェクトは, 機械学習を使うと決めて直すところが無くなると書き出せます.'}
+        </p>
+      )}
       {renaming !== null && (
         <form
-          className="mb-4 flex items-center gap-2"
+          className="mb-4 flex flex-wrap items-center gap-2"
           onSubmit={(event) => {
             event.preventDefault()
             if (renaming.trim()) rename.mutate(renaming.trim())
           }}
+          onKeyDown={(event) => event.key === 'Escape' && closeRename()}
         >
           <label htmlFor="rename" className="text-sm">
             新しい名前
@@ -216,13 +304,14 @@ export function ProblemPage() {
             id="rename"
             value={renaming}
             maxLength={80}
+            autoFocus
             onChange={(event) => setRenaming(event.target.value)}
-            className="h-8 w-80 rounded-lg border border-line bg-surface px-2 text-sm"
+            className="h-8 w-80 max-w-full rounded-lg border border-line bg-surface px-2 text-sm"
           />
           <Button type="submit" variant="primary" disabled={!renaming.trim() || rename.isPending}>
             変える
           </Button>
-          <Button variant="ghost" onClick={() => setRenaming(null)}>
+          <Button variant="ghost" onClick={closeRename}>
             やめる
           </Button>
           {rename.error && <ErrorBox error={rename.error} />}
@@ -235,22 +324,22 @@ export function ProblemPage() {
         </div>
       )}
       <div className="grid gap-6 xl:grid-cols-[14rem_minmax(0,1fr)_24rem]">
-        <SectionList problem={problem} current={section} onSelect={setSection} />
+        <SectionList problem={problem} current={section} onSelect={select} />
         <Card
           title={`${section}. ${title}`}
           actions={
             <div className="flex gap-2">
-              <Button disabled={section <= 1} onClick={() => setSection(section - 1)}>
+              <Button disabled={section <= 1} onClick={() => select(section - 1)}>
                 前の節
               </Button>
-              <Button disabled={section >= 10} onClick={() => setSection(section + 1)}>
+              <Button disabled={section >= 10} onClick={() => select(section + 1)}>
                 次の節
               </Button>
             </div>
           }
         >
-          {error && <ErrorBox error={error} />}
-          {visible.length === 0 && (
+          {columns.error && <ErrorBox error={columns.error} />}
+          {here.length === 0 && (
             <p className="text-sm text-ink-3">
               {problem.uses_ml === false
                 ? '機械学習を使わないので, この節の問いはありません.'
@@ -259,21 +348,27 @@ export function ProblemPage() {
                   : 'この節の問いは, 前の節の答え (タスクなど) で要らなくなりました.'}
             </p>
           )}
+          {/* 書きかけが節を移っても消えないように, 全ての節の問いを置いて今の節だけを見せる */}
           {visible.map((question) => (
-            <QuestionField
-              key={question.id}
-              question={question}
-              columns={columnNames}
-              findings={problem.findings.filter((f) => f.id === question.id)}
-              busy={busy}
-              onAnswer={(value) => answer.mutate({ question: question.id, value })}
-              onReadColumns={
-                question.id === 'information.columns' ? (path) => columns.mutate(path) : undefined
-              }
-            />
+            <div key={question.id} hidden={question.section !== section}>
+              <QuestionField
+                question={question}
+                columns={columnNames}
+                findings={problem.findings.filter((f) => f.id === question.id)}
+                saving={
+                  savingId === question.id ||
+                  (question.id === 'information.columns' && columns.isPending)
+                }
+                error={failedId === question.id ? (answer.error?.message ?? null) : null}
+                onAnswer={(value) => answer.mutate({ question: question.id, value })}
+                onReadColumns={
+                  question.id === 'information.columns' ? (path) => columns.mutate(path) : undefined
+                }
+              />
+            </div>
           ))}
           <p role="status" aria-live="polite" className="mt-2 text-xs text-ink-3">
-            {busy ? '保存しています…' : answer.isSuccess ? '保存しました' : ''}
+            {saved && !answer.isPending && !columns.isPending ? `「${saved}」を保存しました` : ''}
           </p>
         </Card>
         <div className="flex flex-col gap-6">
@@ -283,12 +378,14 @@ export function ProblemPage() {
             ) : (
               <ul aria-label="筋道" className="flex list-disc flex-col gap-1 pl-5 text-sm">
                 {problem.summary.map((sentence) => (
-                  <li key={sentence}>{sentence}</li>
+                  <li key={sentence} className="whitespace-pre-line">
+                    {sentence}
+                  </li>
                 ))}
               </ul>
             )}
           </Card>
-          <FindingsCard findings={problem.findings} sectionOf={sectionOf} onSelect={setSection} />
+          <FindingsCard problem={problem} onJump={jump} />
           <HandoffCard problem={problem} />
         </div>
       </div>

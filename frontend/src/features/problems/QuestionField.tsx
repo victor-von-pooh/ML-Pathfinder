@@ -1,41 +1,57 @@
 import clsx from 'clsx'
 import { FileSpreadsheet, Plus, Save, Trash2 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 
 import type { Decision, Finding, Lever, Question } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
 import { Button } from '../../components/ui'
-import { decisionDraft, sameDecision, splitLines } from '../../lib/draft'
+import { decisionDraft, sameDecision, splitLines, toLevers } from '../../lib/draft'
 import { DECISION_FIELDS, DECISION_NAMES, LEVEL_NAMES } from '../../lib/labels'
 
 /** 入力の共通の見た目 */
 const INPUT = 'w-full rounded-lg border border-line bg-surface px-2 text-sm'
 
-/** 答えを保存する関数 (保存できたかを返す) */
+/** 答えを保存する関数 */
 type Answer = (value: unknown) => void
 
-/** 文と数: 欄を離れたときに, 変わっていれば保存 */
+/** 入力に共通の, 保存中と誤りの状態 */
+interface InputState {
+  question: Question
+  onAnswer: Answer
+  /** この問いの答えを保存しているか */
+  saving: boolean
+  /** この問いの保存の誤り (誤りの文の id) */
+  errorId?: string
+}
+
+/** 保存した答えを文にする (空は空の文字列) */
+function savedText(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  return Array.isArray(value) ? value.join('\n') : String(value)
+}
+
+/** 文と数: 欄を離れたか Enter で, 変わっていれば保存 (同じ値は 2 回送らない) */
 function TextInput({
   question,
   onAnswer,
-  busy,
+  saving,
+  errorId,
   multiline,
-}: {
-  question: Question
-  onAnswer: Answer
-  busy: boolean
-  multiline: boolean
-}) {
-  const saved =
-    question.value === null || question.value === undefined ? '' : String(question.value)
+}: InputState & { multiline: boolean }) {
+  const saved = savedText(question.value)
   const [draft, setDraft] = useState(saved)
+  const sent = useRef(saved)
   const commit = () => {
-    if (draft.trim() !== saved.trim()) onAnswer(draft.trim() === '' ? null : draft)
+    if (draft.trim() === sent.current.trim()) return
+    sent.current = draft
+    onAnswer(draft.trim() === '' ? null : draft)
   }
   const props = {
     id: `q-${question.id}`,
     value: draft,
-    disabled: busy,
+    'aria-busy': saving,
+    'aria-invalid': !!errorId,
+    'aria-describedby': errorId,
     onChange: (event: { target: { value: string } }) => setDraft(event.target.value),
     onBlur: commit,
   }
@@ -51,16 +67,8 @@ function TextInput({
   )
 }
 
-/** 選択肢とはいかいいえ: 選んだら保存 */
-function ChoiceInput({
-  question,
-  onAnswer,
-  busy,
-}: {
-  question: Question
-  onAnswer: Answer
-  busy: boolean
-}) {
+/** 選択肢とはいかいいえ: 選んだら保存. 選んだ値をすぐ出し, 保存に失敗したら保存した値に戻す */
+function ChoiceInput({ question, onAnswer, errorId, saving }: InputState) {
   const choices =
     question.kind === 'boolean'
       ? [
@@ -68,22 +76,33 @@ function ChoiceInput({
           { value: 'false', label: 'いいえ' },
         ]
       : question.choices
-  // 選んだら保存を待たずに選んだ形にする (保存の結果で作り直す)
-  const [current, setCurrent] = useState(
-    question.value === null || question.value === undefined ? '' : String(question.value),
-  )
+  const saved =
+    question.value === null || question.value === undefined ? '' : String(question.value)
+  // 保存した値が変わったら, 選んだだけの値を捨てる (前の値と比べて描画の中で)
+  const [picked, setPicked] = useState<string | null>(null)
+  const [base, setBase] = useState(saved)
+  if (base !== saved || (errorId && picked !== null)) {
+    setBase(saved)
+    setPicked(null)
+  }
+  const current = picked ?? saved
   return (
-    <div role="radiogroup" aria-labelledby={`t-${question.id}`} className="flex flex-col gap-1">
-      {choices.map((choice) => (
+    <div
+      role="radiogroup"
+      aria-labelledby={`t-${question.id}`}
+      aria-busy={saving}
+      className="flex flex-col gap-1"
+    >
+      {choices.map((choice, index) => (
         <label key={choice.value} className="flex items-center gap-2 text-sm">
           <input
             type="radio"
+            id={index === 0 ? `q-${question.id}` : undefined}
             name={question.id}
             value={choice.value}
             checked={current === choice.value}
-            disabled={busy}
             onChange={() => {
-              setCurrent(choice.value)
+              setPicked(choice.value)
               onAnswer(question.kind === 'boolean' ? choice.value === 'true' : choice.value)
             }}
           />
@@ -94,37 +113,21 @@ function ChoiceInput({
   )
 }
 
-/** 列の名前: 使えるデータの列があれば選び, 無ければ書く */
-function ColumnInput({
-  question,
-  columns,
-  onAnswer,
-  busy,
-}: {
-  question: Question
-  columns: string[]
-  onAnswer: Answer
-  busy: boolean
-}) {
-  if (!columns.length)
-    return (
-      <>
-        <TextInput question={question} onAnswer={onAnswer} busy={busy} multiline={false} />
-        <p className="mt-1 text-xs text-ink-3">
-          先に「使えるデータの列は」を答えると, 列から選べます.
-        </p>
-      </>
-    )
-  if (question.kind === 'column')
+/** 列の名前: 使えるデータの列から選ぶ. 列に無い古い答えも印を付けて出し, 外せるようにする */
+function ColumnInput({ question, columns, onAnswer, saving }: InputState & { columns: string[] }) {
+  if (question.kind === 'column') {
+    const value = typeof question.value === 'string' ? question.value : ''
+    const stale = value && !columns.includes(value)
     return (
       <select
         id={`q-${question.id}`}
-        value={typeof question.value === 'string' ? question.value : ''}
-        disabled={busy}
+        value={value}
+        aria-busy={saving}
         onChange={(event) => onAnswer(event.target.value || null)}
         className={clsx(INPUT, 'h-8 max-w-72')}
       >
         <option value="">選ぶ</option>
+        {stale && <option value={value}>{value} (使えるデータの列にありません)</option>}
         {columns.map((column) => (
           <option key={column} value={column}>
             {column}
@@ -132,16 +135,22 @@ function ColumnInput({
         ))}
       </select>
     )
-  const chosen = Array.isArray(question.value) ? (question.value as string[]) : []
+  }
+  const chosen = Array.isArray(question.value)
+    ? question.value.filter((v): v is string => typeof v === 'string')
+    : []
+  const stale = chosen.filter((name) => !columns.includes(name))
   return (
-    <fieldset aria-labelledby={`t-${question.id}`} className="flex flex-wrap gap-x-4 gap-y-1">
-      {columns.map((column) => (
+    <fieldset aria-busy={saving} className="flex flex-wrap gap-x-4 gap-y-1">
+      <legend className="sr-only">{question.title}</legend>
+      {[...columns, ...stale].map((column, index) => (
         <label key={column} className="flex items-center gap-1.5 font-mono text-sm">
           <input
             type="checkbox"
+            id={index === 0 ? `q-${question.id}` : undefined}
             checked={chosen.includes(column)}
-            disabled={busy}
             onChange={(event) => {
+              // 使えるデータの列の順で並べ, 外したものは除く
               const next = event.target.checked
                 ? columns.filter((c) => c === column || chosen.includes(c))
                 : chosen.filter((c) => c !== column)
@@ -149,29 +158,30 @@ function ColumnInput({
             }}
           />
           {column}
+          {stale.includes(column) && (
+            <span className="font-sans text-xs text-critical-text">(列にありません)</span>
+          )}
         </label>
       ))}
     </fieldset>
   )
 }
 
-/** 使えるデータの列: 1 行に 1 つ書くか, ファイルから読む */
+/** 列の並び: 1 行に 1 つ書く. 使えるデータの列はファイルから読める */
 function ListInput({
   question,
   onAnswer,
+  saving,
+  errorId,
   onReadColumns,
-  busy,
-}: {
-  question: Question
-  onAnswer: Answer
-  onReadColumns?: (path: string) => void
-  busy: boolean
-}) {
-  const saved = Array.isArray(question.value) ? (question.value as string[]).join('\n') : ''
+}: InputState & { onReadColumns?: (path: string) => void }) {
+  const saved = savedText(question.value)
   const [draft, setDraft] = useState(saved)
+  const sent = useRef(saved)
   const [picking, setPicking] = useState(false)
   const commit = () => {
-    if (draft.trim() === saved.trim()) return
+    if (draft.trim() === sent.current.trim()) return
+    sent.current = draft
     const names = splitLines(draft)
     onAnswer(names.length ? names : null)
   }
@@ -181,7 +191,9 @@ function ListInput({
         id={`q-${question.id}`}
         value={draft}
         rows={Math.min(8, Math.max(3, draft.split('\n').length))}
-        disabled={busy}
+        aria-busy={saving}
+        aria-invalid={!!errorId}
+        aria-describedby={errorId}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
         placeholder="1 行に 1 つ"
@@ -189,7 +201,7 @@ function ListInput({
       />
       {onReadColumns && (
         <div>
-          <Button icon={FileSpreadsheet} disabled={busy} onClick={() => setPicking(true)}>
+          <Button icon={FileSpreadsheet} disabled={saving} onClick={() => setPicking(true)}>
             データのファイルから読む
           </Button>
         </div>
@@ -211,25 +223,20 @@ function ListInput({
 }
 
 /** 要因と打てる手: 行を足して書き, 保存を押す */
-function LeversInput({
-  question,
-  onAnswer,
-  busy,
-}: {
-  question: Question
-  onAnswer: Answer
-  busy: boolean
-}) {
-  const saved = Array.isArray(question.value) ? (question.value as Lever[]) : []
+function LeversInput({ question, onAnswer, saving }: InputState) {
+  const saved = toLevers(question.value)
   const [rows, setRows] = useState<Lever[]>(
     saved.length ? saved : [{ cause: '', lever: '', ml: false }],
   )
-  const dirty = JSON.stringify(rows.filter((r) => r.cause || r.lever)) !== JSON.stringify(saved)
+  const kept = rows
+    .map((r) => ({ cause: r.cause.trim(), lever: r.lever.trim(), ml: r.ml }))
+    .filter((r) => r.cause || r.lever)
+  const dirty = JSON.stringify(kept) !== JSON.stringify(saved)
   const update = (index: number, patch: Partial<Lever>) =>
     setRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
   return (
     <div className="flex flex-col gap-2">
-      <table className="w-full text-sm">
+      <table className="w-full text-sm" aria-labelledby={`t-${question.id}`}>
         <thead>
           <tr className="text-left text-xs text-ink-3">
             <th className="pb-1 font-medium">要因</th>
@@ -243,9 +250,9 @@ function LeversInput({
             <tr key={index}>
               <td className="pr-2 pb-1">
                 <input
+                  id={index === 0 ? `q-${question.id}` : undefined}
                   aria-label={`要因 ${index + 1}`}
                   value={row.cause}
-                  disabled={busy}
                   onChange={(event) => update(index, { cause: event.target.value })}
                   className={clsx(INPUT, 'h-8')}
                 />
@@ -254,7 +261,6 @@ function LeversInput({
                 <input
                   aria-label={`打てる手 ${index + 1}`}
                   value={row.lever}
-                  disabled={busy}
                   onChange={(event) => update(index, { lever: event.target.value })}
                   className={clsx(INPUT, 'h-8')}
                 />
@@ -262,9 +268,8 @@ function LeversInput({
               <td className="pb-1 text-center">
                 <input
                   type="checkbox"
-                  aria-label={`機械学習で手伝う ${index + 1}`}
+                  aria-label={`${index + 1} 行目を機械学習で手伝う`}
                   checked={row.ml}
-                  disabled={busy}
                   onChange={(event) => update(index, { ml: event.target.checked })}
                 />
               </td>
@@ -273,7 +278,7 @@ function LeversInput({
                   variant="ghost"
                   icon={Trash2}
                   aria-label={`${index + 1} 行目を消す`}
-                  disabled={busy || rows.length === 1}
+                  disabled={rows.length === 1}
                   onClick={() => setRows(rows.filter((_, i) => i !== index))}
                 />
               </td>
@@ -282,21 +287,14 @@ function LeversInput({
         </tbody>
       </table>
       <div className="flex gap-2">
-        <Button
-          icon={Plus}
-          disabled={busy}
-          onClick={() => setRows([...rows, { cause: '', lever: '', ml: false }])}
-        >
+        <Button icon={Plus} onClick={() => setRows([...rows, { cause: '', lever: '', ml: false }])}>
           行を足す
         </Button>
         <Button
           variant="primary"
           icon={Save}
-          disabled={busy || !dirty}
-          onClick={() => {
-            const kept = rows.filter((r) => r.cause.trim() || r.lever.trim())
-            onAnswer(kept.length ? kept : null)
-          }}
+          disabled={saving || !dirty}
+          onClick={() => onAnswer(kept.length ? kept : null)}
         >
           保存
         </Button>
@@ -306,39 +304,33 @@ function LeversInput({
   )
 }
 
-/** 意思決定: 型を選び, 損得と制約を書いて保存を押す */
-function DecisionInput({
-  question,
-  onAnswer,
-  busy,
-}: {
-  question: Question
-  onAnswer: Answer
-  busy: boolean
-}) {
-  const saved = (question.value as Decision | null) ?? null
+/** 意思決定: 型を選び, 損得と制約を書いて保存を押す (型を選び直すと消せる) */
+function DecisionInput({ question, onAnswer, saving }: InputState) {
+  const value = question.value
+  const saved =
+    value && typeof value === 'object' && !Array.isArray(value) && 'type' in value
+      ? (value as Decision)
+      : null
   const [kind, setKind] = useState<Decision['type'] | ''>(saved?.type ?? '')
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       Object.entries(saved ?? {})
         .filter(([key]) => key !== 'type')
-        .map(([key, value]) => [key, String(value)]),
+        .map(([key, item]) => [key, String(item)]),
     ),
   )
-  const fields = kind ? DECISION_FIELDS[kind] : []
+  const fields = kind ? (DECISION_FIELDS[kind] ?? []) : []
   const draft = kind ? decisionDraft(kind, values) : null
-  const dirty = draft !== null && !sameDecision(draft, saved)
+  const dirty = draft ? !sameDecision(draft, saved) : saved !== null
   return (
     <div className="flex flex-col gap-3">
       <select
         id={`q-${question.id}`}
-        aria-label="意思決定の型"
         value={kind}
-        disabled={busy}
         onChange={(event) => setKind(event.target.value as Decision['type'] | '')}
         className={clsx(INPUT, 'h-8 max-w-96')}
       >
-        <option value="">型を選ぶ</option>
+        <option value="">型を選ぶ (選ばずに保存すると答えを消す)</option>
         {(Object.keys(DECISION_NAMES) as Decision['type'][]).map((type) => (
           <option key={type} value={type}>
             {DECISION_NAMES[type]}
@@ -349,13 +341,15 @@ function DecisionInput({
         <div className="grid gap-2 sm:grid-cols-2">
           {fields.map((field) => (
             <div key={field.key}>
-              <label htmlFor={`d-${field.key}`} className="mb-1 block text-xs text-ink-2">
+              <label
+                htmlFor={`d-${question.id}-${field.key}`}
+                className="mb-1 block text-xs text-ink-2"
+              >
                 {field.label}
               </label>
               <input
-                id={`d-${field.key}`}
+                id={`d-${question.id}-${field.key}`}
                 value={values[field.key] ?? ''}
-                disabled={busy}
                 onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}
                 className={clsx(INPUT, 'h-8')}
               />
@@ -367,7 +361,7 @@ function DecisionInput({
         <Button
           variant="primary"
           icon={Save}
-          disabled={busy || !dirty}
+          disabled={saving || !dirty}
           onClick={() => onAnswer(draft)}
         >
           保存
@@ -385,75 +379,65 @@ const LEVEL_STYLE: Record<Finding['level'], string> = {
   info: 'text-ink-2',
 }
 
-/** 1 つの問い (題, 説明, 入力, この問いの確かめ) */
+/** 1 つの問い (題, 説明, 入力, 保存の誤り, この問いの確かめ) */
 export function QuestionField({
   question,
   columns,
   findings,
-  busy,
+  saving,
+  error,
   onAnswer,
   onReadColumns,
 }: {
   question: Question
   columns: string[]
   findings: Finding[]
-  busy: boolean
+  saving: boolean
+  error: string | null
   onAnswer: Answer
   onReadColumns?: (path: string) => void
 }) {
-  // 保存した答えが変わったら入力を作り直す (他の問いの答えで選べる値も変わる)
-  const key = `${question.id}:${JSON.stringify(question.value)}:${columns.join(',')}`
+  // 保存した答えが変わったら書きかけの入力を作り直す. 列から選ぶ問いは, 使える列が
+  // 変わったときも作り直す
+  const usesColumns = question.kind === 'column' || question.kind === 'columns'
+  const key = JSON.stringify([question.id, question.value, usesColumns ? columns : null])
+  const errorId = error ? `e-${question.id}` : undefined
+  const state: InputState = { question, onAnswer, saving, errorId }
   let input: ReactNode
   if (question.kind === 'text' || question.kind === 'number')
-    input = (
-      <TextInput
-        key={key}
-        question={question}
-        onAnswer={onAnswer}
-        busy={busy}
-        multiline={question.kind === 'text'}
-      />
-    )
+    input = <TextInput key={key} {...state} multiline={question.kind === 'text'} />
   else if (question.kind === 'choice' || question.kind === 'boolean')
-    input = <ChoiceInput key={key} question={question} onAnswer={onAnswer} busy={busy} />
-  else if (question.kind === 'column' || question.kind === 'columns')
-    input = (
-      <ColumnInput
-        key={key}
-        question={question}
-        columns={columns}
-        onAnswer={onAnswer}
-        busy={busy}
-      />
-    )
-  else if (question.kind === 'list')
-    input = (
-      <ListInput
-        key={key}
-        question={question}
-        onAnswer={onAnswer}
-        onReadColumns={onReadColumns}
-        busy={busy}
-      />
-    )
-  else if (question.kind === 'levers')
-    input = <LeversInput key={key} question={question} onAnswer={onAnswer} busy={busy} />
-  else input = <DecisionInput key={key} question={question} onAnswer={onAnswer} busy={busy} />
+    input = <ChoiceInput {...state} />
+  else if (usesColumns && columns.length)
+    input = <ColumnInput key={key} {...state} columns={columns} />
+  else if (question.kind === 'column') input = <TextInput key={key} {...state} multiline={false} />
+  else if (question.kind === 'columns' || question.kind === 'list')
+    input = <ListInput key={key} {...state} onReadColumns={onReadColumns} />
+  else if (question.kind === 'levers') input = <LeversInput key={key} {...state} />
+  else input = <DecisionInput key={key} {...state} />
   return (
-    <div className="border-b border-line py-4 last:border-b-0">
+    <div id={`field-${question.id}`} className="border-b border-line py-4 last:border-b-0">
       <div className="mb-1 flex flex-wrap items-baseline gap-2">
         <label id={`t-${question.id}`} htmlFor={`q-${question.id}`} className="font-medium">
           {question.title}
         </label>
-        {question.required ? (
-          <span className="text-xs text-ink-3">必須</span>
-        ) : (
-          <span className="text-xs text-ink-3">任意</span>
-        )}
+        <span className="text-xs text-ink-3">{question.required ? '必須' : '任意'}</span>
         {question.answered && <span className="text-xs text-good-text">答えた</span>}
+        {saving && <span className="text-xs text-ink-3">保存しています…</span>}
       </div>
       <p className="mb-2 text-xs text-ink-2">{question.help}</p>
+      {usesColumns && !columns.length && (
+        <p className="mb-2 text-xs text-ink-3">
+          {question.kind === 'columns' ? '1 行に 1 つ書けます. ' : ''}4 の「使えるデータの列は」
+          に答えると, 列から選べます.
+        </p>
+      )}
       {input}
+      {error && (
+        <p id={errorId} role="alert" className="mt-2 text-xs text-critical-text">
+          保存できませんでした: {error}
+        </p>
+      )}
       {findings.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1 text-xs" aria-label={`${question.title} の確かめ`}>
           {findings.map((finding) => (
