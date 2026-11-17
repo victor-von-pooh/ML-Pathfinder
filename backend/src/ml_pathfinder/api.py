@@ -1,4 +1,5 @@
 import threading
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Optional
 
@@ -17,6 +18,11 @@ EDIT_LOCK = threading.Lock()
 
 # 名前に使える長さ
 MAX_NAME = 80
+
+# データからの候補を覚えておく数と鍵
+INSIGHT_CACHE_SIZE = 16
+INSIGHTS: OrderedDict[str, dict[str, Any]] = OrderedDict()
+INSIGHT_LOCK = threading.Lock()
 
 # 画面に返す誤りとする例外 (手元のファイルの誤りを含む)
 USER_ERRORS = (ValueError, OSError, yaml.YAMLError)
@@ -691,6 +697,119 @@ def read_columns(
     view = problem_view(problem_id, saved)
 
     return view
+
+
+@router.post("/problems/{problem_id}/data")
+def attach_data(
+    request: Request, problem_id: str, body: PathRequest
+) -> dict[str, Any]:
+    """
+    手元のデータを読み, 場所と読み方と列の名前を問題の設定に入れる関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    problem_id: str
+        識別子
+    body: PathRequest
+        データの場所 (ファイルか, 画像などのディレクトリ)
+
+    Returns
+    ----------
+    view: dict[str, Any]
+        入れた後の全て
+    """
+    # データは写さず, ML-EDA で読めるかを確かめてから場所と読み方を保存
+    store = get_store(request)
+    exists_or_404(store, problem_id)
+    path = local_path(body.path)
+    with EDIT_LOCK:
+        problem = load_or_404(store, problem_id)
+        try:
+            updated = ml_quest.attach_data(problem, path)
+        except USER_ERRORS as error:
+            raise user_error(error) from error
+        saved = store.save(problem_id, updated)
+    view = problem_view(problem_id, saved)
+
+    return view
+
+
+def insight_key(problem_id: str, problem: dict[str, Any]) -> str:
+    """
+    データからの候補を覚えておく鍵を作る関数
+
+    Parameters
+    ----------
+    problem_id: str
+        識別子
+    problem: dict[str, Any]
+        問題の設定
+
+    Returns
+    ----------
+    key: str
+        データの場所, 更新の時刻と大きさ, 候補に効く答えをつないだ文字列
+    """
+    # データが変わるか, 目的の列などの答えが変わったら作り直す
+    source = ml_quest.get_value(problem, "data.source") or ""
+    try:
+        stat = Path(source).stat()
+        stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
+    except OSError:
+        stamp = "missing"
+    answers = [
+        ml_quest.get_value(problem, name) for name in (
+            "data.loader", "data.options", "ml.use", "ml.target", "ml.task",
+            "ml.time_column", "ml.horizon", "ml.positive"
+        )
+    ]
+    key = f"{problem_id}|{source}|{stamp}|{answers!r}"
+
+    return key
+
+
+@router.get("/problems/{problem_id}/insight")
+def get_insight(request: Request, problem_id: str) -> dict[str, Any]:
+    """
+    入れたデータからの概要, 答えの候補, 確かめを返す関数
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    problem_id: str
+        識別子
+
+    Returns
+    ----------
+    insight: dict[str, Any]
+        overview, suggestions, findings (データを入れていなければ空)
+    """
+    # 分析は重いので, データと答えが同じ間は覚えたものを返す
+    problem = load_or_404(get_store(request), problem_id)
+    key = insight_key(problem_id, problem)
+    with INSIGHT_LOCK:
+        cached = INSIGHTS.get(key)
+        if cached is not None:
+            INSIGHTS.move_to_end(key)
+            return cached
+    try:
+        found = ml_quest.inspect_data(problem)
+    except ValueError as error:
+        found = {"overview": None, "suggestions": [], "findings": [
+            {"level": "error", "id": "data.source", "message": str(error)}
+        ]}
+    insight: dict[str, Any] = found or {
+        "overview": None, "suggestions": [], "findings": []
+    }
+    with INSIGHT_LOCK:
+        INSIGHTS[key] = insight
+        while len(INSIGHTS) > INSIGHT_CACHE_SIZE:
+            INSIGHTS.popitem(last=False)
+
+    return insight
 
 
 @router.post("/problems/{problem_id}/project")

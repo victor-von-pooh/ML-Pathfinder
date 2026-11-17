@@ -75,6 +75,11 @@ export function HandoffCard({ problem }: { problem: Problem }) {
             <span className="flex flex-wrap items-center gap-1">
               除く列 <Names names={data.drop} />
             </span>
+            {data.source && (
+              <span>
+                データ <Code>{data.source.source}</Code> (読み込み {data.source.loader ?? '自動'})
+              </span>
+            )}
           </dd>
         </div>
         <div>

@@ -19,7 +19,16 @@ export interface Listing {
 
 /** 問いの種類 */
 export type QuestionKind =
-  'text' | 'number' | 'choice' | 'boolean' | 'column' | 'columns' | 'list' | 'levers' | 'decision'
+  | 'text'
+  | 'number'
+  | 'choice'
+  | 'boolean'
+  | 'column'
+  | 'columns'
+  | 'list'
+  | 'levers'
+  | 'decision'
+  | 'source'
 
 /** 選択肢 */
 export interface Choice {
@@ -88,6 +97,12 @@ export interface Handoff {
     min_lag: number | null
     known: string[]
     drop: string[]
+    /** データの場所と ML-EDA の読み方 (入れていなければ null) */
+    source: {
+      source: string
+      loader: string | null
+      options: Record<string, unknown> | null
+    } | null
   }
   model: { task: string; outputs: number | null }
   training: { metric: string; monitor: string; mode: string }
@@ -138,4 +153,25 @@ export interface Info {
 export interface ProjectResult {
   path: string
   files: string[]
+}
+
+/** データからの答えの候補 */
+export interface Suggestion {
+  id: string
+  values: string[]
+  reason: string
+}
+
+/** 入れたデータからの概要, 答えの候補, 確かめ */
+export interface Insight {
+  overview: {
+    rows: number
+    columns: number
+    kind: string
+    start: string | null
+    end: string | null
+    interval_seconds: number | null
+  } | null
+  suggestions: Suggestion[]
+  findings: Finding[]
 }

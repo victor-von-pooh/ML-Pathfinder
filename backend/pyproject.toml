@@ -11,7 +11,8 @@ license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115",
-    "ml-quest",
+    # 手元のデータからの候補に ML-EDA を使う
+    "ml-quest[data]",
     # データの列の名前を Excel と parquet から読むため
     "openpyxl>=3.1",
     "pyarrow>=15",

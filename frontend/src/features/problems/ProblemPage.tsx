@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { CheckCircle2, Download, FolderOutput, Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
@@ -121,12 +121,16 @@ function SectionList({
 /** 全体の確かめ (直す, 見直す, 知らせ). 押すとその問いへ移る */
 function FindingsCard({
   problem,
+  extra,
   onJump,
 }: {
   problem: Problem
+  extra: Finding[]
   onJump: (questionId: string) => void
 }) {
-  const findings = problem.findings
+  // データからの確かめも同じ並び (重さの順) に
+  const order = { error: 0, warning: 1, info: 2 }
+  const findings = [...problem.findings, ...extra].sort((a, b) => order[a.level] - order[b.level])
   const titles = Object.fromEntries(problem.progress.sections.map((s) => [s.number, s.title]))
   return (
     <Card title={`確かめ (${findings.length})`}>
@@ -187,6 +191,13 @@ export function ProblemPage() {
       setSaved(view.questions.find((q) => q.id === question)?.title ?? '')
     },
   })
+  const attach = useMutation({
+    mutationFn: (path: string) => api.attachData(id, path),
+    onSuccess: (view) => {
+      store(view)
+      setSaved('手元のデータは')
+    },
+  })
   const columns = useMutation({
     mutationFn: (path: string) => api.readColumns(id, path),
     onSuccess: (view) => {
@@ -209,6 +220,15 @@ export function ProblemPage() {
     },
   })
 
+  // 入れたデータからの候補 (問題の設定を受け取るたびに読み直す. 分析はサーバーが覚えている)
+  const source = query.data?.questions.find((q) => q.id === 'data.source')?.value
+  const insight = useQuery({
+    // 更新の時刻は秒までなので, 画面が受け取った時刻 (ミリ秒) で読み直す
+    queryKey: ['insight', id, query.dataUpdatedAt],
+    queryFn: () => api.insight(id),
+    enabled: typeof source === 'string' && source !== '',
+    placeholderData: keepPreviousData,
+  })
   if (query.isPending) return <Spinner />
   if (query.error) return <ErrorBox error={query.error} live={false} />
   const problem = query.data
@@ -228,6 +248,7 @@ export function ProblemPage() {
     setSaved('')
     answer.reset()
     columns.reset()
+    attach.reset()
   }
   const jump = (questionId: string) => {
     const target = problem.questions.find((q) => q.id === questionId)
@@ -339,6 +360,12 @@ export function ProblemPage() {
           }
         >
           {columns.error && <ErrorBox error={columns.error} />}
+          {attach.error && <ErrorBox error={attach.error} />}
+          {insight.isFetching && (
+            <p role="status" className="mb-2 text-xs text-ink-3">
+              入れたデータから答えの候補を出しています…
+            </p>
+          )}
           {here.length === 0 && (
             <p className="text-sm text-ink-3">
               {problem.uses_ml === false
@@ -357,8 +384,12 @@ export function ProblemPage() {
                 findings={problem.findings.filter((f) => f.id === question.id)}
                 saving={
                   savingId === question.id ||
-                  (question.id === 'information.columns' && columns.isPending)
+                  (question.id === 'information.columns' && columns.isPending) ||
+                  (question.id === 'data.source' && attach.isPending)
                 }
+                suggestion={insight.data?.suggestions.find((s) => s.id === question.id)}
+                overview={question.id === 'data.source' ? insight.data?.overview : undefined}
+                onAttach={question.id === 'data.source' ? (path) => attach.mutate(path) : undefined}
                 error={failedId === question.id ? (answer.error?.message ?? null) : null}
                 onAnswer={(value) => answer.mutate({ question: question.id, value })}
                 onReadColumns={
@@ -385,7 +416,7 @@ export function ProblemPage() {
               </ul>
             )}
           </Card>
-          <FindingsCard problem={problem} onJump={jump} />
+          <FindingsCard problem={problem} extra={insight.data?.findings ?? []} onJump={jump} />
           <HandoffCard problem={problem} />
         </div>
       </div>
