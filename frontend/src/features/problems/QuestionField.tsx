@@ -378,7 +378,12 @@ function SourceInput({
   saving,
   overview,
   onAttach,
-}: InputState & { overview: Insight['overview'] | undefined; onAttach?: (path: string) => void }) {
+  onDetach,
+}: InputState & {
+  overview: Insight['overview'] | undefined
+  onAttach?: (path: string) => void
+  onDetach?: () => void
+}) {
   const [picking, setPicking] = useState(false)
   const value = typeof question.value === 'string' ? question.value : ''
   return (
@@ -392,6 +397,17 @@ function SourceInput({
             {value ? 'データを入れ直す' : 'データを入れる'}
           </Button>
         )}
+        {value && onDetach && (
+          <Button
+            variant="ghost"
+            disabled={saving}
+            onClick={() =>
+              window.confirm('データを外しますか? (データのファイルは変わりません)') && onDetach()
+            }
+          >
+            データを外す
+          </Button>
+        )}
       </div>
       {overview && (
         <p className="text-xs text-ink-2">
@@ -400,13 +416,16 @@ function SourceInput({
           {overview.start && overview.end
             ? `. ${overview.start.slice(0, 10)} から ${overview.end.slice(0, 10)}`
             : ''}
+          {overview.sampled && overview.sample_rows
+            ? `. 分析は ${overview.sample_rows.toLocaleString()} 行の見本で`
+            : ''}
           )
         </p>
       )}
       {picking && onAttach && (
         <PathPicker
           title="手元のデータを選ぶ"
-          description="ML-Fathom と同じ読み込み (ML-EDA) で読みます. データは写さず, 場所と読み方だけを問題の設定に持ちます."
+          description="データの分析の段階 (ML-Fathom) と同じ読み方で読みます. データは写さず, 場所と読み方だけを問題の設定に持ちます."
           onClose={() => setPicking(false)}
           onPick={(path) => {
             setPicking(false)
@@ -435,21 +454,25 @@ function Suggestions({
     ? question.value.filter((v): v is string => typeof v === 'string')
     : []
   const pick = (value: string) => onAnswer(many ? Array.from(new Set([...current, value])) : value)
+  // 選択肢の問い (タスクなど) は, 値でなく選択肢の名前で出す
+  const labelOf = (value: string) =>
+    question.choices.find((c) => c.value === value)?.label.split(' (')[0] ?? value
+  const labelId = `s-${question.id}`
   return (
     <div className="mt-2 rounded-lg border border-dashed border-line px-3 py-2">
-      <p className="mb-1 text-xs text-ink-2">
+      <p id={labelId} className="mb-1 text-xs text-ink-2">
         データからの候補: <span className="text-ink-3">{suggestion.reason}</span>
       </p>
-      <div className="flex flex-wrap gap-1.5">
+      <div role="group" aria-labelledby={labelId} className="flex flex-wrap gap-1.5">
         {suggestion.values.map((value) => {
           const chosen = many ? current.includes(value) : question.value === value
           return (
             <button
               key={value}
               type="button"
-              disabled={saving || chosen}
-              aria-pressed={chosen}
-              onClick={() => pick(value)}
+              disabled={saving}
+              aria-disabled={chosen}
+              onClick={() => !chosen && pick(value)}
               className={clsx(
                 'rounded-full border px-2.5 py-0.5 font-mono text-xs',
                 chosen
@@ -457,7 +480,7 @@ function Suggestions({
                   : 'border-line hover:bg-surface-2',
               )}
             >
-              {value}
+              {labelOf(value)}
               {chosen ? ' (答えた)' : ''}
             </button>
           )
@@ -496,6 +519,7 @@ export function QuestionField({
   suggestion,
   overview,
   onAttach,
+  onDetach,
 }: {
   question: Question
   columns: string[]
@@ -507,6 +531,7 @@ export function QuestionField({
   suggestion?: Suggestion
   overview?: Insight['overview']
   onAttach?: (path: string) => void
+  onDetach?: () => void
 }) {
   // 保存した答えが変わったら書きかけの入力を作り直す. 列から選ぶ問いは, 使える列が
   // 変わったときも作り直す
@@ -525,7 +550,7 @@ export function QuestionField({
   else if (question.kind === 'columns' || question.kind === 'list')
     input = <ListInput key={key} {...state} onReadColumns={onReadColumns} />
   else if (question.kind === 'source')
-    input = <SourceInput {...state} overview={overview} onAttach={onAttach} />
+    input = <SourceInput {...state} overview={overview} onAttach={onAttach} onDetach={onDetach} />
   else if (question.kind === 'levers') input = <LeversInput key={key} {...state} />
   else input = <DecisionInput key={key} {...state} />
   return (

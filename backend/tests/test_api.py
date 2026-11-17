@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import ml_quest
 import pandas as pd
 import pytest
 import yaml
@@ -280,7 +281,9 @@ def test_broken_files(client: TestClient, tmp_path: Path) -> None:
     assert download.headers["x-content-type-options"] == "nosniff"
 
 
-def test_data_and_insight(client: TestClient, tmp_path: Path) -> None:
+def test_data_and_insight(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """
     手元のデータを入れると列が入り, 答えの候補と確かめが出ることを
     確かめる関数
@@ -291,6 +294,8 @@ def test_data_and_insight(client: TestClient, tmp_path: Path) -> None:
         利用者
     tmp_path: Path
         一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        分析の呼び出しの置き換え (覚えた結果を返すかの確かめ)
 
     Returns
     ----------
@@ -325,7 +330,19 @@ def test_data_and_insight(client: TestClient, tmp_path: Path) -> None:
     unknown = next(item for item in found["findings"]
                    if item["id"] == "information.unknown")
     assert "customers" in unknown["message"]
+    calls = []
+    monkeypatch.setattr(ml_quest, "inspect_data",
+                        lambda problem: calls.append(1) or {})
     assert client.get(f"{url}/insight").json() == found
+    assert calls == []
+
+    # 場所は答えの PUT では変えられない. 外すと読み方も消える
+    direct = client.put(f"{url}/answers",
+                        json={"id": "data.source", "value": "/x.csv"})
+    assert direct.status_code == 400
+    removed = client.delete(f"{url}/data").json()
+    source = next(q for q in removed["questions"] if q["id"] == "data.source")
+    assert source["value"] is None
 
     # 相対パスと読めないファイルは誤り
     assert client.post(f"{url}/data",

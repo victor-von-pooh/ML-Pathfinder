@@ -113,6 +113,8 @@ test('手元のデータを入れると, 答えの候補が出て押すと答え
     .getByRole('button', { name: /^6\b/ })
     .click()
   await expect(
-    page.getByRole('list', { name: '確かめ' }).getByText(/customers は目的の列とほぼ同じ動き/),
+    page
+      .getByRole('list', { name: '確かめ', exact: true })
+      .getByText(/customers は目的の列とほぼ同じ動き/),
   ).toBeVisible({ timeout: 20_000 })
 })

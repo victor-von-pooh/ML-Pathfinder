@@ -168,6 +168,9 @@ export interface Insight {
     rows: number
     columns: number
     kind: string
+    /** 大きなデータを見本の行で分析したか */
+    sampled: boolean | null
+    sample_rows: number | null
     start: string | null
     end: string | null
     interval_seconds: number | null

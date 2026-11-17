@@ -58,6 +58,7 @@ export const api = {
     request<Problem>(`/api/problems/${id}/name`, json('PUT', { name })),
   attachData: (id: string, path: string) =>
     request<Problem>(`/api/problems/${id}/data`, json('POST', { path })),
+  detachData: (id: string) => request<Problem>(`/api/problems/${id}/data`, { method: 'DELETE' }),
   insight: (id: string) => request<Insight>(`/api/problems/${id}/insight`),
   readColumns: (id: string, path: string) =>
     request<Problem>(`/api/problems/${id}/columns`, json('POST', { path })),

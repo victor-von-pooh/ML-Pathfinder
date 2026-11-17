@@ -77,7 +77,7 @@ export function HandoffCard({ problem }: { problem: Problem }) {
             </span>
             {data.source && (
               <span>
-                データ <Code>{data.source.source}</Code> (読み込み {data.source.loader ?? '自動'})
+                データ <Code>{data.source.source}</Code> (後ろの段階も同じ場所を同じ読み方で開く)
               </span>
             )}
           </dd>
