@@ -523,7 +523,7 @@ function BaselineInput({
           {columns.length === 0 ? (
             <input
               value={column}
-              placeholder="列の名前 (4 の使えるデータの列に答えると選べます)"
+              placeholder="列の名前 (5 の使えるデータの列に答えると選べます)"
               aria-invalid={!!errorId}
               aria-describedby={errorId}
               onChange={(event) => setColumn(event.target.value)}

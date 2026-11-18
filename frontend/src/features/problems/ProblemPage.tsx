@@ -387,7 +387,7 @@ export function ProblemPage() {
       )}
       {problem.finished && (
         <div className="mb-4 rounded-lg border border-line bg-surface-2 px-4 py-3 text-sm">
-          機械学習を使わないと決めて終えました. 後ろの段階に渡すものはありません (4
+          機械学習を使わないと決めて終えました. 後ろの段階に渡すものはありません (5
           の「機械学習を使いますか」を変えると続けられます).
         </div>
       )}
