@@ -290,11 +290,12 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
-def view_of(
-    store: Store, problem_id: str, problem: dict[str, Any]
-) -> dict[str, Any]:
+def view_of(store: Store, problem_id: str) -> dict[str, Any]:
     """
-    画面に出す全てに, 問題の設定のファイルの中身の印を足す関数
+    今のファイルを読み, 画面に出す全てと中身の印を返す関数
+
+    保存した後も読み直す (保存の直後に他のアプリが書き換えても, 画面の
+    中身と印がずれて, その変更を見逃さないように)
 
     Parameters
     ----------
@@ -302,17 +303,31 @@ def view_of(
         置き場
     problem_id: str
         識別子
-    problem: dict[str, Any]
-        問題の設定
 
     Returns
     ----------
     view: dict[str, Any]
         problem_view と version (他で書き換わったことに気付くため)
+
+    Raises
+    ----------
+    HTTPException
+        無い (読む間に消えた場合も) 問題の設定は 404, 壊れたファイルは
+        422
     """
-    # 印は保存したファイルから
-    view = {**problem_view(problem_id, problem),
-            "version": store.version(problem_id)}
+    # 中身と印は同じ読み込みから
+    try:
+        problem, version = store.load_versioned(problem_id)
+    except KeyError as error:
+        raise HTTPException(404, "問題の設定が見つかりません") from error
+    except FileNotFoundError as error:
+        raise HTTPException(404, "問題の設定が見つかりません") from error
+    except READ_ERRORS as error:
+        raise HTTPException(
+            422, "問題の設定のファイルが壊れています "
+            f"({user_error(error).detail}). 消すか, ファイルを直してください"
+        ) from error
+    view = {**problem_view(problem_id, problem), "version": version}
 
     return view
 
@@ -558,7 +573,7 @@ def create_problem(
         raise user_error(error) from error
     store = get_store(request)
     problem_id = store.create(problem)
-    view = view_of(store, problem_id, store.load(problem_id))
+    view = view_of(store, problem_id)
 
     return view
 
@@ -597,7 +612,7 @@ def import_problem(request: Request, body: PathRequest) -> dict[str, Any]:
         ) from error
     store = get_store(request)
     problem_id = store.create(problem)
-    view = view_of(store, problem_id, store.load(problem_id))
+    view = view_of(store, problem_id)
 
     return view
 
@@ -620,9 +635,7 @@ def get_problem(request: Request, problem_id: str) -> dict[str, Any]:
         画面に出す全て
     """
     # 読み込みだけ
-    store = get_store(request)
-    problem = load_or_404(store, problem_id)
-    view = view_of(store, problem_id, problem)
+    view = view_of(get_store(request), problem_id)
 
     return view
 
@@ -688,8 +701,8 @@ def put_answer(
             updated = ml_quest.answer(problem, body.id, body.value)
         except ValueError as error:
             raise user_error(error) from error
-        saved = store.save(problem_id, updated)
-    view = view_of(store, problem_id, saved)
+        store.save(problem_id, updated)
+    view = view_of(store, problem_id)
 
     return view
 
@@ -723,8 +736,8 @@ def rename_problem(
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
         problem["name"] = name
-        saved = store.save(problem_id, problem)
-    view = view_of(store, problem_id, saved)
+        store.save(problem_id, problem)
+    view = view_of(store, problem_id)
 
     return view
 
@@ -764,8 +777,8 @@ def read_columns(
                                       columns)
         except ValueError as error:
             raise user_error(error) from error
-        saved = store.save(problem_id, updated)
-    view = view_of(store, problem_id, saved)
+        store.save(problem_id, updated)
+    view = view_of(store, problem_id)
 
     return view
 
@@ -803,7 +816,7 @@ def attach_data(
         ATTACHING[problem_id] += 1
     removing: list[Path] = []
     try:
-        saved = attach_and_save(store, problem_id, snapshot, path, copies)
+        attach_and_save(store, problem_id, snapshot, path, copies)
     finally:
         with EDIT_LOCK:
             ATTACHING[problem_id] -= 1
@@ -812,7 +825,7 @@ def attach_data(
                 removing = stale_paths(store, problem_id)
         for stale in removing:
             shutil.rmtree(stale, ignore_errors=True)
-    view = view_of(store, problem_id, saved)
+    view = view_of(store, problem_id)
 
     return view
 
@@ -1029,10 +1042,10 @@ def detach_data(request: Request, problem_id: str) -> dict[str, Any]:
         problem.pop("data", None)
         if missing:
             problem["data"] = {"missing": missing}
-        saved = store.save(problem_id, problem)
+        store.save(problem_id, problem)
     if removing is not None:
         shutil.rmtree(removing, ignore_errors=True)
-    view = view_of(store, problem_id, saved)
+    view = view_of(store, problem_id)
 
     return view
 

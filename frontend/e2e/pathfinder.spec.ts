@@ -157,7 +157,7 @@ test('今のやり方をデータで書くと, 損と指標の今の値の候補
   await expect(page.getByRole('group', { name: /今のやり方の損をデータで求めた値/ })).toBeVisible()
 })
 
-test('問題の設定のファイルが他で変わると, 読み直して入力にも出す', async ({ page }) => {
+test('問題の設定のファイルが他で変わると, 読み直して変わった問いの入力に出す', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('他で変わる')
   await page.getByRole('button', { name: '作る', exact: true }).click()
@@ -167,6 +167,10 @@ test('問題の設定のファイルが他で変わると, 読み直して入力
   await pain.blur()
   await expect(page.getByText('保存しました')).toBeVisible()
 
+  // 別の問いは書きかけ (まだ欄を離れていない)
+  const current = page.getByRole('textbox', { name: '今はどうしていますか' })
+  await current.fill('前の週と同じ数')
+
   // 他のアプリ (ML-Fathom の書き戻しなど) がファイルを書き換えたとする
   const id = new URL(page.url()).pathname.split('/').pop() ?? ''
   const file = `${process.cwd()}/e2e/.work/home/problems/${id}/problem.yaml`
@@ -175,4 +179,6 @@ test('問題の設定のファイルが他で変わると, 読み直して入力
     timeout: 15_000,
   })
   await expect(pain).toHaveValue('欠品が多い')
+  // 変わっていない問いの書きかけは残る
+  await expect(current).toHaveValue('前の週と同じ数')
 })
