@@ -1,3 +1,4 @@
+import hashlib
 import re
 import threading
 import uuid
@@ -119,6 +120,29 @@ class Store:
         )
 
         return problem
+
+    def version(self, problem_id: str) -> str:
+        """
+        問題の設定のファイルの中身の印を返す関数
+
+        他のアプリ (ML-Fathom の書き戻しなど) が書き換えたことに画面が
+        気付くため. 更新の時刻は秒の単位なので中身で
+
+        Parameters
+        ----------
+        problem_id: str
+            識別子
+
+        Returns
+        ----------
+        version: str
+            中身の sha256 の 16 進
+        """
+        # ファイルの中身の要約
+        path = self.place(problem_id) / "problem.yaml"
+        version = hashlib.sha256(path.read_bytes()).hexdigest()
+
+        return version
 
     def create(self, problem: dict[str, Any]) -> str:
         """

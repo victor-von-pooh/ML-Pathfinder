@@ -290,6 +290,33 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
     return view
 
 
+def view_of(
+    store: Store, problem_id: str, problem: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    画面に出す全てに, 問題の設定のファイルの中身の印を足す関数
+
+    Parameters
+    ----------
+    store: Store
+        置き場
+    problem_id: str
+        識別子
+    problem: dict[str, Any]
+        問題の設定
+
+    Returns
+    ----------
+    view: dict[str, Any]
+        problem_view と version (他で書き換わったことに気付くため)
+    """
+    # 印は保存したファイルから
+    view = {**problem_view(problem_id, problem),
+            "version": store.version(problem_id)}
+
+    return view
+
+
 def list_item(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
     """
     一覧の 1 行 (名前, 進み具合, 渡せるか) を作る関数
@@ -531,7 +558,7 @@ def create_problem(
         raise user_error(error) from error
     store = get_store(request)
     problem_id = store.create(problem)
-    view = problem_view(problem_id, store.load(problem_id))
+    view = view_of(store, problem_id, store.load(problem_id))
 
     return view
 
@@ -570,7 +597,7 @@ def import_problem(request: Request, body: PathRequest) -> dict[str, Any]:
         ) from error
     store = get_store(request)
     problem_id = store.create(problem)
-    view = problem_view(problem_id, store.load(problem_id))
+    view = view_of(store, problem_id, store.load(problem_id))
 
     return view
 
@@ -593,10 +620,39 @@ def get_problem(request: Request, problem_id: str) -> dict[str, Any]:
         画面に出す全て
     """
     # 読み込みだけ
-    problem = load_or_404(get_store(request), problem_id)
-    view = problem_view(problem_id, problem)
+    store = get_store(request)
+    problem = load_or_404(store, problem_id)
+    view = view_of(store, problem_id, problem)
 
     return view
+
+
+@router.get("/problems/{problem_id}/version")
+def get_version(request: Request, problem_id: str) -> dict[str, Any]:
+    """
+    問題の設定のファイルの中身の印だけを返す関数 (画面が他での書き換えに
+    気付くため. 軽いので何度も呼べる)
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    problem_id: str
+        識別子
+
+    Returns
+    ----------
+    version: dict[str, Any]
+        version (中身の sha256)
+    """
+    # 無い (確かめた直後に消えた場合も) 問題の設定は 404
+    store = get_store(request)
+    try:
+        version = {"version": store.version(problem_id)}
+    except (KeyError, OSError) as error:
+        raise HTTPException(404, "問題の設定が見つかりません") from error
+
+    return version
 
 
 @router.put("/problems/{problem_id}/answers")
@@ -633,7 +689,7 @@ def put_answer(
         except ValueError as error:
             raise user_error(error) from error
         saved = store.save(problem_id, updated)
-    view = problem_view(problem_id, saved)
+    view = view_of(store, problem_id, saved)
 
     return view
 
@@ -668,7 +724,7 @@ def rename_problem(
         problem = load_or_404(store, problem_id)
         problem["name"] = name
         saved = store.save(problem_id, problem)
-    view = problem_view(problem_id, saved)
+    view = view_of(store, problem_id, saved)
 
     return view
 
@@ -709,7 +765,7 @@ def read_columns(
         except ValueError as error:
             raise user_error(error) from error
         saved = store.save(problem_id, updated)
-    view = problem_view(problem_id, saved)
+    view = view_of(store, problem_id, saved)
 
     return view
 
@@ -756,7 +812,7 @@ def attach_data(
                 removing = stale_paths(store, problem_id)
         for stale in removing:
             shutil.rmtree(stale, ignore_errors=True)
-    view = problem_view(problem_id, saved)
+    view = view_of(store, problem_id, saved)
 
     return view
 
@@ -976,7 +1032,7 @@ def detach_data(request: Request, problem_id: str) -> dict[str, Any]:
         saved = store.save(problem_id, problem)
     if removing is not None:
         shutil.rmtree(removing, ignore_errors=True)
-    view = problem_view(problem_id, saved)
+    view = view_of(store, problem_id, saved)
 
     return view
 

@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { CheckCircle2, Download, FolderOutput, Pencil, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { api } from '../../api/client'
@@ -178,9 +178,14 @@ export function ProblemPage() {
   const [exporting, setExporting] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [saved, setSaved] = useState('')
-  // 保存した結果を画面に入れ, 一覧も読み直す
+  // 他のアプリ (ML-Fathom の書き戻しなど) の書き換えで読み直した回数 (入力欄を作り直す)
+  const [reloads, setReloads] = useState(0)
+  const [reloaded, setReloaded] = useState(false)
+  // 保存した結果を画面に入れ, 一覧も読み直す (自分の保存の印も覚える)
   const store = (view: Problem) => {
     client.setQueryData(['problem', id], view)
+    client.setQueryData(['problem-version', id], { version: view.version })
+    setReloaded(false)
     client.invalidateQueries({ queryKey: ['problems'] })
     // 答えが変わったら, データからの候補も読み直す
     client.invalidateQueries({ queryKey: ['insight', id] })
@@ -229,6 +234,30 @@ export function ProblemPage() {
       navigate('/')
     },
   })
+
+  // ファイルの中身の印を, 画面に戻ったときと 10 秒ごとに確かめ, 他で変わったら読み直す
+  // (保存の途中は待つ. 答えは 1 つずつ今のファイルに重ねて保存するので, 他の変更は消えない)
+  const remote = useQuery({
+    queryKey: ['problem-version', id],
+    queryFn: () => api.problemVersion(id),
+    enabled: query.isSuccess,
+    refetchOnWindowFocus: true,
+    refetchInterval: 10_000,
+  })
+  const busy = useIsMutating() > 0
+  const localVersion = query.data?.version
+  const remoteVersion = remote.data?.version
+  const { refetch } = query
+  useEffect(() => {
+    if (!localVersion || !remoteVersion || localVersion === remoteVersion || busy) return
+    void refetch().then((result) => {
+      if (result.data?.version === remoteVersion) {
+        setReloads((count) => count + 1)
+        setReloaded(true)
+        client.invalidateQueries({ queryKey: ['insight', id] })
+      }
+    })
+  }, [localVersion, remoteVersion, busy, refetch, client, id])
 
   // 入れたデータからの候補 (保存のたびに store で読み直す. 分析はサーバーが覚えている)
   const source = query.data?.questions.find((q) => q.id === 'data.source')?.value
@@ -387,7 +416,7 @@ export function ProblemPage() {
           )}
           {/* 書きかけが節を移っても消えないように, 全ての節の問いを置いて今の節だけを見せる */}
           {visible.map((question) => (
-            <div key={question.id} hidden={question.section !== section}>
+            <div key={`${question.id}:${reloads}`} hidden={question.section !== section}>
               <QuestionField
                 question={question}
                 columns={columnNames}
@@ -417,6 +446,15 @@ export function ProblemPage() {
           ))}
           <p role="status" aria-live="polite" className="mt-2 text-xs text-ink-3">
             {saved && !answer.isPending && !columns.isPending ? `「${saved}」を保存しました` : ''}
+          </p>
+          <p
+            role="status"
+            aria-live="polite"
+            className="mt-1 text-xs text-warning-text empty:hidden"
+          >
+            {reloaded
+              ? '問題の設定のファイルが他 (ML-Fathom の書き戻しなど) で変わったので, 読み直しました'
+              : ''}
           </p>
         </Card>
         <div className="flex flex-col gap-6">

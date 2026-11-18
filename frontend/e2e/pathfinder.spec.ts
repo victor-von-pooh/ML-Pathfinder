@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 
 import { expect, test } from '@playwright/test'
 
@@ -155,4 +155,24 @@ test('今のやり方をデータで書くと, 損と指標の今の値の候補
   // 2 の節の指標の今の値に, データからの候補が出る
   await nav.getByRole('button', { name: /^2\b/ }).click()
   await expect(page.getByRole('group', { name: /今のやり方の損をデータで求めた値/ })).toBeVisible()
+})
+
+test('問題の設定のファイルが他で変わると, 読み直して入力にも出す', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('他で変わる')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '他で変わる' })).toBeVisible()
+  const pain = page.getByRole('textbox', { name: '何に困っていますか' })
+  await pain.fill('問い合わせが多い')
+  await pain.blur()
+  await expect(page.getByText('保存しました')).toBeVisible()
+
+  // 他のアプリ (ML-Fathom の書き戻しなど) がファイルを書き換えたとする
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const file = `${process.cwd()}/e2e/.work/home/problems/${id}/problem.yaml`
+  writeFileSync(file, readFileSync(file, 'utf-8').replace('問い合わせが多い', '欠品が多い'))
+  await expect(page.getByText(/他 \(ML-Fathom の書き戻しなど\) で変わったので/)).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(pain).toHaveValue('欠品が多い')
 })
