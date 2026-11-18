@@ -129,6 +129,8 @@ export interface Problem {
   handoff_error: string | null
   ready: boolean
   finished: boolean
+  /** 問題の設定のファイルの中身の印 (他のアプリが書き換えたことに気付くため) */
+  version: string
 }
 
 /** 一覧の 1 行 */

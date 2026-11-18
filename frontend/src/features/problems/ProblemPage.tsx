@@ -1,7 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { CheckCircle2, Download, FolderOutput, Pencil, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { api } from '../../api/client'
@@ -178,14 +178,22 @@ export function ProblemPage() {
   const [exporting, setExporting] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [saved, setSaved] = useState('')
-  // 保存した結果を画面に入れ, 一覧も読み直す
+  // 他のアプリ (ML-Fathom の書き戻しなど) の書き換えで読み直したか (知らせのため. 値の
+  // 変わった問いの入力は, QuestionField が保存した値ごとに作り直す)
+  const [reloaded, setReloaded] = useState(false)
+  // 保存した結果を画面に入れ, 一覧も読み直す (自分の保存の印も覚える)
   const store = (view: Problem) => {
     client.setQueryData(['problem', id], view)
+    client.setQueryData(['problem-version', id], { version: view.version })
+    setReloaded(false)
     client.invalidateQueries({ queryKey: ['problems'] })
     // 答えが変わったら, データからの候補も読み直す
     client.invalidateQueries({ queryKey: ['insight', id] })
   }
+  // 問題の設定を書き換える操作 (読み直しはこれらの途中は待つ)
+  const editing = ['problem-edit', id]
   const answer = useMutation({
+    mutationKey: editing,
     mutationFn: ({ question, value }: { question: string; value: unknown }) =>
       api.answer(id, question, value),
     onSuccess: (view, { question }) => {
@@ -194,6 +202,7 @@ export function ProblemPage() {
     },
   })
   const detach = useMutation({
+    mutationKey: editing,
     mutationFn: () => api.detachData(id),
     onSuccess: (view) => {
       store(view)
@@ -202,6 +211,7 @@ export function ProblemPage() {
     },
   })
   const attach = useMutation({
+    mutationKey: editing,
     mutationFn: (path: string) => api.attachData(id, path),
     onSuccess: (view) => {
       store(view)
@@ -209,6 +219,7 @@ export function ProblemPage() {
     },
   })
   const columns = useMutation({
+    mutationKey: editing,
     mutationFn: (path: string) => api.readColumns(id, path),
     onSuccess: (view) => {
       store(view)
@@ -216,6 +227,7 @@ export function ProblemPage() {
     },
   })
   const rename = useMutation({
+    mutationKey: editing,
     mutationFn: (name: string) => api.rename(id, name),
     onSuccess: (view) => {
       store(view)
@@ -229,6 +241,31 @@ export function ProblemPage() {
       navigate('/')
     },
   })
+
+  // ファイルの中身の印を, 画面に戻ったときと 10 秒ごとに確かめ, 他で変わったら読み直す
+  // (保存の途中は待つ. 答えは 1 つずつ今のファイルに重ねて保存するので, 他の変更は消えない)
+  const remote = useQuery({
+    queryKey: ['problem-version', id],
+    queryFn: () => api.problemVersion(id),
+    enabled: query.isSuccess,
+    refetchOnWindowFocus: true,
+    refetchInterval: 10_000,
+  })
+  const busy = useIsMutating({ mutationKey: editing }) > 0
+  const localVersion = query.data?.version
+  const remoteVersion = remote.data?.version
+  const { refetch } = query
+  useEffect(() => {
+    if (!localVersion || !remoteVersion || localVersion === remoteVersion || busy) return
+    // 読み直す間にさらに変わっても, 読み直した印で覚え直す
+    void refetch().then((result) => {
+      const fresh = result.data?.version
+      if (!fresh || fresh === localVersion) return
+      client.setQueryData(['problem-version', id], { version: fresh })
+      setReloaded(true)
+      client.invalidateQueries({ queryKey: ['insight', id] })
+    })
+  }, [localVersion, remoteVersion, busy, refetch, client, id])
 
   // 入れたデータからの候補 (保存のたびに store で読み直す. 分析はサーバーが覚えている)
   const source = query.data?.questions.find((q) => q.id === 'data.source')?.value
@@ -254,6 +291,7 @@ export function ProblemPage() {
   const select = (number: number) => {
     setSection(number)
     setSaved('')
+    setReloaded(false)
     answer.reset()
     columns.reset()
     attach.reset()
@@ -417,6 +455,11 @@ export function ProblemPage() {
           ))}
           <p role="status" aria-live="polite" className="mt-2 text-xs text-ink-3">
             {saved && !answer.isPending && !columns.isPending ? `「${saved}」を保存しました` : ''}
+          </p>
+          <p role="status" aria-live="polite" className="mt-1 text-xs text-warning-text">
+            {reloaded
+              ? '問題の設定のファイルが他 (ML-Fathom の書き戻しなど) で変わったので, 読み直しました'
+              : ''}
           </p>
         </Card>
         <div className="flex flex-col gap-6">

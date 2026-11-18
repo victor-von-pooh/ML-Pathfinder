@@ -1,3 +1,4 @@
+import hashlib
 import re
 import threading
 import uuid
@@ -119,6 +120,61 @@ class Store:
         )
 
         return problem
+
+    def load_versioned(
+        self, problem_id: str
+    ) -> tuple[dict[str, Any], str]:
+        """
+        問題の設定と, 同じ中身の印を読む関数
+
+        他のアプリが読む間に書き換えても, 中身と印がずれないように, 読む
+        前と後の印が同じになるまで読み直す (保存は置き換えなので, 書きかけ
+        は読まない)
+
+        Parameters
+        ----------
+        problem_id: str
+            識別子
+
+        Returns
+        ----------
+        loaded: tuple[dict[str, Any], str]
+            問題の設定と, 中身の sha256 の 16 進
+        """
+        # 前後の印が同じ読み込み (書き換えが続けば最後の読み込み)
+        before = self.version(problem_id)
+        for _ in range(3):
+            problem = self.load(problem_id)
+            after = self.version(problem_id)
+            if after == before:
+                break
+            before = after
+        loaded = (problem, before)
+
+        return loaded
+
+    def version(self, problem_id: str) -> str:
+        """
+        問題の設定のファイルの中身の印を返す関数
+
+        他のアプリ (ML-Fathom の書き戻しなど) が書き換えたことに画面が
+        気付くため. 更新の時刻は秒の単位なので中身で
+
+        Parameters
+        ----------
+        problem_id: str
+            識別子
+
+        Returns
+        ----------
+        version: str
+            中身の sha256 の 16 進
+        """
+        # ファイルの中身の要約
+        path = self.place(problem_id) / "problem.yaml"
+        version = hashlib.sha256(path.read_bytes()).hexdigest()
+
+        return version
 
     def create(self, problem: dict[str, Any]) -> str:
         """

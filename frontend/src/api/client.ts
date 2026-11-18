@@ -49,6 +49,7 @@ export const api = {
   browse: (path: string) => request<Listing>(`/api/browse?path=${encodeURIComponent(path)}`),
   problems: () => request<ProblemItem[]>('/api/problems'),
   problem: (id: string) => request<Problem>(`/api/problems/${id}`),
+  problemVersion: (id: string) => request<{ version: string }>(`/api/problems/${id}/version`),
   create: (body: { name?: string; example?: string }) =>
     request<Problem>('/api/problems', json('POST', body)),
   importProblem: (path: string) => request<Problem>('/api/problems/import', json('POST', { path })),

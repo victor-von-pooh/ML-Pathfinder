@@ -96,6 +96,46 @@ def test_create_answer_and_list(client: TestClient) -> None:
     assert client.get("/api/problems/../x").status_code == 404
 
 
+def test_version(client: TestClient, tmp_path: Path) -> None:
+    """
+    他のアプリが問題の設定のファイルを書き換えると, 中身の印が変わる
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 画面の全てと印だけの応答は同じ印. 自分で答えても変わる
+    view = client.post("/api/problems", json={"name": "試し"}).json()
+    url = f"/api/problems/{view['id']}"
+    first = client.get(f"{url}/version").json()["version"]
+    assert client.get(url).json()["version"] == first
+    answered = client.put(f"{url}/answers", json={
+        "id": "issue.pain", "value": "廃棄が多い"
+    }).json()
+    second = client.get(f"{url}/version").json()["version"]
+    assert answered["version"] == second != first
+
+    # 他のアプリ (同じ秒の書き戻しも) で書き換えると変わる
+    path = tmp_path / "home" / "problems" / view["id"] / "problem.yaml"
+    problem = ml_quest.answer(ml_quest.load_problem(path), "issue.pain",
+                              "欠品が多い")
+    ml_quest.save_problem(problem, path)
+    assert client.get(f"{url}/version").json()["version"] != second
+
+    # 無い問題の設定は 404
+    assert client.get("/api/problems/0123456789ab/version").status_code == (
+        404
+    )
+
+
 def test_example_handoff_and_project(
     client: TestClient, tmp_path: Path
 ) -> None:

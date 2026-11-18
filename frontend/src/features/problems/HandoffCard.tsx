@@ -113,7 +113,11 @@ export function HandoffCard({ problem }: { problem: Problem }) {
                   .map(([key, value]) => (
                     <Code key={key}>{`${
                       DECISION_FIELDS[decision.type]?.find((f) => f.key === key)?.label ??
-                      (key === 'positive' ? '当たりのクラス' : key)
+                      (key === 'positive'
+                        ? '当たりのクラス'
+                        : key === 'current'
+                          ? '今のやり方の列 (たどり直しで比べる)'
+                          : key)
                     }: ${String(value)}`}</Code>
                   ))}
               </span>
