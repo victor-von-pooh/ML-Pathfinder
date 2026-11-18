@@ -203,3 +203,24 @@ test('対象を選ぶ効果を確率の差で書くと, 向きの欄が出て, �
   )
   await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText('無作為')
 })
+
+test('守る指標の名前を書くと, 向きと守る線の問いが出て, 筋道に出る', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  await page.getByRole('button', { name: /解けたと言える/ }).click()
+  await expect(page.getByRole('textbox', { name: 'どこまでなら許せますか (守る線)' })).toHaveCount(
+    0,
+  )
+  const name = page.getByLabel(/引き換えに悪くしてはいけない数字/)
+  await name.fill('品切れした品と日の割合')
+  await name.blur()
+  await expect(page.getByRole('textbox', { name: 'どこまでなら許せますか (守る線)' })).toBeVisible()
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText('守る線')
+  await page.getByRole('textbox', { name: 'どこまでなら許せますか (守る線)' }).fill('5')
+  await page.getByRole('textbox', { name: 'どこまでなら許せますか (守る線)' }).blur()
+  await page
+    .getByRole('radiogroup', { name: /守る指標は, 小さいほど良いですか/ })
+    .getByLabel('小さいほど良い')
+    .check()
+  await expect(page.getByText(/守る指標: 品切れした品と日の割合 \(5 を超えない\)/)).toBeVisible()
+})
