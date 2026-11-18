@@ -35,6 +35,20 @@ export type QuestionKind =
 export interface Choice {
   value: string
   label: string
+  /** 意思決定の型の欄 (意思決定の問いの選択肢だけ) */
+  fields?: DecisionField[]
+}
+
+/** 意思決定の欄 (ML-Quest が返す. 名前, 説明, 要るか, 選んで書くなら選択肢) */
+export interface DecisionField {
+  key: string
+  label: string
+  required: boolean
+  choices?: Choice[]
+  /** 選ばないときの意味 */
+  unset?: string
+  /** 他の欄の値で要るかが決まる */
+  when?: { key: string; equals: string }
 }
 
 /** 要因と打てる手の 1 行 */

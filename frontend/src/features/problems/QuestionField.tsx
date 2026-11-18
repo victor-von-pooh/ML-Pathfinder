@@ -6,7 +6,7 @@ import type { Decision, Finding, Insight, Lever, Question, Suggestion } from '..
 import { PathPicker } from '../../components/PathPicker'
 import { Button } from '../../components/ui'
 import { decisionDraft, decisionFields, sameDecision, splitLines, toLevers } from '../../lib/draft'
-import { DECISION_NAMES, LEVEL_NAMES } from '../../lib/labels'
+import { LEVEL_NAMES } from '../../lib/labels'
 
 /** 入力の共通の見た目 */
 const INPUT = 'w-full rounded-lg border border-line bg-surface px-2 text-sm'
@@ -321,9 +321,13 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
         .map(([key, item]) => [key, String(item)]),
     ),
   )
-  const fields = kind ? decisionFields(kind, values) : []
-  const draft = kind ? decisionDraft(kind, values) : null
-  const dirty = draft ? !sameDecision(draft, saved) : saved !== null
+  const types = question.choices
+  const all = types.find((type) => type.value === kind)?.fields ?? []
+  const fields = decisionFields(all, values)
+  const known = types.some((type) => type.value === kind)
+  const draft = kind && known ? decisionDraft(kind, all, values) : null
+  // 知らない型は保存できない (選び直すまで, 保存した答えをそのまま残す)
+  const dirty = kind && !known ? false : draft ? !sameDecision(draft, saved) : saved !== null
   return (
     <div className="flex flex-col gap-3">
       <select
@@ -333,9 +337,13 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
         className={clsx(INPUT, 'h-8 max-w-96')}
       >
         <option value="">型を選ぶ (選ばずに保存すると答えを消す)</option>
-        {(Object.keys(DECISION_NAMES) as Decision['type'][]).map((type) => (
-          <option key={type} value={type}>
-            {DECISION_NAMES[type]}
+        {/* 手で書いた知らない型も出す (保存で黙って欄を消さないように) */}
+        {kind && !types.some((type) => type.value === kind) && (
+          <option value={kind}>{kind} (知らない型)</option>
+        )}
+        {types.map((type) => (
+          <option key={type.value} value={type.value}>
+            {type.label}
           </option>
         ))}
       </select>

@@ -1,12 +1,14 @@
-import type { Problem } from '../../api/types'
+import type { Choice, Problem } from '../../api/types'
 import { Card } from '../../components/ui'
-import { DECISION_FIELDS, DECISION_NAMES } from '../../lib/labels'
 
-/** タスクの名前 */
-const TASKS: Record<string, string> = {
-  classification: '分類',
-  regression: '回帰',
-  forecasting: '時系列の予測',
+/** 問いの選択肢 (ML-Quest が返すもの) */
+function choicesOf(problem: Problem, id: string): Choice[] {
+  return problem.questions.find((question) => question.id === id)?.choices ?? []
+}
+
+/** 選択肢の短い名前 (説明の括弧の前まで) */
+function shortLabel(choices: Choice[], value: string): string {
+  return choices.find((choice) => choice.value === value)?.label.split(' (')[0] ?? value
 }
 
 /** 1 行の値 (コードの形) */
@@ -48,6 +50,10 @@ export function HandoffCard({ problem }: { problem: Problem }) {
     )
   const { data, model, training, inference } = handoff
   const decision = inference.decision
+  const type = choicesOf(problem, 'action.decision').find(
+    (choice) => choice.value === decision?.type,
+  )
+  const fields = type?.fields ?? []
   return (
     <Card title="後ろの段階に渡す値">
       <dl className="flex flex-col gap-3 text-sm">
@@ -55,7 +61,8 @@ export function HandoffCard({ problem }: { problem: Problem }) {
           <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
           <dd className="flex flex-col gap-1">
             <span>
-              目的の列 <Code>{data.target}</Code>, {TASKS[data.task] ?? data.task}, 分割は
+              目的の列 <Code>{data.target}</Code>,{' '}
+              {shortLabel(choicesOf(problem, 'ml.task'), data.task)}, 分割は
               {data.split === 'time' ? '時刻の順' : '無作為'}
             </span>
             {data.time_column && (
@@ -109,7 +116,8 @@ export function HandoffCard({ problem }: { problem: Problem }) {
           <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
           <dd className="flex flex-col gap-1">
             <span>
-              意思決定: {decision ? DECISION_NAMES[decision.type] : 'しない (人が予測を見て決める)'}
+              意思決定:{' '}
+              {decision ? (type?.label ?? decision.type) : 'しない (人が予測を見て決める)'}
             </span>
             {decision && (
               <span className="flex flex-wrap gap-1">
@@ -117,15 +125,15 @@ export function HandoffCard({ problem }: { problem: Problem }) {
                   .filter(([key]) => key !== 'type')
                   .map(([key, value]) => (
                     <Code key={key}>{`${
-                      DECISION_FIELDS[decision.type]?.find((f) => f.key === key)?.label ??
+                      fields.find((f) => f.key === key)?.label ??
                       (key === 'positive'
                         ? '当たりのクラス'
                         : key === 'current'
                           ? '今のやり方の列 (たどり直しで比べる)'
                           : key)
                     }: ${
-                      DECISION_FIELDS[decision.type]
-                        ?.find((f) => f.key === key)
+                      fields
+                        .find((f) => f.key === key)
                         ?.choices?.find((choice) => choice.value === value)?.label ?? String(value)
                     }`}</Code>
                   ))}

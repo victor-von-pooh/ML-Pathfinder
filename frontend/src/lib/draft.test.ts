@@ -1,21 +1,40 @@
+import type { DecisionField } from '../api/types'
 import { decisionDraft, decisionFields, sameDecision, splitLines, toLevers } from './draft'
+
+// ML-Quest が返す欄の形 (テスト用に一部)
+const QUANTITY: DecisionField[] = [
+  { key: 'under_cost', label: '足りない損', required: true },
+  { key: 'over_cost', label: '余る損', required: true },
+]
+const SELECT: DecisionField[] = [
+  { key: 'value', label: '価値', required: true },
+  { key: 'cost', label: '費用', required: true },
+  { key: 'effect_kind', label: '渡し方', required: false },
+  { key: 'effect', label: '効果', required: true },
+  {
+    key: 'effect_goal',
+    label: '向き',
+    required: true,
+    when: { key: 'effect_kind', equals: 'uplift' },
+  },
+]
 
 describe('decisionDraft', () => {
   it('型の項目だけを, 空の欄を除いて残す', () => {
     expect(
-      decisionDraft('quantity', { under_cost: ' 200 ', over_cost: '', miss_cost: '9' }),
+      decisionDraft('quantity', QUANTITY, { under_cost: ' 200 ', over_cost: '', miss_cost: '9' }),
     ).toEqual({ type: 'quantity', under_cost: '200' })
-    expect(decisionDraft('none', { under_cost: '1' })).toEqual({ type: 'none' })
+    expect(decisionDraft('none', [], { under_cost: '1' })).toEqual({ type: 'none' })
   })
 })
 
-describe('確率の差の向き', () => {
-  it('効果を確率の差で渡すときだけ向きを残す', () => {
+describe('条件のある欄', () => {
+  it('他の欄の値が合うときだけ残す (確率の差の向き)', () => {
     const values = { value: '1000', cost: '50', effect: '-0.1', effect_goal: 'reduce' }
-    expect(decisionDraft('select', values)).not.toHaveProperty('effect_goal')
-    expect(decisionFields('select', values).map((f) => f.key)).not.toContain('effect_goal')
+    expect(decisionDraft('select', SELECT, values)).not.toHaveProperty('effect_goal')
+    expect(decisionFields(SELECT, values).map((f) => f.key)).not.toContain('effect_goal')
     const uplift = { ...values, effect_kind: 'uplift' }
-    expect(decisionDraft('select', uplift)).toEqual({
+    expect(decisionDraft('select', SELECT, uplift)).toEqual({
       type: 'select',
       value: '1000',
       cost: '50',
