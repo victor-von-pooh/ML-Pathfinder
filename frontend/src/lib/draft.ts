@@ -1,13 +1,24 @@
 import type { Decision, Lever } from '../api/types'
+import type { DecisionField } from './labels'
 import { DECISION_FIELDS } from './labels'
 
-/** 意思決定の欄の書きかけから, 保存する形を作る (空の欄は除く) */
+/** 今の書きかけで使う欄 (確率の差の向きは, 効果を確率の差で渡すときだけ) */
+export function decisionFields(
+  kind: Decision['type'],
+  values: Record<string, string>,
+): DecisionField[] {
+  return DECISION_FIELDS[kind].filter(
+    (field) => field.key !== 'effect_goal' || values.effect_kind === 'uplift',
+  )
+}
+
+/** 意思決定の欄の書きかけから, 保存する形を作る (空の欄と使わない欄は除く) */
 export function decisionDraft(
   kind: Decision['type'],
   values: Record<string, string>,
 ): Record<string, string> {
   const draft: Record<string, string> = { type: kind }
-  for (const field of DECISION_FIELDS[kind]) {
+  for (const field of decisionFields(kind, values)) {
     const value = values[field.key]?.trim()
     if (value) draft[field.key] = value
   }

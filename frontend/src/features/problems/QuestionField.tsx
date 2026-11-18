@@ -5,8 +5,8 @@ import { useRef, useState, type ReactNode } from 'react'
 import type { Decision, Finding, Insight, Lever, Question, Suggestion } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
 import { Button } from '../../components/ui'
-import { decisionDraft, sameDecision, splitLines, toLevers } from '../../lib/draft'
-import { DECISION_FIELDS, DECISION_NAMES, LEVEL_NAMES } from '../../lib/labels'
+import { decisionDraft, decisionFields, sameDecision, splitLines, toLevers } from '../../lib/draft'
+import { DECISION_NAMES, LEVEL_NAMES } from '../../lib/labels'
 
 /** 入力の共通の見た目 */
 const INPUT = 'w-full rounded-lg border border-line bg-surface px-2 text-sm'
@@ -321,7 +321,7 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
         .map(([key, item]) => [key, String(item)]),
     ),
   )
-  const fields = kind ? (DECISION_FIELDS[kind] ?? []) : []
+  const fields = kind ? decisionFields(kind, values) : []
   const draft = kind ? decisionDraft(kind, values) : null
   const dirty = draft ? !sameDecision(draft, saved) : saved !== null
   return (
@@ -349,12 +349,33 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
               >
                 {field.label}
               </label>
-              <input
-                id={`d-${question.id}-${field.key}`}
-                value={values[field.key] ?? ''}
-                onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}
-                className={clsx(INPUT, 'h-8')}
-              />
+              {field.choices ? (
+                <select
+                  id={`d-${question.id}-${field.key}`}
+                  value={values[field.key] ?? ''}
+                  onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}
+                  className={clsx(INPUT, 'h-8')}
+                >
+                  <option value="">{field.unset ?? '選ぶ'}</option>
+                  {/* 手で書いた知らない値も出す (選び直せるように) */}
+                  {values[field.key] &&
+                    !field.choices.some((choice) => choice.value === values[field.key]) && (
+                      <option value={values[field.key]}>{values[field.key]} (知らない値)</option>
+                    )}
+                  {field.choices.map((choice) => (
+                    <option key={choice.value} value={choice.value}>
+                      {choice.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id={`d-${question.id}-${field.key}`}
+                  value={values[field.key] ?? ''}
+                  onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}
+                  className={clsx(INPUT, 'h-8')}
+                />
+              )}
             </div>
           ))}
         </div>
