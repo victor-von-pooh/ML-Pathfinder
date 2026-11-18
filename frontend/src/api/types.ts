@@ -108,6 +108,8 @@ export interface Handoff {
     time_column: string | null
     series_by: string[]
     split: string
+    /** 同じ相手の行をまとめる列 (分割をまたがせない) */
+    group_column?: string | null
     /** 過去の値の列に使ってよい最も小さいずらし幅 (時系列の予測だけ) */
     min_lag: number | null
     known: string[]

@@ -240,3 +240,13 @@ test('予測を後段の仕組みに渡すと, 後段が求めるものの問い
   await downstream.blur()
   await expect(page.getByText(/予測の使い道: 後段の仕組みに渡す/)).toBeVisible()
 })
+
+test('相手をまとめる列を選ぶと, 分割が相手ごとになって後ろの段階に渡る', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '解約の引き止め' }).click()
+  await page.getByRole('button', { name: /機械学習の受け持ち/ }).click()
+  await page.getByLabel(/同じ相手の行をまとめる列は/).selectOption('member_id')
+  const handoff = page.getByText(/分割は\s*相手ごと/)
+  await expect(handoff).toBeVisible()
+  await expect(page.getByText(/相手をまとめる列\s*member_id/)).toBeVisible()
+})
