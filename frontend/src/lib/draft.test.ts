@@ -1,4 +1,4 @@
-import { decisionDraft, sameDecision, splitLines, toLevers } from './draft'
+import { decisionDraft, decisionFields, sameDecision, splitLines, toLevers } from './draft'
 
 describe('decisionDraft', () => {
   it('型の項目だけを, 空の欄を除いて残す', () => {
@@ -6,6 +6,23 @@ describe('decisionDraft', () => {
       decisionDraft('quantity', { under_cost: ' 200 ', over_cost: '', miss_cost: '9' }),
     ).toEqual({ type: 'quantity', under_cost: '200' })
     expect(decisionDraft('none', { under_cost: '1' })).toEqual({ type: 'none' })
+  })
+})
+
+describe('確率の差の向き', () => {
+  it('効果を確率の差で渡すときだけ向きを残す', () => {
+    const values = { value: '1000', cost: '50', effect: '-0.1', effect_goal: 'reduce' }
+    expect(decisionDraft('select', values)).not.toHaveProperty('effect_goal')
+    expect(decisionFields('select', values).map((f) => f.key)).not.toContain('effect_goal')
+    const uplift = { ...values, effect_kind: 'uplift' }
+    expect(decisionDraft('select', uplift)).toEqual({
+      type: 'select',
+      value: '1000',
+      cost: '50',
+      effect_kind: 'uplift',
+      effect: '-0.1',
+      effect_goal: 'reduce',
+    })
   })
 })
 

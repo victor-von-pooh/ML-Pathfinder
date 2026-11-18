@@ -123,7 +123,11 @@ export function HandoffCard({ problem }: { problem: Problem }) {
                         : key === 'current'
                           ? '今のやり方の列 (たどり直しで比べる)'
                           : key)
-                    }: ${String(value)}`}</Code>
+                    }: ${
+                      DECISION_FIELDS[decision.type]
+                        ?.find((f) => f.key === key)
+                        ?.choices?.find((choice) => choice.value === value)?.label ?? String(value)
+                    }`}</Code>
                   ))}
               </span>
             )}

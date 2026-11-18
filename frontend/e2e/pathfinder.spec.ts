@@ -182,3 +182,24 @@ test('問題の設定のファイルが他で変わると, 読み直して変わ
   // 変わっていない問いの書きかけは残る
   await expect(current).toHaveValue('前の週と同じ数')
 })
+
+test('対象を選ぶ効果を確率の差で書くと, 向きの欄が出て, 保存すると食い違いが無い', async ({
+  page,
+}) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '解約の引き止め' }).click()
+  await page.getByRole('button', { name: /損得と制約/ }).click()
+  await expect(page.getByLabel(/当たりをどうしたいか/)).toHaveCount(0)
+  await page.getByLabel(/効果の渡し方/).selectOption('uplift')
+  await page.getByLabel(/^効果 \(/).fill('-0.1')
+  await page.getByRole('button', { name: '保存' }).first().click()
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText(
+    '向き (effect_goal',
+  )
+  await page.getByLabel(/当たりをどうしたいか/).selectOption('reduce')
+  await page.getByRole('button', { name: '保存' }).first().click()
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).not.toContainText(
+    'effect_goal',
+  )
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText('無作為')
+})
