@@ -324,8 +324,10 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
   const types = question.choices
   const all = types.find((type) => type.value === kind)?.fields ?? []
   const fields = decisionFields(all, values)
-  const draft = kind ? decisionDraft(kind, all, values) : null
-  const dirty = draft ? !sameDecision(draft, saved) : saved !== null
+  const known = types.some((type) => type.value === kind)
+  const draft = kind && known ? decisionDraft(kind, all, values) : null
+  // 知らない型は保存できない (選び直すまで, 保存した答えをそのまま残す)
+  const dirty = kind && !known ? false : draft ? !sameDecision(draft, saved) : saved !== null
   return (
     <div className="flex flex-col gap-3">
       <select
@@ -335,6 +337,10 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
         className={clsx(INPUT, 'h-8 max-w-96')}
       >
         <option value="">型を選ぶ (選ばずに保存すると答えを消す)</option>
+        {/* 手で書いた知らない型も出す (保存で黙って欄を消さないように) */}
+        {kind && !types.some((type) => type.value === kind) && (
+          <option value={kind}>{kind} (知らない型)</option>
+        )}
         {types.map((type) => (
           <option key={type.value} value={type.value}>
             {type.label}
