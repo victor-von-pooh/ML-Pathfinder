@@ -1,6 +1,14 @@
 import type { Choice, Problem } from '../../api/types'
 import { Card } from '../../components/ui'
 
+/** 分割の名前 (ML-EDA の分け方) */
+const SPLITS: Record<string, string> = {
+  time: '時刻の順',
+  group: '相手ごと',
+  random: '無作為',
+  stratified: '層別',
+}
+
 /** 問いの選択肢 (ML-Quest が返すもの) */
 function choicesOf(problem: Problem, id: string): Choice[] {
   return problem.questions.find((question) => question.id === id)?.choices ?? []
@@ -63,8 +71,14 @@ export function HandoffCard({ problem }: { problem: Problem }) {
             <span>
               目的の列 <Code>{data.target}</Code>,{' '}
               {shortLabel(choicesOf(problem, 'ml.task'), data.task)}, 分割は
-              {data.split === 'time' ? '時刻の順' : '無作為'}
+              {SPLITS[data.split] ?? data.split}
             </span>
+            {data.group_column && (
+              <span>
+                相手をまとめる列 <Code>{data.group_column}</Code> (
+                {data.split === 'group' ? '同じ値を同じ分割に' : '分割をまたぐ重なりを確かめる'})
+              </span>
+            )}
             {data.time_column && (
               <span>
                 時刻の列 <Code>{data.time_column}</Code> (読み込みで日時の列に指定)
