@@ -11,7 +11,12 @@ const TASKS: Record<string, string> = {
 
 /** 1 行の値 (コードの形) */
 function Code({ children }: { children: string }) {
-  return <code className="rounded bg-surface-2 px-1 font-mono text-xs">{children}</code>
+  // 長い値 (データの場所など) は欄の中で折り返す
+  return (
+    <code className="rounded bg-surface-2 px-1 font-mono text-xs [overflow-wrap:anywhere]">
+      {children}
+    </code>
+  )
 }
 
 /** 名前の並び */
