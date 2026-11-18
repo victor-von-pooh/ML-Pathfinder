@@ -224,3 +224,19 @@ test('守る指標の名前を書くと, 向きと守る線の問いが出て, �
     .check()
   await expect(page.getByText(/守る指標: 品切れした品と日の割合 \(5 を超えない\)/)).toBeVisible()
 })
+
+test('予測を後段の仕組みに渡すと, 後段が求めるものの問いが出る', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  await page.getByRole('button', { name: /機械学習の受け持ち/ }).click()
+  const downstream = page.getByRole('textbox', { name: '後段は何で, 予測に何を求めますか' })
+  await expect(downstream).toHaveCount(0)
+  await page.getByRole('radio', { name: /後段の仕組みに渡す/ }).check()
+  await expect(downstream).toBeVisible()
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText(
+    '後段が求める形と精度',
+  )
+  await downstream.fill('発注の仕組み. 品ごとの個数')
+  await downstream.blur()
+  await expect(page.getByText(/予測の使い道: 後段の仕組みに渡す/)).toBeVisible()
+})
