@@ -69,7 +69,8 @@ function TextInput({
 
 /**
  * 選択肢とはいかいいえ: 選んだら保存. 選んだ値をすぐ出し, 保存に失敗したら保存した値に戻す.
- * 保存した答えが今の選択肢 (受け持ちなどで絞られる) に無ければ, 印を付けて出す
+ * 保存した答えが今の選択肢 (受け持ちなどで絞られる) に無ければ, 印を付けて出す.
+ * 任意の問いは答えを外して空に戻せる
  */
 function ChoiceInput({ question, onAnswer, errorId, saving }: InputState) {
   const saved =
@@ -116,10 +117,12 @@ function ChoiceInput({ question, onAnswer, errorId, saving }: InputState) {
           {choice.label}
         </label>
       ))}
-      {stale && (
+      {/* 合わない答えと, 任意の問いの答え (分からなければ空に戻せるように) は外せる */}
+      {(stale || (!question.required && saved !== '')) && (
         <button
           type="button"
           disabled={saving}
+          aria-describedby={`t-${question.id}`}
           onClick={() => onAnswer(null)}
           className="self-start text-xs text-accent-text underline"
         >

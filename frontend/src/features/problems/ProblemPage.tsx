@@ -12,6 +12,7 @@ import { LEVEL_NAMES } from '../../lib/labels'
 import { HandoffCard } from './HandoffCard'
 import { ProjectDialog } from './ProjectDialog'
 import { QuestionField } from './QuestionField'
+import { RequiresCard } from './RequiresCard'
 
 /** 確かめの重さの見た目 */
 const LEVEL_STYLE: Record<Finding['level'], string> = {
@@ -408,6 +409,7 @@ export function ProblemPage() {
           の「機械学習を使いますか」を変えると続けられます).
         </div>
       )}
+      <RequiresCard requires={problem.requires} />
       <div className="grid gap-6 xl:grid-cols-[14rem_minmax(0,1fr)_24rem]">
         <SectionList problem={problem} current={section} onSelect={select} />
         <Card

@@ -112,6 +112,45 @@ export interface Part {
   method: string | null
 }
 
+/** 方策の守り (効果を見積もるで方策と答えたときだけ. ML-Found の make_guards と同じ名前) */
+export interface Policy {
+  /** 行動の上限 (文. 学習の段階で数にする) */
+  action_limits: string | null
+  /** 1 歩ごとに方策の出力を止める条件 (文) */
+  stop: string | null
+  /** 外れたときの動き (stop, handover, action) */
+  fallback: string | null
+  /** fallback が action のときの決めた行動 */
+  fallback_action: string | number | number[] | null
+  /** 安全の違反の信号の名前 (答えていなければ cost) */
+  safety_key: string | null
+  /** 方策を使ってよいかと守りの範囲を決める人 */
+  approver: string | null
+}
+
+/** 要る機能の入れ方 (ML-Found の登録簿 describe_requirements から) */
+export interface FeatureInstall {
+  /** pip で入るか, 公式の手順に従うか */
+  kind: 'pip' | 'guide' | null
+  command: string | null
+  /** ML-Found の追加の依存として入れるコマンド */
+  extra_command: string | null
+  url: string | null
+}
+
+/** 要る機能 1 つ (ML-Quest の required_features. 受け渡しの前から出る) */
+export interface FeatureRequirement {
+  name: string
+  /** ML-Quest の FEATURES の名前 */
+  label: string
+  description: string | null
+  /** 入れ方 (ML-Found が無ければ null) */
+  install: FeatureInstall | null
+  note: string | null
+  /** 入れ方の出どころ */
+  source: 'ml_found' | 'ml_quest'
+}
+
 /** 後ろの段階ごとの値 (列の予測でなければ, data の目的の列, タスク, 分割は null) */
 export interface Handoff {
   part: Part
@@ -153,6 +192,10 @@ export interface Handoff {
     conclusion: Record<string, unknown>
     horizon: number | null
   }
+  /** 要る機能の名前 (ML-Quest の FEATURES) */
+  requires: string[]
+  /** 方策の守り (方策でなければ null) */
+  policy: Policy | null
 }
 
 /** 問題の設定の全て */
@@ -168,6 +211,8 @@ export interface Problem {
   summary: string[]
   handoff: Handoff | null
   handoff_error: string | null
+  /** 要る機能と入れ方 (答えの途中から. 学習の段階の準備) */
+  requires: FeatureRequirement[]
   ready: boolean
   /** 学習のプロジェクトの骨組みを書き出せるか (列の予測で, 指標がその他でない) */
   exportable: boolean

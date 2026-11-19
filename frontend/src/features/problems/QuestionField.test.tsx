@@ -35,4 +35,27 @@ describe('QuestionField', () => {
     fireEvent.click(screen.getByRole('button', { name: '答えを外す' }))
     expect(onAnswer).toHaveBeenCalledWith(null)
   })
+
+  it('任意のはいかいいえの問いは, 答えた後に外せる (答えていなければ出さない)', () => {
+    const onAnswer = vi.fn()
+    const gpu: Question = {
+      id: 'ml.gpu',
+      section: 7,
+      kind: 'boolean',
+      title: 'GPU (CUDA) が要りますか',
+      help: '',
+      required: false,
+      choices: [],
+      value: true,
+      answered: true,
+      applies: true,
+    }
+    const props = { columns: [], findings: [], saving: false, error: null, onAnswer }
+    const { rerender } = render(<QuestionField question={gpu} {...props} />)
+    expect(screen.getByLabelText('はい')).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: '答えを外す' }))
+    expect(onAnswer).toHaveBeenCalledWith(null)
+    rerender(<QuestionField question={{ ...gpu, value: null, answered: false }} {...props} />)
+    expect(screen.queryByRole('button', { name: '答えを外す' })).not.toBeInTheDocument()
+  })
 })
