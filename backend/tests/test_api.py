@@ -5,11 +5,13 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+import ml_eda
 import ml_quest
 import pandas as pd
 import pytest
 import yaml
 from fastapi.testclient import TestClient
+from ml_eda import synthetic
 
 from ml_pathfinder import api
 from ml_pathfinder.app import create_app
@@ -431,19 +433,17 @@ def test_items_dataset(client: TestClient, tmp_path: Path) -> None:
     ----------
     None
     """
-    # 合成の撮影と点群, 画像と領域から版 2 のデータセット (テスト用なし)
-    eda = pytest.importorskip("ml_eda")
-    synthetic = pytest.importorskip("ml_eda.synthetic")
-    pytest.importorskip("PIL")
+    # 合成の撮影と点群, 画像と領域から版 2 のデータセット (テスト用なし.
+    # ML-EDA と Pillow は ml-quest[data] の依存なので飛ばさない)
     split = {"method": "random", "valid": 0.25, "seed": 0}
     synthetic.write_shape_captures(tmp_path / "raw_c", count=6, views=3,
                                    size=(16, 16), points=64)
-    eda.export_capture_clouds(
+    ml_eda.export_capture_clouds(
         tmp_path / "raw_c" / "captures", tmp_path / "raw_c" / "clouds",
         tmp_path / "clouds", split=split
     )
     synthetic.write_image_masks(tmp_path / "raw_m", count=6, size=(16, 16))
-    eda.export_image_masks(
+    ml_eda.export_image_masks(
         tmp_path / "raw_m" / "images", tmp_path / "raw_m" / "masks",
         tmp_path / "masks", split={"method": "random", "valid": 0.0,
                                    "seed": 0},

@@ -8,7 +8,10 @@ import { Dialog } from '../../components/Dialog'
 import { PathField } from '../../components/PathPicker'
 import { Button, ErrorBox } from '../../components/ui'
 
-/** ファイルの組 (ML-EDA の版 2 のデータセットで学ぶ) の正解の種類 */
+/**
+ * ファイルの組 (ML-EDA の版 2 のデータセットで学ぶ) の正解の種類. ML-Quest の ITEMS_KINDS の写しで,
+ * 説明の文の出し分けだけに使う (書き出せるかの決まりは project_error だけが持つ)
+ */
 const ITEMS_KINDS = ['mask', 'point_cloud']
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
