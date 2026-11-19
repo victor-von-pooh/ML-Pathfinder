@@ -6,6 +6,8 @@ export interface Entry {
   size: number | null
   /** ML-Found のプロジェクトのディレクトリか */
   project: boolean
+  /** ML-EDA のデータセットのディレクトリ (dataset.yaml を持つ) か */
+  dataset: boolean
 }
 
 /** ディレクトリの中身 */
@@ -214,9 +216,12 @@ export interface Problem {
   /** 要る機能と入れ方 (答えの途中から. 学習の段階の準備) */
   requires: FeatureRequirement[]
   ready: boolean
-  /** 学習のプロジェクトの骨組みを書き出せるか (列の予測で, 指標がその他でない) */
+  /**
+   * 学習のプロジェクトの骨組みを書き出せるか (列の予測か, 予測するの画像の領域と点群で,
+   * 指標がその他でなく, 入れたデータセットが受け持ちに合う. 決まりは ML-Quest の project_error)
+   */
   exportable: boolean
-  /** 渡せるのに書き出せない理由 */
+  /** 渡せるのに書き出せない理由 (ML-Quest の project_error の文) */
   export_error: string | null
   finished: boolean
   /** ファイルに書いてある版 (古い版は ML-Quest が移して読み, 次の保存で今の版に) */
@@ -257,7 +262,10 @@ export interface Suggestion {
   reason: string
 }
 
-/** 入れたデータからの概要, 答えの候補, 確かめ */
+/**
+ * 入れたデータからの概要, 答えの候補, 確かめ (ML-EDA の版 2 のデータセットは表でないので,
+ * 概要は null で, 件数と正解の種類, 合わない理由, 検証用の分割が無いことを確かめで知らせる)
+ */
 export interface Insight {
   overview: {
     rows: number

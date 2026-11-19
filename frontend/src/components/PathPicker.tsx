@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { ArrowUp, File, Folder, Home, Package } from 'lucide-react'
+import { ArrowUp, Database, File, Folder, Home, Package } from 'lucide-react'
 import { useState } from 'react'
 
 import { api } from '../api/client'
@@ -8,7 +8,10 @@ import { formatBytes } from '../lib/format'
 import { Dialog } from './Dialog'
 import { Button, ErrorBox, Spinner } from './ui'
 
-/** 手元のファイルかディレクトリを選ぶ対話 (ML-Found のプロジェクトのディレクトリには印) */
+/**
+ * 手元のファイルかディレクトリを選ぶ対話 (ML-Found のプロジェクトと, ML-EDA のデータセットの
+ * ディレクトリには印)
+ */
 export function PathPicker({
   title,
   description,
@@ -114,6 +117,8 @@ export function PathPicker({
               >
                 {entry.project ? (
                   <Package size={14} className="text-accent" aria-hidden />
+                ) : entry.dataset ? (
+                  <Database size={14} className="text-accent" aria-hidden />
                 ) : entry.is_dir ? (
                   <Folder size={14} className="text-accent" aria-hidden />
                 ) : (
@@ -121,6 +126,7 @@ export function PathPicker({
                 )}
                 <span className="flex-1 truncate font-mono">{entry.name}</span>
                 {entry.project && <span className="text-xs text-accent-text">プロジェクト</span>}
+                {entry.dataset && <span className="text-xs text-accent-text">データセット</span>}
                 {!entry.is_dir && (
                   <span className="text-xs text-ink-3">{formatBytes(entry.size)}</span>
                 )}

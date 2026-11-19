@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 import { expect, test, type Page } from '@playwright/test'
 
@@ -276,7 +276,7 @@ test('相手をまとめる列を選ぶと, 分割が相手ごとになって後
   await expect(page.getByText(/相手をまとめる列\s*member_id/)).toBeVisible()
 })
 
-test('予測するで点群の正解が今の処理の出力なら, 処理を問い, 受け持ちの値を渡す', async ({
+test('予測するで点群の正解が今の処理の出力なら, 処理を問い, データセットを入れて書き出す', async ({
   page,
 }) => {
   await page.goto('/api/auth?token=e2e-token')
@@ -344,7 +344,7 @@ test('予測するで点群の正解が今の処理の出力なら, 処理を問
   await expect(page.getByRole('radio', { name: /平均絶対誤差/ })).toHaveCount(0)
   await choose(page, '最も良いモデルを何で選びますか', /Chamfer/)
 
-  // 受け持ち, 正解の種類と出どころ, 処理, 指標が渡り, 骨組みは書き出せない
+  // 受け持ち, 正解の種類と出どころ, 処理, 指標が渡り, データが無くても骨組みを書き出せる
   const card = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
@@ -354,8 +354,46 @@ test('予測するで点群の正解が今の処理の出力なら, 処理を問
   await expect(card).toContainText('正解を作る処理 今の計算')
   await expect(card).toContainText('処理の設定: 既定の設定')
   await expect(card).toContainText('valid/chamfer')
-  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeDisabled()
-  await expect(page.locator('#export-reason')).toContainText('表の列')
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
+  await expect(page.locator('#export-reason')).toHaveCount(0)
+
+  // ML-EDA の版 2 のデータセットのディレクトリ (serve.sh が書き出したもの) を選んで入れる
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^5\b/ })
+    .click()
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const picker = page.getByRole('dialog')
+  await picker.getByLabel('パス').fill(`${process.cwd()}/e2e/.work`)
+  await picker.getByRole('button', { name: '移動' }).click()
+  const entry = picker.getByRole('button', { name: /^clouds\s*データセット$/ })
+  await expect(entry).toBeVisible()
+  await entry.click()
+  await picker.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(picker).toHaveCount(0)
+
+  // 表の概要の代わりに, 件数と正解の種類を確かめで知らせる
+  const checks = page.getByRole('list', { name: '手元のデータは の確かめ' })
+  await expect(checks).toContainText('ML-EDA の版 2 のデータセット', { timeout: 20_000 })
+  await expect(checks).toContainText('point_cloud')
+  await expect(page.getByText(/\d+ 行, \d+ 列/)).toHaveCount(0)
+
+  // 書き出すとスクリプト, config, README とデータセットの写しができる (学習はしない)
+  await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
+  const dialog = page.getByRole('dialog')
+  const target = `${process.cwd()}/e2e/.work/cloud-project`
+  await dialog.getByLabel('書き出すディレクトリ (無ければ作る)').fill(target)
+  await dialog.getByRole('button', { name: '書き出す' }).click()
+  await expect(dialog.getByRole('status')).toContainText('train.py')
+  await expect(dialog.getByRole('status')).toContainText('model.spec')
+  for (const file of [
+    'train.py',
+    'README.md',
+    'configs/default/train.yaml',
+    'data/clouds/dataset.yaml',
+  ])
+    expect(existsSync(`${target}/${file}`), file).toBe(true)
+  expect(readFileSync(`${target}/configs/default/train.yaml`, 'utf8')).toContain('data/clouds')
 })
 
 test('最良を選ぶ指標をその他にすると, 名前と向きを問い, 監視する指標に渡す', async ({ page }) => {

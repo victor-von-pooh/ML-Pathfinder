@@ -289,32 +289,21 @@ def test_version_one_file(client: TestClient, tmp_path: Path) -> None:
     assert imported.status_code == 400
 
 
-def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
+def cloud_answers() -> dict[str, Any]:
     """
-    列の予測でない受け持ちと, 最良を選ぶ指標のその他を受け渡せ, 骨組み
-    は書き出せないことを確かめる関数
+    予測するで点群 (正解は今の処理の出力) の問題の設定の答えを返す関数
 
     Parameters
     ----------
-    client: TestClient
-        利用者
-    tmp_path: Path
-        一時ディレクトリ
+    None
 
     Returns
     ----------
-    None
+    answers: dict[str, Any]
+        問いの場所から答え (受け渡せるまで)
     """
-    # 新しい問題の設定は, 受け持ちと正解の種類に答えるまで列の問いが出ない
+    # 受け持ちの場所
     part = ml_quest.PART
-    view = client.post("/api/problems", json={"name": "形"}).json()
-    url = f"/api/problems/{view['id']}"
-    view = client.put(f"{url}/answers",
-                      json={"id": "ml.use", "value": True}).json()
-    applies = {q["id"]: q["applies"] for q in view["questions"]}
-    assert applies[f"{part}.role"] and not applies[f"{part}.task"]
-
-    # 予測するで点群, 正解は今の処理の出力
     answers = {
         "issue.owner": "設計の係", "issue.pain": "計算に時間がかかる",
         "issue.current": "毎回計算する", "issue.kpi.name": "待ち時間",
@@ -339,6 +328,37 @@ def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
         "operation.review": "月に 1 回", "operation.approver": "係の長",
         "operation.stop": "外れが増えたら",
     }
+
+    return answers
+
+
+def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
+    """
+    列の予測でない受け持ちと, 最良を選ぶ指標のその他を受け渡せ, 点群の
+    骨組みは書き出せ, 作るとその他の指標は書き出せないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 新しい問題の設定は, 受け持ちと正解の種類に答えるまで列の問いが出ない
+    part = ml_quest.PART
+    view = client.post("/api/problems", json={"name": "形"}).json()
+    url = f"/api/problems/{view['id']}"
+    view = client.put(f"{url}/answers",
+                      json={"id": "ml.use", "value": True}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert applies[f"{part}.role"] and not applies[f"{part}.task"]
+
+    # 予測するで点群, 正解は今の処理の出力
+    answers = cloud_answers()
     for key, value in answers.items():
         response = client.put(f"{url}/answers",
                               json={"id": key, "value": value})
@@ -352,10 +372,30 @@ def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
     }
     assert handoff["data"]["target"] is None
     assert handoff["training"]["monitor"] == "valid/chamfer"
-    assert view["exportable"] is False and "表の列" in view["export_error"]
-    refused = client.post(f"{url}/project",
+    # データ無しでも点群の骨組みは書き出せる (README で書き出しを案内)
+    assert view["exportable"] is True and view["export_error"] is None
+    written = client.post(f"{url}/project",
                           json={"path": str(tmp_path / "p")})
+    assert written.status_code == 200, written.json()
+    assert "train.py" in written.json()["files"]
+    config = yaml.safe_load((tmp_path / "p" / "configs" / "default"
+                             / "train.yaml").read_text(encoding="utf-8"))
+    assert config["data"]["dataset"] == "outputs/dataset"
+
+    # 作るの受け持ちは書き出せない (誤りの文は project_error のまま)
+    view = client.put(f"{url}/answers", json={"id": f"{part}.role",
+                                             "value": "generate"}).json()
+    assert view["ready"] is True, view["handoff_error"]
+    assert view["exportable"] is False
+    assert view["export_error"] == ml_quest.project_error(
+        ml_quest.load_problem(tmp_path / "home" / "problems" / view["id"]
+                              / "problem.yaml")
+    )
+    assert "まだ扱えません" in view["export_error"]
+    refused = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "g")})
     assert refused.status_code == 400
+    assert refused.json()["detail"] == view["export_error"]
 
     # その他の指標は名前と向きで監視する. 骨組みは書き出せない
     examples = client.get("/api/info").json()["examples"]
@@ -373,6 +413,88 @@ def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
         "role": "predict", "target_kind": "column",
     }
     assert view["exportable"] is False and "その他" in view["export_error"]
+
+
+def test_items_dataset(client: TestClient, tmp_path: Path) -> None:
+    """
+    ML-EDA の版 2 のデータセットのディレクトリを入れ, 知らせと骨組みの
+    書き出しを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 合成の撮影と点群, 画像と領域から版 2 のデータセット (テスト用なし)
+    eda = pytest.importorskip("ml_eda")
+    synthetic = pytest.importorskip("ml_eda.synthetic")
+    pytest.importorskip("PIL")
+    split = {"method": "random", "valid": 0.25, "seed": 0}
+    synthetic.write_shape_captures(tmp_path / "raw_c", count=6, views=3,
+                                   size=(16, 16), points=64)
+    eda.export_capture_clouds(
+        tmp_path / "raw_c" / "captures", tmp_path / "raw_c" / "clouds",
+        tmp_path / "clouds", split=split
+    )
+    synthetic.write_image_masks(tmp_path / "raw_m", count=6, size=(16, 16))
+    eda.export_image_masks(
+        tmp_path / "raw_m" / "images", tmp_path / "raw_m" / "masks",
+        tmp_path / "masks", split={"method": "random", "valid": 0.0,
+                                   "seed": 0},
+        classes={0: "background", 1: "circle", 2: "square"}
+    )
+
+    # 点群の問題に点群のデータセット: 読み方は items, 概要は空で件数
+    view = client.post("/api/problems", json={"name": "形"}).json()
+    url = f"/api/problems/{view['id']}"
+    client.put(f"{url}/answers", json={"id": "ml.use", "value": True})
+    for key, value in cloud_answers().items():
+        response = client.put(f"{url}/answers",
+                              json={"id": key, "value": value})
+        assert response.status_code == 200, (key, response.json())
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "clouds")}).json()
+    saved = ml_quest.load_problem(tmp_path / "home" / "problems"
+                                  / view["id"] / "problem.yaml")
+    assert saved["data"]["loader"] == "items"
+    assert Path(saved["data"]["source"], "dataset.yaml").is_file()
+    found = client.get(f"{url}/insight").json()
+    assert found["overview"] is None and found["suggestions"] == []
+    assert [f["level"] for f in found["findings"]] == ["info"]
+    assert "point_cloud" in found["findings"][0]["message"]
+
+    # 書き出すとデータセットを data/ に写して読む
+    assert view["exportable"] is True and view["export_error"] is None
+    target = tmp_path / "project"
+    result = client.post(f"{url}/project", json={"path": str(target)})
+    assert result.status_code == 200, result.json()
+    assert {"train.py", "README.md", "configs/default/train.yaml"} <= set(
+        result.json()["files"]
+    )
+    assert (target / "data" / "clouds" / "dataset.yaml").is_file()
+    config = yaml.safe_load((target / "configs" / "default" / "train.yaml")
+                            .read_text(encoding="utf-8"))
+    assert config["data"]["dataset"] == "data/clouds"
+
+    # 種類の違うデータセット (検証用の分割も無い) は誤りと警告
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "masks")}).json()
+    assert view["exportable"] is False
+    assert "入れたデータセット" in view["export_error"]
+    levels = [f["level"] for f in client.get(f"{url}/insight").json()[
+        "findings"
+    ]]
+    assert levels == ["info", "error", "warning"]
+    refused = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "never")})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == view["export_error"]
 
 
 def fake_describe(
@@ -504,7 +626,8 @@ def test_requires_and_policy(
 
 def test_browse(client: TestClient, tmp_path: Path) -> None:
     """
-    ディレクトリの中身を, プロジェクトの印付きで返すことを確かめる関数
+    ディレクトリの中身を, プロジェクトとデータセットの印付きで返すことを
+    確かめる関数
 
     Parameters
     ----------
@@ -522,9 +645,14 @@ def test_browse(client: TestClient, tmp_path: Path) -> None:
     (tmp_path / "p" / "configs" / "default" / "train.yaml").write_text(
         "{}", encoding="utf-8"
     )
+    # dataset.yaml を持つディレクトリ (ML-EDA のデータセット)
+    (tmp_path / "d").mkdir()
+    (tmp_path / "d" / "dataset.yaml").write_text("{}", encoding="utf-8")
     listing = client.get("/api/browse", params={"path": str(tmp_path)})
     entries = {e["name"]: e for e in listing.json()["entries"]}
     assert entries["p"]["project"] is True
+    assert entries["p"]["dataset"] is False
+    assert entries["d"]["dataset"] is True and entries["d"]["project"] is False
     assert client.get("/api/browse", params={
         "path": str(tmp_path / "none")
     }).status_code == 404

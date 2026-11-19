@@ -602,8 +602,8 @@ def browse(path: str = "~") -> dict[str, Any]:
     Returns
     ----------
     listing: dict[str, Any]
-        path, parent, home, entries (名前, 場所, ディレクトリか, 大きさ),
-        truncated
+        path, parent, home, entries (名前, 場所, ディレクトリか, 大きさ,
+        プロジェクトか, データセットか), truncated
 
     Raises
     ----------
@@ -645,7 +645,8 @@ def entry_of(child: Path) -> Optional[dict[str, Any]]:
     Returns
     ----------
     entry: Optional[dict[str, Any]]
-        名前, 場所, ディレクトリか, 大きさ, ML-Found のプロジェクトか
+        名前, 場所, ディレクトリか, 大きさ, ML-Found のプロジェクトか,
+        ML-EDA のデータセット (dataset.yaml を持つディレクトリ) か
         (読めなければ None)
     """
     # 権限の無い子は除く (macOS の守られたディレクトリなど)
@@ -657,6 +658,7 @@ def entry_of(child: Path) -> Optional[dict[str, Any]]:
             "project": is_dir and (
                 child / "configs" / "default" / "train.yaml"
             ).is_file(),
+            "dataset": is_dir and (child / "dataset.yaml").is_file(),
         }
     except OSError:
         entry = None
@@ -973,7 +975,8 @@ def attach_data(
     problem_id: str
         識別子
     body: PathRequest
-        データの場所 (ファイルか, 画像などのディレクトリ)
+        データの場所 (ファイルか, 画像などのディレクトリか, ML-EDA の版 2
+        のデータセットのディレクトリ)
 
     Returns
     ----------
