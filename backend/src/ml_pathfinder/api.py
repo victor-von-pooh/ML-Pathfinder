@@ -10,7 +10,9 @@ import ml_quest
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
+from ml_quest.check import is_column_part
 from ml_quest.data import COPY_NAME
+from ml_quest.problem import active_value
 from pydantic import BaseModel, Field
 
 from ml_pathfinder.store import ID_PATTERN, READ_ERRORS, Store
@@ -144,12 +146,54 @@ def load_or_404(store: Store, problem_id: str) -> dict[str, Any]:
     except KeyError as error:
         raise HTTPException(404, "問題の設定が見つかりません") from error
     except READ_ERRORS as error:
-        raise HTTPException(
-            422, "問題の設定のファイルが壊れています "
-            f"({user_error(error).detail}). 消すか, ファイルを直してください"
-        ) from error
+        raise read_failure(store, problem_id, error) from error
 
     return problem
+
+
+def read_failure(
+    store: Store, problem_id: str, error: Exception
+) -> HTTPException:
+    """
+    読めない問題の設定のファイルの 422 を作る関数
+
+    知っている版より新しいファイルは壊れていないので, 消すことを勧めず,
+    アプリを新しくするように伝える (新しいアプリが書いた正しいファイルを
+    消さないように)
+
+    Parameters
+    ----------
+    store: Store
+        置き場
+    problem_id: str
+        識別子
+    error: Exception
+        読めない理由
+
+    Returns
+    ----------
+    failure: HTTPException
+        422 と, 新しい版か壊れているかの文
+    """
+    # ファイルに書いてある版 (読めなければ壊れたもの)
+    try:
+        written = store.file_version(problem_id)
+    except (*READ_ERRORS, KeyError):
+        written = None
+    if written is not None and written > ml_quest.FORMAT_VERSION:
+        failure = HTTPException(
+            422, f"新しい版 (format_version: {written}) の問題の設定です. "
+            f"このアプリが読めるのは版 {ml_quest.FORMAT_VERSION} までです. "
+            "ファイルは壊れていないので消さずに, ML-Pathfinder を新しく"
+            "してから開いてください"
+        )
+    else:
+        failure = HTTPException(
+            422, "問題の設定のファイルが壊れています "
+            f"({user_error(error).detail}). 消すか, ファイルを直してください"
+        )
+
+    return failure
 
 
 def exists_or_404(store: Store, problem_id: str) -> None:
@@ -314,14 +358,13 @@ def export_error_of(
     reason: Optional[str]
         書き出せない理由 (書き出せるか, 渡せない場合は None)
     """
-    # 列の予測でないものは model の task が None
-    metric = ml_quest.get_value(
-        problem, f"{ml_quest.PART}.evaluation.metric"
-    )
+    # ML-Quest の make_project と同じ条件 (列の予測か, 要らない問いの古い
+    # 答えを除いた指標)
+    metric = active_value(problem, f"{ml_quest.PART}.evaluation.metric")
     reason: Optional[str] = None
     if handoff is None:
         reason = None
-    elif handoff["model"].get("task") is None:
+    elif not is_column_part(problem):
         reason = (
             "学習のプロジェクトの骨組みは, 列の予測 (予測するで, 正解の"
             "種類が表の列) だけ書き出せます"
@@ -369,10 +412,7 @@ def view_of(store: Store, problem_id: str) -> dict[str, Any]:
     except FileNotFoundError as error:
         raise HTTPException(404, "問題の設定が見つかりません") from error
     except READ_ERRORS as error:
-        raise HTTPException(
-            422, "問題の設定のファイルが壊れています "
-            f"({user_error(error).detail}). 消すか, ファイルを直してください"
-        ) from error
+        raise read_failure(store, problem_id, error) from error
     view = {**problem_view(problem_id, problem), "version": version,
             "file_version": written}
 

@@ -278,7 +278,9 @@ def test_version_one_file(client: TestClient, tmp_path: Path) -> None:
     # 知っている版より新しいファイルは開かない (黙って読み違えない)
     path.write_text("format_version: 3\nname: 新しい\n", encoding="utf-8")
     newer = client.get(url)
-    assert newer.status_code == 422 and "新しい版" in newer.json()["detail"]
+    detail = newer.json()["detail"]
+    assert newer.status_code == 422 and "新しい版" in detail
+    assert "壊れています" not in detail and "消さずに" in detail
     imported = client.post("/api/problems/import", json={"path": str(path)})
     assert imported.status_code == 400
 

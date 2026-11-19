@@ -81,10 +81,10 @@ function ChoiceInput({ question, onAnswer, errorId, saving }: InputState) {
           { value: 'false', label: 'いいえ' },
         ]
       : question.choices
-  const choices =
-    saved && !offered.some((choice) => choice.value === saved)
-      ? [...offered, { value: saved, label: `${saved} (今の答えに合いません. 選び直してください)` }]
-      : offered
+  const stale = saved !== '' && !offered.some((choice) => choice.value === saved)
+  const choices = stale
+    ? [...offered, { value: saved, label: `${saved} (今の答えに合いません. 選び直してください)` }]
+    : offered
   // 保存した値が変わったら, 選んだだけの値を捨てる (前の値と比べて描画の中で)
   const [picked, setPicked] = useState<string | null>(null)
   const [base, setBase] = useState(saved)
@@ -116,6 +116,16 @@ function ChoiceInput({ question, onAnswer, errorId, saving }: InputState) {
           {choice.label}
         </label>
       ))}
+      {stale && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => onAnswer(null)}
+          className="self-start text-xs text-accent-text underline"
+        >
+          答えを外す
+        </button>
+      )}
     </div>
   )
 }

@@ -355,7 +355,7 @@ export function ProblemPage() {
       {!problem.exportable && !problem.finished && (
         <p id="export-reason" className="-mt-4 mb-4 text-xs text-ink-3">
           {problem.ready
-            ? `${problem.export_error ?? ''}. 後ろの段階に渡す値は右に出ています.`
+            ? `${problem.export_error ?? ''}. 後ろの段階に渡す値は「後ろの段階に渡す値」の欄で見られます.`
             : errorCount > 0
               ? `直すところが ${errorCount} 件残っているので, 学習のプロジェクトはまだ書き出せません.`
               : '学習のプロジェクトは, 機械学習を使うと決めて直すところが無くなると書き出せます.'}
@@ -369,7 +369,8 @@ export function ProblemPage() {
             className="mb-4 rounded-lg border border-line bg-surface-2 px-4 py-2 text-xs"
           >
             版 {problem.file_version} の問題の設定のファイルです. 今の版 ({formatVersion})
-            に移して開いています. 次に答えを保存すると, 版 {formatVersion} で書きます.
+            に移して開いています. 次にこの問題の設定を変えると (答え, 名前, データ), 版{' '}
+            {formatVersion} で書きます.
           </p>
         )}
       {renaming !== null && (
