@@ -154,8 +154,9 @@ describe('HandoffCard', () => {
     expect(screen.getByText('外れたときの動き: 元の制御に戻す')).toBeInTheDocument()
     expect(screen.getByText('安全の違反の信号: cost')).toBeInTheDocument()
     expect(screen.queryByText(/決めた行動:/)).not.toBeInTheDocument()
-    expect(screen.getByRole('note')).toHaveTextContent(/人 \(設備の責任者\) が決めます/)
-    expect(screen.getByRole('note')).toHaveTextContent(/実機で動かすのは道具の外/)
+    expect(screen.getByText(/人 \(設備の責任者\) が決めます/)).toHaveTextContent(
+      /実機で動かすのは道具の外/,
+    )
     expect(screen.getByText('強化学習, mujoco')).toBeInTheDocument()
   })
 

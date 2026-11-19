@@ -122,6 +122,7 @@ function ChoiceInput({ question, onAnswer, errorId, saving }: InputState) {
         <button
           type="button"
           disabled={saving}
+          aria-describedby={`t-${question.id}`}
           onClick={() => onAnswer(null)}
           className="self-start text-xs text-accent-text underline"
         >

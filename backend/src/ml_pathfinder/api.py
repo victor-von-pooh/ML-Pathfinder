@@ -408,7 +408,9 @@ def requires_of(problem: dict[str, Any]) -> list[dict[str, Any]]:
     return items
 
 
-def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
+def problem_view(
+    problem_id: str, problem: dict[str, Any], with_requires: bool = True
+) -> dict[str, Any]:
     """
     問題の設定と, 問い, 確かめ, 要約, 受け渡しをまとめる関数
 
@@ -418,6 +420,9 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         識別子
     problem: dict[str, Any]
         問題の設定
+    with_requires: bool = True
+        要る機能と入れ方を含める場合は True (一覧では使わないので False.
+        ML-Found の読み込みを一覧で起こさないため)
 
     Returns
     ----------
@@ -450,7 +455,7 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         "summary": ml_quest.describe(problem),
         "handoff": handoff,
         "handoff_error": reason,
-        "requires": requires_of(problem),
+        "requires": requires_of(problem) if with_requires else [],
         "ready": handoff is not None,
         "exportable": handoff is not None and export_error is None,
         "export_error": export_error,
@@ -520,7 +525,7 @@ def list_item(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         一覧の 1 行
     """
     # 画面の一覧に要るものだけ
-    view = problem_view(problem_id, problem)
+    view = problem_view(problem_id, problem, with_requires=False)
     item = {key: view[key] for key in (
         "id", "name", "updated_at", "uses_ml", "progress", "ready",
         "finished"

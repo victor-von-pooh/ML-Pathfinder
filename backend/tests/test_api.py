@@ -395,7 +395,7 @@ def fake_describe(
     """
     # 確かめないで呼ばれること. 知らない名前は登録簿と同じく誤り
     assert check is False
-    entries = []
+    entries: list[dict[str, Any]] = []
     for name in names:
         if name == "ros2":
             raise ValueError("機能 ros2 は登録されていません")
@@ -455,7 +455,7 @@ def test_requires_and_policy(
     assert "Gymnasium" in first["label"] and "ML-Found" in first["note"]
 
     # 残りに答えると, 受け渡しに要る機能と守りが乗る
-    answers = [("unit", "row"), ("output", "effect"),
+    answers: list[tuple[str, Any]] = [("unit", "row"), ("output", "effect"),
                ("target.source", "intervention"), ("method", "scratch"),
                ("what", "試しの出力"), ("item", "1 件"),
                ("baseline", "今のやり方"), ("evaluation.metric", "qini"),

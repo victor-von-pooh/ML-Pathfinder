@@ -38,7 +38,9 @@ function FeatureAction({ item }: { item: FeatureRequirement }) {
           )}
         </div>
       )}
-      {!install && <p className="text-xs">次の一手: 学習を始める前に, 学習の環境に入れる</p>}
+      {(!install || install.kind === null || (install.kind === 'pip' && !install.command)) && (
+        <p className="text-xs">次の一手: 学習を始める前に, 学習の環境に入れる</p>
+      )}
       {install?.kind === 'guide' && (
         <p className="text-xs">
           次の一手: pip では入らないので, 公式の手順に従って学習の環境に入れる
@@ -70,7 +72,7 @@ export function RequiresCard({ requires }: { requires: FeatureRequirement[] }) {
   return (
     <section
       aria-labelledby="requires-title"
-      className="mb-4 rounded-xl border border-warning/40 bg-warning/5 p-4"
+      className="mb-4 rounded-xl border border-accent/30 bg-accent-soft p-4"
     >
       <h2 id="requires-title" className="flex items-center gap-1.5 text-sm font-semibold">
         <Wrench className="size-4" aria-hidden />

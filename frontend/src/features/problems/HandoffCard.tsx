@@ -110,8 +110,11 @@ function PolicyRow({ problem }: { problem: Problem }) {
               {name}: {value}
             </span>
           ))}
-        <span role="note" className="text-xs text-ink-2">
-          方策を使ってよいかと守りの範囲は, 人 ({policy.approver ?? '決める人'}) が決めます.
+        <span className="text-xs text-ink-2">
+          方策を使ってよいか (実機に出してよいか) と守りの範囲は,{' '}
+          {policy.approver
+            ? `人 (${policy.approver}) が決めます.`
+            : '人が決めます (決める人はまだ答えていません).'}
           道具は方策を作り, 確かめ, 守りと一緒に書き出すところまでで, 実機で動かすのは道具の外です.
         </span>
       </dd>
