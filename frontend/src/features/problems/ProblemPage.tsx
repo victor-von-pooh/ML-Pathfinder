@@ -174,6 +174,9 @@ export function ProblemPage() {
   const navigate = useNavigate()
   const client = useQueryClient()
   const query = useQuery({ queryKey: ['problem', id], queryFn: () => api.problem(id) })
+  // 今の問題の設定の形の版 (ファイルが古い版なら知らせるため. ML-Quest の版)
+  const info = useQuery({ queryKey: ['info'], queryFn: api.info })
+  const formatVersion = info.data?.format_version
   const [section, setSection] = useState(1)
   const [exporting, setExporting] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -333,8 +336,8 @@ export function ProblemPage() {
             <Button
               variant="primary"
               icon={FolderOutput}
-              disabled={!problem.ready}
-              aria-describedby={problem.ready ? undefined : 'export-reason'}
+              disabled={!problem.exportable}
+              aria-describedby={problem.exportable ? undefined : 'export-reason'}
               onClick={() => setExporting(true)}
             >
               学習のプロジェクトを書き出す
@@ -349,13 +352,27 @@ export function ProblemPage() {
           </div>
         }
       />
-      {!problem.ready && !problem.finished && (
+      {!problem.exportable && !problem.finished && (
         <p id="export-reason" className="-mt-4 mb-4 text-xs text-ink-3">
-          {errorCount > 0
-            ? `直すところが ${errorCount} 件残っているので, 学習のプロジェクトはまだ書き出せません.`
-            : '学習のプロジェクトは, 機械学習を使うと決めて直すところが無くなると書き出せます.'}
+          {problem.ready
+            ? `${problem.export_error ?? ''}. 後ろの段階に渡す値は「後ろの段階に渡す値」の欄で見られます.`
+            : errorCount > 0
+              ? `直すところが ${errorCount} 件残っているので, 学習のプロジェクトはまだ書き出せません.`
+              : '学習のプロジェクトは, 機械学習を使うと決めて直すところが無くなると書き出せます.'}
         </p>
       )}
+      {formatVersion !== undefined &&
+        problem.file_version !== null &&
+        problem.file_version < formatVersion && (
+          <p
+            role="note"
+            className="mb-4 rounded-lg border border-line bg-surface-2 px-4 py-2 text-xs"
+          >
+            版 {problem.file_version} の問題の設定のファイルです. 今の版 ({formatVersion})
+            に移して開いています. 次にこの問題の設定を変えると (答え, 名前, データ), 版{' '}
+            {formatVersion} で書きます.
+          </p>
+        )}
       {renaming !== null && (
         <form
           className="mb-4 flex flex-wrap items-center gap-2"

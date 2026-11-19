@@ -228,6 +228,149 @@ def test_columns_import_and_download(
                        json={"path": str(bad)}).status_code == 400
 
 
+def test_version_one_file(client: TestClient, tmp_path: Path) -> None:
+    """
+    版 1 のファイルを開くと版 2 の問いで描け, 答えを保存すると版 2 で
+    書くことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 他のアプリが置き場に書いた版 1 のファイル
+    part = ml_quest.PART
+    assert client.get("/api/info").json()["format_version"] == 2
+    view = client.post("/api/problems", json={"name": "古い"}).json()
+    url = f"/api/problems/{view['id']}"
+    assert view["file_version"] == 2
+    path = tmp_path / "home" / "problems" / view["id"] / "problem.yaml"
+    path.write_text(
+        "format_version: 1\nname: 古い\n"
+        "ml: {use: true, task: regression, target: sales}\n"
+        "evaluation: {metric: mae}\n", encoding="utf-8"
+    )
+
+    # 開くと版 2 の識別子で, ファイルはまだ版 1
+    opened = client.get(url).json()
+    assert opened["file_version"] == 1
+    values = {q["id"]: q["value"] for q in opened["questions"]}
+    assert values[f"{part}.role"] == "predict"
+    assert values[f"{part}.target.column"] == "sales"
+    assert values[f"{part}.evaluation.metric"] == "mae"
+    assert "ml.target" not in values
+
+    # 答えを保存すると版 2 で書く
+    saved = client.put(f"{url}/answers", json={
+        "id": "issue.pain", "value": "外れが多い"
+    }).json()
+    assert saved["file_version"] == 2
+    written = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert written["format_version"] == 2
+    assert written["ml"]["parts"][0]["target"]["column"] == "sales"
+
+    # 知っている版より新しいファイルは開かない (黙って読み違えない)
+    path.write_text("format_version: 3\nname: 新しい\n", encoding="utf-8")
+    newer = client.get(url)
+    detail = newer.json()["detail"]
+    assert newer.status_code == 422 and "新しい版" in detail
+    assert "壊れています" not in detail and "消さずに" in detail
+    imported = client.post("/api/problems/import", json={"path": str(path)})
+    assert imported.status_code == 400
+
+
+def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
+    """
+    列の予測でない受け持ちと, 最良を選ぶ指標のその他を受け渡せ, 骨組み
+    は書き出せないことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 新しい問題の設定は, 受け持ちと正解の種類に答えるまで列の問いが出ない
+    part = ml_quest.PART
+    view = client.post("/api/problems", json={"name": "形"}).json()
+    url = f"/api/problems/{view['id']}"
+    view = client.put(f"{url}/answers",
+                      json={"id": "ml.use", "value": True}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert applies[f"{part}.role"] and not applies[f"{part}.task"]
+
+    # 予測するで点群, 正解は今の処理の出力
+    answers = {
+        "issue.owner": "設計の係", "issue.pain": "計算に時間がかかる",
+        "issue.current": "毎回計算する", "issue.kpi.name": "待ち時間",
+        "issue.kpi.unit": "分", "issue.kpi.better": "lower",
+        "action.who": "設計の係", "action.when": "計算の前",
+        "action.what": "計算を省くか",
+        "decomposition": [{"cause": "毎回計算する", "lever": "近似で省く",
+                           "ml": True}],
+        "ml.reason": "計算の結果を早く近似したい",
+        f"{part}.role": "predict", f"{part}.unit": "bundle",
+        f"{part}.output": "shape", f"{part}.target.source": "process",
+        f"{part}.target.process.name": "今の計算",
+        f"{part}.target.process.settings": "既定の設定",
+        f"{part}.method": "scratch", f"{part}.target.kind": "point_cloud",
+        f"{part}.what": "形の点群", f"{part}.item": "1 回の撮影",
+        f"{part}.baseline": "今の計算",
+        f"{part}.evaluation.metric": "chamfer",
+        f"{part}.evaluation.link": "近いほど計算を省ける",
+        "verification.method": "backtest",
+        "verification.backtest": "過去の結果と比べる",
+        "verification.success": "待ち時間が半分",
+        "operation.review": "月に 1 回", "operation.approver": "係の長",
+        "operation.stop": "外れが増えたら",
+    }
+    for key, value in answers.items():
+        response = client.put(f"{url}/answers",
+                              json={"id": key, "value": value})
+        assert response.status_code == 200, (key, response.json())
+    view = client.get(url).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [] and view["ready"] is True, errors
+    handoff = view["handoff"]
+    assert handoff["part"]["target_process"] == {
+        "name": "今の計算", "settings": "既定の設定"
+    }
+    assert handoff["data"]["target"] is None
+    assert handoff["training"]["monitor"] == "valid/chamfer"
+    assert view["exportable"] is False and "表の列" in view["export_error"]
+    refused = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "p")})
+    assert refused.status_code == 400
+
+    # その他の指標は名前と向きで監視する. 骨組みは書き出せない
+    examples = client.get("/api/info").json()["examples"]
+    view = client.post("/api/problems",
+                       json={"example": examples[0]}).json()
+    assert view["exportable"] is True and view["export_error"] is None
+    url = f"/api/problems/{view['id']}"
+    for key, value in {f"{part}.evaluation.metric": "other",
+                       f"{part}.evaluation.name": "wape",
+                       f"{part}.evaluation.better": "lower"}.items():
+        view = client.put(f"{url}/answers",
+                          json={"id": key, "value": value}).json()
+    assert view["handoff"]["training"] == {
+        "metric": "wape", "monitor": "valid/wape", "mode": "min",
+        "role": "predict", "target_kind": "column",
+    }
+    assert view["exportable"] is False and "その他" in view["export_error"]
+
+
 def test_browse(client: TestClient, tmp_path: Path) -> None:
     """
     ディレクトリの中身を, プロジェクトの印付きで返すことを確かめる関数
@@ -353,6 +496,11 @@ def test_data_and_insight(
     view = client.post("/api/problems", json={"name": "店"}).json()
     url = f"/api/problems/{view['id']}"
     client.put(f"{url}/answers", json={"id": "ml.use", "value": True})
+    part = ml_quest.PART
+    client.put(f"{url}/answers", json={"id": f"{part}.role",
+                                       "value": "predict"})
+    client.put(f"{url}/answers", json={"id": f"{part}.target.kind",
+                                       "value": "column"})
 
     # 入れる前は空, 入れると列と読み方
     assert client.get(f"{url}/insight").json()["suggestions"] == []
@@ -369,10 +517,11 @@ def test_data_and_insight(
     found = client.get(f"{url}/insight").json()
     assert found["overview"]["rows"] == 120
     ids = {item["id"] for item in found["suggestions"]}
-    assert {"ml.target", "ml.time_column"} <= ids
+    assert {f"{part}.target.column", f"{part}.time_column"} <= ids
 
     # 目的の列を答えると漏れの疑いが確かめに出る. 同じ答えなら覚えたもの
-    client.put(f"{url}/answers", json={"id": "ml.target", "value": "sales"})
+    client.put(f"{url}/answers", json={"id": f"{part}.target.column",
+                                       "value": "sales"})
     found = client.get(f"{url}/insight").json()
     unknown = next(item for item in found["findings"]
                    if item["id"] == "information.unknown")

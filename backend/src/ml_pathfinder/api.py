@@ -144,12 +144,54 @@ def load_or_404(store: Store, problem_id: str) -> dict[str, Any]:
     except KeyError as error:
         raise HTTPException(404, "問題の設定が見つかりません") from error
     except READ_ERRORS as error:
-        raise HTTPException(
-            422, "問題の設定のファイルが壊れています "
-            f"({user_error(error).detail}). 消すか, ファイルを直してください"
-        ) from error
+        raise read_failure(store, problem_id, error) from error
 
     return problem
+
+
+def read_failure(
+    store: Store, problem_id: str, error: Exception
+) -> HTTPException:
+    """
+    読めない問題の設定のファイルの 422 を作る関数
+
+    知っている版より新しいファイルは壊れていないので, 消すことを勧めず,
+    アプリを新しくするように伝える (新しいアプリが書いた正しいファイルを
+    消さないように)
+
+    Parameters
+    ----------
+    store: Store
+        置き場
+    problem_id: str
+        識別子
+    error: Exception
+        読めない理由
+
+    Returns
+    ----------
+    failure: HTTPException
+        422 と, 新しい版か壊れているかの文
+    """
+    # ファイルに書いてある版 (読めなければ壊れたもの)
+    try:
+        written = store.file_version(problem_id)
+    except (*READ_ERRORS, KeyError):
+        written = None
+    if written is not None and written > ml_quest.FORMAT_VERSION:
+        failure = HTTPException(
+            422, f"新しい版 (format_version: {written}) の問題の設定です. "
+            f"このアプリが読めるのは版 {ml_quest.FORMAT_VERSION} までです. "
+            "ファイルは壊れていないので消さずに, ML-Pathfinder を新しく"
+            "してから開いてください"
+        )
+    else:
+        failure = HTTPException(
+            422, "問題の設定のファイルが壊れています "
+            f"({user_error(error).detail}). 消すか, ファイルを直してください"
+        )
+
+    return failure
 
 
 def exists_or_404(store: Store, problem_id: str) -> None:
@@ -269,6 +311,10 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
     except ValueError as error:
         handoff, reason = None, str(error)
     uses = ml_quest.get_value(problem, "ml.use")
+    # 渡せるのに骨組みを書き出せない理由 (ML-Quest の make_project の文)
+    export_error = (
+        ml_quest.project_error(problem) if handoff is not None else None
+    )
     view = {
         "id": problem_id,
         "name": problem.get("name", ""),
@@ -282,6 +328,8 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         "handoff": handoff,
         "handoff_error": reason,
         "ready": handoff is not None,
+        "exportable": handoff is not None and export_error is None,
+        "export_error": export_error,
         "finished": uses is False and not any(
             item["level"] == "error" for item in findings
         ),
@@ -307,7 +355,8 @@ def view_of(store: Store, problem_id: str) -> dict[str, Any]:
     Returns
     ----------
     view: dict[str, Any]
-        problem_view と version (他で書き換わったことに気付くため)
+        problem_view と version (他で書き換わったことに気付くため) と
+        file_version (ファイルに書いてある版. 版 1 は次の保存で版 2 に)
 
     Raises
     ----------
@@ -317,17 +366,15 @@ def view_of(store: Store, problem_id: str) -> dict[str, Any]:
     """
     # 中身と印は同じ読み込みから
     try:
-        problem, version = store.load_versioned(problem_id)
+        problem, version, written = store.load_versioned(problem_id)
     except KeyError as error:
         raise HTTPException(404, "問題の設定が見つかりません") from error
     except FileNotFoundError as error:
         raise HTTPException(404, "問題の設定が見つかりません") from error
     except READ_ERRORS as error:
-        raise HTTPException(
-            422, "問題の設定のファイルが壊れています "
-            f"({user_error(error).detail}). 消すか, ファイルを直してください"
-        ) from error
-    view = {**problem_view(problem_id, problem), "version": version}
+        raise read_failure(store, problem_id, error) from error
+    view = {**problem_view(problem_id, problem), "version": version,
+            "file_version": written}
 
     return view
 

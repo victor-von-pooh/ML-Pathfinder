@@ -1,6 +1,26 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+/** 選択肢の問いの 1 つを選び, 保存を待つ (問いの題で探す) */
+async function choose(page: Page, title: string, label: string | RegExp) {
+  await page.getByRole('radiogroup', { name: title, exact: true }).getByLabel(label).check()
+  await expect(page.getByText(`「${title}」を保存しました`)).toBeVisible()
+}
+
+/** 文の問いに書き, 欄を離れて保存を待つ */
+async function write(page: Page, title: string, text: string) {
+  const box = page.getByRole('textbox', { name: title, exact: true })
+  await box.fill(text)
+  await box.blur()
+  await expect(page.getByText(`「${title}」を保存しました`)).toBeVisible()
+}
+
+/** 5 の節の頭で, 表の列を予測すると答える (目的の列やタスクの問いが出る) */
+async function answerColumnPart(page: Page) {
+  await choose(page, '機械学習は何を受け持ちますか', /^予測する/)
+  await choose(page, '正解 (出力) の種類は', /^表の列/)
+}
 
 // 作業用の置き場で, 見本を開き, 答えを変えて確かめが変わり, 骨組みを書き出す
 test('見本を開いて答えを変え, 学習のプロジェクトを書き出す', async ({ page }) => {
@@ -12,7 +32,9 @@ test('見本を開いて答えを変え, 学習のプロジェクトを書き出
   // タスクを分類に変えると, 量を決める行動と食い違う
   await page.getByRole('button', { name: /機械学習の受け持ち/ }).click()
   await page.getByRole('radio', { name: /分類/ }).check()
-  await expect(page.getByRole('list', { name: '確かめ' })).toContainText('量を決めるには')
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText(
+    '量を決めるには',
+  )
   await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeDisabled()
 
   // 時系列の予測に戻すと書き出せる
@@ -59,6 +81,8 @@ test('書きかけは節を移っても残り, 列の並びは 1 行に 1 つで
   await page.getByRole('button', { name: '次の節' }).click()
   await page.getByRole('radiogroup', { name: '機械学習を使いますか' }).getByLabel('はい').check()
   await expect(page.getByText('「機械学習を使いますか」を保存しました')).toBeVisible()
+  // 6 の問いは, 受け持ちが表の列の予測のときだけ出る
+  await answerColumnPart(page)
   await page.getByRole('button', { name: /^6\./ }).first().click()
   const known = page.getByRole('textbox', { name: '予測の時点で分かっている列は' })
   await known.fill('promo\nweather')
@@ -98,7 +122,8 @@ test('手元のデータを入れると, 答えの候補が出て押すと答え
     .getByRole('navigation', { name: '問いの節' })
     .getByRole('button', { name: /^5\b/ })
     .click()
-  await page.getByRole('radiogroup', { name: '機械学習を使いますか' }).getByLabel('はい').check()
+  await choose(page, '機械学習を使いますか', 'はい')
+  await answerColumnPart(page)
   await page.getByRole('button', { name: 'データを入れる' }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('パス').fill(file)
@@ -229,7 +254,7 @@ test('予測を後段の仕組みに渡すと, 後段が求めるものの問い
   await page.goto('/api/auth?token=e2e-token')
   await page.getByRole('button', { name: '総菜の作る量' }).click()
   await page.getByRole('button', { name: /機械学習の受け持ち/ }).click()
-  const downstream = page.getByRole('textbox', { name: '後段は何で, 予測に何を求めますか' })
+  const downstream = page.getByRole('textbox', { name: '後段は何で, 出力に何を求めますか' })
   await expect(downstream).toHaveCount(0)
   await page.getByRole('radio', { name: /後段の仕組みに渡す/ }).check()
   await expect(downstream).toBeVisible()
@@ -249,4 +274,140 @@ test('相手をまとめる列を選ぶと, 分割が相手ごとになって後
   const handoff = page.getByText(/分割は\s*相手ごと/)
   await expect(handoff).toBeVisible()
   await expect(page.getByText(/相手をまとめる列\s*member_id/)).toBeVisible()
+})
+
+test('予測するで点群の正解が今の処理の出力なら, 処理を問い, 受け持ちの値を渡す', async ({
+  page,
+}) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('点群')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '点群' })).toBeVisible()
+
+  // 受け持ちに依らない節 (1 から 4, 9, 10) は API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['issue.owner', '設計の係'],
+    ['issue.pain', '計算に時間がかかる'],
+    ['issue.current', '毎回計算する'],
+    ['issue.kpi.name', '待ち時間'],
+    ['issue.kpi.unit', '分'],
+    ['issue.kpi.better', 'lower'],
+    ['decomposition', [{ cause: '毎回計算する', lever: '近似で省く', ml: true }]],
+    ['action.who', '設計の係'],
+    ['action.when', '計算の前'],
+    ['action.what', '計算を省くか'],
+    ['ml.reason', '計算の結果を早く近似したい'],
+    ['verification.method', 'backtest'],
+    ['verification.backtest', '過去の結果と比べる'],
+    ['verification.success', '待ち時間が半分'],
+    ['operation.review', '月に 1 回'],
+    ['operation.approver', '係の長'],
+    ['operation.stop', '外れが増えたら'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: key, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 受け持ちと正解の種類に答えるまで, タスクの問いは出ない
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^5\b/ })
+    .click()
+  await choose(page, '機械学習を使いますか', 'はい')
+  const task = page.getByRole('radiogroup', { name: 'どの種類の問題ですか' })
+  await expect(task).toHaveCount(0)
+  await choose(page, '機械学習は何を受け持ちますか', /^予測する/)
+  await choose(page, '1 件の単位は', /^まとまり/)
+  await choose(page, '出力の形は', /^3D の形/)
+  const processName = page.getByRole('textbox', { name: '正解を作る今の処理の名前は' })
+  await expect(processName).toHaveCount(0)
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^今の処理の出力/)
+  await write(page, '正解を作る今の処理の名前は', '今の計算')
+  await write(page, 'その処理の設定は', '既定の設定')
+  await choose(page, 'どう作りますか (作り方)', /^一から学習/)
+  await choose(page, '正解 (出力) の種類は', /^点群/)
+  await expect(task).toHaveCount(0)
+  await write(page, '何を出させますか', '形の点群')
+  await write(page, '1 件は何ですか', '1 回の撮影')
+  await write(page, '機械学習を使わない比べる相手は', '今の計算')
+
+  // 8 の節の指標の候補は, 受け持ちと正解の種類に合うもの
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^8\b/ })
+    .click()
+  await expect(page.getByRole('radio', { name: /平均絶対誤差/ })).toHaveCount(0)
+  await choose(page, '最も良いモデルを何で選びますか', /Chamfer/)
+
+  // 受け持ち, 正解の種類と出どころ, 処理, 指標が渡り, 骨組みは書き出せない
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('受け持ち: 予測する')
+  await expect(card).toContainText('正解の種類: 点群')
+  await expect(card).toContainText('正解の出どころ: 今の処理の出力')
+  await expect(card).toContainText('正解を作る処理 今の計算')
+  await expect(card).toContainText('処理の設定: 既定の設定')
+  await expect(card).toContainText('valid/chamfer')
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeDisabled()
+  await expect(page.locator('#export-reason')).toContainText('表の列')
+})
+
+test('最良を選ぶ指標をその他にすると, 名前と向きを問い, 監視する指標に渡す', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  await page.getByRole('button', { name: /学習で見る指標/ }).click()
+  const name = page.getByRole('textbox', { name: 'その指標の名前は' })
+  await expect(name).toHaveCount(0)
+  await choose(page, '最も良いモデルを何で選びますか', /^その他/)
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText(
+    'その指標の名前は',
+  )
+  await write(page, 'その指標の名前は', 'wape')
+  await choose(page, 'その指標は, 小さいほど良いですか, 大きいほど良いですか', '小さいほど良い')
+  await expect(page.getByText('食い違いや足りない答えはありません.')).toBeVisible()
+
+  // 列の予測の値は今までどおりで, 監視する指標が書いた名前になる
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card.getByText(/目的の列\s*sales/)).toBeVisible()
+  await expect(card.getByText(/監視する指標\s*valid\/wape\s*\(小さいほど良い\)/)).toBeVisible()
+  await expect(card.getByText(/その他の指標です/)).toBeVisible()
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeDisabled()
+  await expect(page.locator('#export-reason')).toContainText('その他')
+})
+
+test('版 1 のファイルを開くと版 2 に移して描き, 保存すると版 2 で書く', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('古い版')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '古い版' })).toBeVisible()
+
+  // 古い ML-Quest のアプリが書いた版 1 のファイルにする
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const file = `${process.cwd()}/e2e/.work/home/problems/${id}/problem.yaml`
+  writeFileSync(
+    file,
+    'format_version: 1\nname: 古い版\nml: {use: true, task: regression, target: sales}\n',
+  )
+  await page.reload()
+  await expect(page.getByRole('note')).toContainText('版 1 の問題の設定のファイルです')
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^5\b/ })
+    .click()
+  await expect(
+    page.getByRole('radiogroup', { name: 'どの種類の問題ですか' }).getByLabel(/^回帰/),
+  ).toBeChecked()
+
+  // 答えを保存すると版 2 で書く
+  await write(page, '何を出させますか', '売れる数')
+  await expect(page.getByRole('note')).toHaveCount(0)
+  expect(readFileSync(file, 'utf-8')).toContain('format_version: 2')
 })

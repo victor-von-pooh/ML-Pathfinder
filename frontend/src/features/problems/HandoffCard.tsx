@@ -9,6 +9,9 @@ const SPLITS: Record<string, string> = {
   stratified: '層別',
 }
 
+/** 受け持ちの問いの識別子の頭 (ML-Quest の版 2. 受け持ちは今は 1 つ) */
+const PART = 'ml.parts.0'
+
 /** 問いの選択肢 (ML-Quest が返すもの) */
 function choicesOf(problem: Problem, id: string): Choice[] {
   return problem.questions.find((question) => question.id === id)?.choices ?? []
@@ -17,6 +20,11 @@ function choicesOf(problem: Problem, id: string): Choice[] {
 /** 選択肢の短い名前 (説明の括弧の前まで) */
 function shortLabel(choices: Choice[], value: string): string {
   return choices.find((choice) => choice.value === value)?.label.split(' (')[0] ?? value
+}
+
+/** 受け持ちの問いの答えの短い名前 (答えが無ければ null) */
+function partLabel(problem: Problem, key: string, value: string | null): string | null {
+  return value === null ? null : shortLabel(choicesOf(problem, `${PART}.${key}`), value)
 }
 
 /** 1 行の値 (コードの形) */
@@ -41,6 +49,106 @@ function Names({ names }: { names: string[] }) {
   )
 }
 
+/** 学習の段階に渡す, 監視する指標と向き (その他の指標は記録の頼み) */
+function TrainingRow({ problem }: { problem: Problem }) {
+  const training = problem.handoff?.training
+  if (!training) return null
+  const other =
+    problem.questions.find((q) => q.id === `${PART}.evaluation.metric`)?.value === 'other'
+  return (
+    <div>
+      <dt className="mb-1 text-xs font-medium text-ink-2">学習 (ML-Found, ML-Dashboard)</dt>
+      <dd className="flex flex-col gap-1">
+        <span>
+          監視する指標 <Code>{training.monitor}</Code> (
+          {training.mode === 'max' ? '大きい' : '小さい'}
+          ほど良い)
+        </span>
+        {other && (
+          <span className="text-xs text-ink-2">
+            その他の指標です. 学習で検証用の分割の <Code>{training.monitor}</Code>{' '}
+            を記録するようにしてください
+          </span>
+        )}
+      </dd>
+    </div>
+  )
+}
+
+/** 列の予測でない受け持ちの値 (目的の列, 分割, 意思決定は渡さない) */
+function PartHandoff({ problem }: { problem: Problem }) {
+  const handoff = problem.handoff
+  if (!handoff) return null
+  const { part, data } = handoff
+  const rows: [string, string | null][] = [
+    ['受け持ち', partLabel(problem, 'role', part.role)],
+    ['1 件の単位', partLabel(problem, 'unit', part.unit)],
+    ['出力の形', partLabel(problem, 'output', part.output)],
+    ['正解の種類', partLabel(problem, 'target.kind', part.target_kind)],
+    ['正解の出どころ', partLabel(problem, 'target.source', part.target_source)],
+    ['作り方', partLabel(problem, 'method', part.method)],
+  ]
+  return (
+    <Card title="後ろの段階に渡す値">
+      <dl className="flex flex-col gap-3 text-sm">
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">機械学習の受け持ち</dt>
+          <dd className="flex flex-col gap-1">
+            {rows
+              .filter(([, value]) => value !== null)
+              .map(([name, value]) => (
+                <span key={name}>
+                  {name}: {value}
+                </span>
+              ))}
+            {part.target_process && (
+              <span className="flex flex-col gap-1">
+                <span>
+                  正解を作る処理 <Code>{part.target_process.name}</Code>
+                </span>
+                {part.target_process.settings && (
+                  <span className="whitespace-pre-line">
+                    処理の設定: {part.target_process.settings}
+                  </span>
+                )}
+                <span className="text-xs text-ink-2">
+                  正解はこの処理の出力なので, 評価と結論はこの処理を超えられません
+                </span>
+              </span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dd className="flex flex-col gap-1">
+            {data.source ? (
+              <span>
+                データ <Code>{data.source.source}</Code> (後ろの段階も同じ場所を同じ読み方で開く)
+              </span>
+            ) : (
+              <span className="text-ink-3">データは入れていません</span>
+            )}
+            <span className="text-xs text-ink-2">
+              目的の列, 分割, 使う列は, 列の予測 (予測するで正解の種類が表の列) だけで渡します
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            モデルの作成 (ML-CreateArchitecture)
+          </dt>
+          <dd>受け持ちと出力の形から選ぶ (出力の大きさは, 列の予測だけで渡します)</dd>
+        </div>
+        <TrainingRow problem={problem} />
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
+          <dd>意思決定の材料は作りません (列の予測だけ)</dd>
+        </div>
+      </dl>
+    </Card>
+  )
+}
+
 /** 後ろの段階ごとに, 各段階の画面で選ぶ値 */
 export function HandoffCard({ problem }: { problem: Problem }) {
   const handoff = problem.handoff
@@ -56,7 +164,9 @@ export function HandoffCard({ problem }: { problem: Problem }) {
         </p>
       </Card>
     )
-  const { data, model, training, inference } = handoff
+  // 列の予測でなければ, タスクが無い (受け持ちごとの表示)
+  if (handoff.data.task === null) return <PartHandoff problem={problem} />
+  const { data, model, inference } = handoff
   const decision = inference.decision
   const type = choicesOf(problem, 'action.decision').find(
     (choice) => choice.value === decision?.type,
@@ -69,9 +179,9 @@ export function HandoffCard({ problem }: { problem: Problem }) {
           <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
           <dd className="flex flex-col gap-1">
             <span>
-              目的の列 <Code>{data.target}</Code>,{' '}
-              {shortLabel(choicesOf(problem, 'ml.task'), data.task)}, 分割は
-              {SPLITS[data.split] ?? data.split}
+              目的の列 <Code>{data.target ?? ''}</Code>,{' '}
+              {shortLabel(choicesOf(problem, `${PART}.task`), data.task ?? '')}, 分割は
+              {SPLITS[data.split ?? ''] ?? data.split}
             </span>
             {data.group_column && (
               <span>
@@ -118,14 +228,7 @@ export function HandoffCard({ problem }: { problem: Problem }) {
             入力の大きさは書き出したデータセットの学習に使う列の数
           </dd>
         </div>
-        <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">学習 (ML-Found, ML-Dashboard)</dt>
-          <dd>
-            監視する指標 <Code>{training.monitor}</Code> (
-            {training.mode === 'max' ? '大きい' : '小さい'}
-            ほど良い)
-          </dd>
-        </div>
+        <TrainingRow problem={problem} />
         <div>
           <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
           <dd className="flex flex-col gap-1">
