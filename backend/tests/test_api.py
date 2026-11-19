@@ -348,7 +348,7 @@ def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
     }
     assert handoff["data"]["target"] is None
     assert handoff["training"]["monitor"] == "valid/chamfer"
-    assert view["exportable"] is False and "列の予測" in view["export_error"]
+    assert view["exportable"] is False and "表の列" in view["export_error"]
     refused = client.post(f"{url}/project",
                           json={"path": str(tmp_path / "p")})
     assert refused.status_code == 400

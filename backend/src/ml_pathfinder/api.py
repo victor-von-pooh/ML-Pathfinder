@@ -10,9 +10,7 @@ import ml_quest
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-from ml_quest.check import is_column_part
 from ml_quest.data import COPY_NAME
-from ml_quest.problem import active_value
 from pydantic import BaseModel, Field
 
 from ml_pathfinder.store import ID_PATTERN, READ_ERRORS, Store
@@ -313,7 +311,10 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
     except ValueError as error:
         handoff, reason = None, str(error)
     uses = ml_quest.get_value(problem, "ml.use")
-    export_error = export_error_of(problem, handoff)
+    # 渡せるのに骨組みを書き出せない理由 (ML-Quest の make_project の文)
+    export_error = (
+        ml_quest.project_error(problem) if handoff is not None else None
+    )
     view = {
         "id": problem_id,
         "name": problem.get("name", ""),
@@ -335,47 +336,6 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
     }
 
     return view
-
-
-def export_error_of(
-    problem: dict[str, Any], handoff: Optional[dict[str, Any]]
-) -> Optional[str]:
-    """
-    渡せる問題の設定から, 学習のプロジェクトを書き出せない理由を返す関数
-
-    ML-Quest の骨組みは, 列の予測で, 最良を選ぶ指標がその他でない場合
-    だけ書ける (書き出しの前にボタンの下で理由を見せるため)
-
-    Parameters
-    ----------
-    problem: dict[str, Any]
-        問題の設定
-    handoff: Optional[dict[str, Any]]
-        受け渡しの値 (渡せなければ None)
-
-    Returns
-    ----------
-    reason: Optional[str]
-        書き出せない理由 (書き出せるか, 渡せない場合は None)
-    """
-    # ML-Quest の make_project と同じ条件 (列の予測か, 要らない問いの古い
-    # 答えを除いた指標)
-    metric = active_value(problem, f"{ml_quest.PART}.evaluation.metric")
-    reason: Optional[str] = None
-    if handoff is None:
-        reason = None
-    elif not is_column_part(problem):
-        reason = (
-            "学習のプロジェクトの骨組みは, 列の予測 (予測するで, 正解の"
-            "種類が表の列) だけ書き出せます"
-        )
-    elif metric == "other":
-        reason = (
-            "最良を選ぶ指標がその他の場合は, 学習のプロジェクトの骨組みを"
-            "書き出せません (学習のスクリプトがその指標を記録できないため)"
-        )
-
-    return reason
 
 
 def view_of(store: Store, problem_id: str) -> dict[str, Any]:

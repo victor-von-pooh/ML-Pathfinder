@@ -355,7 +355,7 @@ test('予測するで点群の正解が今の処理の出力なら, 処理を問
   await expect(card).toContainText('処理の設定: 既定の設定')
   await expect(card).toContainText('valid/chamfer')
   await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeDisabled()
-  await expect(page.locator('#export-reason')).toContainText('列の予測')
+  await expect(page.locator('#export-reason')).toContainText('表の列')
 })
 
 test('最良を選ぶ指標をその他にすると, 名前と向きを問い, 監視する指標に渡す', async ({ page }) => {
