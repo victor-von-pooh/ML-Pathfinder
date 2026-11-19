@@ -100,14 +100,27 @@ export interface Progress {
   sections: SectionProgress[]
 }
 
-/** 後ろの段階ごとの値 */
+/** 機械学習の受け持ちの, 型に依らない答え (ML-Quest の版 2) */
+export interface Part {
+  role: string | null
+  unit: string | null
+  output: string | null
+  target_kind: string | null
+  target_source: string | null
+  /** 正解が今の処理の出力なら, その処理の名前と設定 */
+  target_process: { name: string; settings: string | null } | null
+  method: string | null
+}
+
+/** 後ろの段階ごとの値 (列の予測でなければ, data の目的の列, タスク, 分割は null) */
 export interface Handoff {
+  part: Part
   data: {
-    target: string
-    task: string
+    target: string | null
+    task: string | null
     time_column: string | null
     series_by: string[]
-    split: string
+    split: string | null
     /** 同じ相手の行をまとめる列 (分割をまたがせない) */
     group_column?: string | null
     /** 過去の値の列に使ってよい最も小さいずらし幅 (時系列の予測だけ) */
@@ -121,8 +134,20 @@ export interface Handoff {
       options: Record<string, unknown> | null
     } | null
   }
-  model: { task: string; outputs: number | null }
-  training: { metric: string; monitor: string; mode: string }
+  model: {
+    task: string | null
+    outputs: number | null
+    role: string | null
+    target_kind: string | null
+  }
+  /** metric は最良を選ぶ指標 (その他なら書いた名前) */
+  training: {
+    metric: string
+    monitor: string
+    mode: string
+    role: string | null
+    target_kind: string | null
+  }
   inference: {
     decision: Decision | null
     conclusion: Record<string, unknown>
@@ -144,7 +169,13 @@ export interface Problem {
   handoff: Handoff | null
   handoff_error: string | null
   ready: boolean
+  /** 学習のプロジェクトの骨組みを書き出せるか (列の予測で, 指標がその他でない) */
+  exportable: boolean
+  /** 渡せるのに書き出せない理由 */
+  export_error: string | null
   finished: boolean
+  /** ファイルに書いてある版 (古い版は ML-Quest が移して読み, 次の保存で今の版に) */
+  file_version: number | null
   /** 問題の設定のファイルの中身の印 (他のアプリが書き換えたことに気付くため) */
   version: string
 }

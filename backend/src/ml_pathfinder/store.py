@@ -4,7 +4,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import ml_quest
 import yaml
@@ -123,9 +123,9 @@ class Store:
 
     def load_versioned(
         self, problem_id: str
-    ) -> tuple[dict[str, Any], str]:
+    ) -> tuple[dict[str, Any], str, Optional[int]]:
         """
-        問題の設定と, 同じ中身の印を読む関数
+        問題の設定と, 同じ中身の印と, ファイルに書いてある版を読む関数
 
         他のアプリが読む間に書き換えても, 中身と印がずれないように, 読む
         前と後の印が同じになるまで読み直す (保存は置き換えなので, 書きかけ
@@ -138,20 +138,49 @@ class Store:
 
         Returns
         ----------
-        loaded: tuple[dict[str, Any], str]
-            問題の設定と, 中身の sha256 の 16 進
+        loaded: tuple[dict[str, Any], str, Optional[int]]
+            問題の設定 (版 1 は ML-Quest が版 2 に移したもの), 中身の
+            sha256 の 16 進, ファイルに書いてある版
         """
         # 前後の印が同じ読み込み (書き換えが続けば最後の読み込み)
         before = self.version(problem_id)
         for _ in range(3):
             problem = self.load(problem_id)
+            written = self.file_version(problem_id)
             after = self.version(problem_id)
             if after == before:
                 break
             before = after
-        loaded = (problem, before)
+        loaded = (problem, before, written)
 
         return loaded
+
+    def file_version(self, problem_id: str) -> Optional[int]:
+        """
+        問題の設定のファイルに書いてある版を返す関数
+
+        ML-Quest は版 1 を読むと版 2 に移すので, ファイルがまだ版 1 かを
+        画面に出すため
+
+        Parameters
+        ----------
+        problem_id: str
+            識別子
+
+        Returns
+        ----------
+        written: Optional[int]
+            format_version の値 (数でなければ None)
+        """
+        # 移す前の YAML の版の欄
+        path = self.place(problem_id) / "problem.yaml"
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        value = raw.get("format_version") if isinstance(raw, dict) else None
+        written = value if isinstance(value, int) and not isinstance(
+            value, bool
+        ) else None
+
+        return written
 
     def version(self, problem_id: str) -> str:
         """
