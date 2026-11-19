@@ -8,8 +8,17 @@ import { Dialog } from '../../components/Dialog'
 import { PathField } from '../../components/PathPicker'
 import { Button, ErrorBox } from '../../components/ui'
 
+/**
+ * ファイルの組 (ML-EDA の版 2 のデータセットで学ぶ) の正解の種類. ML-Quest の ITEMS_KINDS の写しで,
+ * 説明の文の出し分けだけに使う (書き出せるかの決まりは project_error だけが持つ)
+ */
+const ITEMS_KINDS = ['mask', 'point_cloud']
+
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
+  // 画像の領域と点群は, 列の予測と既定の名前と次にすることが違う
+  const kind = problem.handoff?.training.target_kind ?? null
+  const items = kind !== null && ITEMS_KINDS.includes(kind)
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [overwrite, setOverwrite] = useState(false)
@@ -41,7 +50,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
         />
         <div>
           <label htmlFor="experiment-name" className="mb-1 block text-xs font-medium text-ink-2">
-            実験の名前 (任意. 省略すると目的の列とタスクから)
+            実験の名前 (任意. 省略すると{items ? '正解の種類と受け持ち' : '目的の列とタスク'}から)
           </label>
           <input
             id="experiment-name"
@@ -74,15 +83,30 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               ))}
             </ul>
             <p className="mb-1 font-medium">次にすること (書き出した README.md にも同じ手順)</p>
-            <ol className="list-decimal pl-5 text-xs">
-              <li>
-                ML-Fathom でデータを読み, 右の「データの分析」の値でデータセットを outputs/dataset
-                に書き出す
-              </li>
-              <li>ML-CreateArchitecture でモデルを組み, models/model.yaml に置く</li>
-              <li>ML-Found (か ML-Dashboard) で train.py を動かして学習する</li>
-              <li>実験の中の inference/ を ML-Provide に登録して推論する</li>
-            </ol>
+            {items ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  データセットを入れていれば data/ の写しを読む. 入れていなければ, README.md の
+                  ML-EDA の書き出しの関数でデータセットを outputs/dataset に書き出す
+                </li>
+                <li>
+                  仮のモデルのままでも動く. ML-CreateArchitecture で組んだモデルは, config の
+                  model.spec に定義の場所を書く
+                </li>
+                <li>ML-Found (か ML-Dashboard) で train.py を動かして学習する</li>
+                <li>推論の一式はまだ書き出さない (README.md を参照)</li>
+              </ol>
+            ) : (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  ML-Fathom でデータを読み, 右の「データの分析」の値でデータセットを outputs/dataset
+                  に書き出す
+                </li>
+                <li>ML-CreateArchitecture でモデルを組み, models/model.yaml に置く</li>
+                <li>ML-Found (か ML-Dashboard) で train.py を動かして学習する</li>
+                <li>実験の中の inference/ を ML-Provide に登録して推論する</li>
+              </ol>
+            )}
           </div>
         )}
         <div className="flex justify-end gap-2">

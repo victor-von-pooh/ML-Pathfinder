@@ -423,7 +423,10 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
   )
 }
 
-/** 手元のデータ: 場所を選んで入れる (データは写さず, 場所と読み方だけ) */
+/**
+ * 手元のデータ: 場所を選んで入れる (問題の設定の置き場に写し, 場所と読み方を持つ). 表のファイルか,
+ * ML-EDA の版 2 のデータセットのディレクトリ (概要は無く, 件数などは確かめに出る)
+ */
 function SourceInput({
   question,
   saving,
@@ -478,7 +481,7 @@ function SourceInput({
       {picking && onAttach && (
         <PathPicker
           title="手元のデータを選ぶ"
-          description="データの分析の段階 (ML-Fathom) と同じ読み方で読みます. データは写さず, 場所と読み方だけを問題の設定に持ちます."
+          description="表のファイルか, ML-EDA が書き出したデータセットのディレクトリ (dataset.yaml を持つもの. 画像の領域や点群の予測に使う) を選べます. データの分析の段階 (ML-Fathom) と同じ読み方で読み, 問題の設定の置き場に写します."
           onClose={() => setPicking(false)}
           onPick={(path) => {
             setPicking(false)
