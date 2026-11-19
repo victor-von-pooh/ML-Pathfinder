@@ -75,6 +75,66 @@ function TrainingRow({ problem }: { problem: Problem }) {
   )
 }
 
+/**
+ * 方策の守り (方策と答えたときだけ). 方策を使ってよいかと守りの範囲は人が決め,
+ * 実機で動かすのは道具の外であることを添える
+ */
+function PolicyRow({ problem }: { problem: Problem }) {
+  const policy = problem.handoff?.policy
+  if (!policy) return null
+  const fallback = partLabel(problem, 'policy.fallback', policy.fallback)
+  const action = policy.fallback_action
+  const rows: [string, string | null][] = [
+    ['行動の上限', policy.action_limits],
+    ['止める条件', policy.stop],
+    ['外れたときの動き', fallback],
+    [
+      '決めた行動',
+      action === null || action === undefined
+        ? null
+        : Array.isArray(action)
+          ? action.join(', ')
+          : String(action),
+    ],
+    ['安全の違反の信号', policy.safety_key],
+    ['決める人', policy.approver],
+  ]
+  return (
+    <div>
+      <dt className="mb-1 text-xs font-medium text-ink-2">方策の守り (学習, 評価, 推論)</dt>
+      <dd className="flex flex-col gap-1">
+        {rows
+          .filter(([, value]) => value !== null && value !== '')
+          .map(([name, value]) => (
+            <span key={name} className="whitespace-pre-line">
+              {name}: {value}
+            </span>
+          ))}
+        <span role="note" className="text-xs text-ink-2">
+          方策を使ってよいかと守りの範囲は, 人 ({policy.approver ?? '決める人'}) が決めます.
+          道具は方策を作り, 確かめ, 守りと一緒に書き出すところまでで, 実機で動かすのは道具の外です.
+        </span>
+      </dd>
+    </div>
+  )
+}
+
+/** 要る機能の名前 (ML-Quest の FEATURES の見出し. 入れ方は画面の上のカード) */
+function RequiresRow({ problem }: { problem: Problem }) {
+  const names = problem.handoff?.requires ?? []
+  if (!names.length) return null
+  const labels = new Map(problem.requires.map((item) => [item.name, item.label]))
+  return (
+    <div>
+      <dt className="mb-1 text-xs font-medium text-ink-2">学習の段階に要る機能</dt>
+      <dd className="flex flex-col gap-1">
+        <span>{names.map((name) => labels.get(name) ?? name).join(', ')}</span>
+        <span className="text-xs text-ink-2">入れ方は画面の上の「学習の段階の準備」に出ます</span>
+      </dd>
+    </div>
+  )
+}
+
 /** 列の予測でない受け持ちの値 (目的の列, 分割, 意思決定は渡さない) */
 function PartHandoff({ problem }: { problem: Problem }) {
   const handoff = problem.handoff
@@ -140,6 +200,8 @@ function PartHandoff({ problem }: { problem: Problem }) {
           <dd>受け持ちと出力の形から選ぶ (出力の大きさは, 列の予測だけで渡します)</dd>
         </div>
         <TrainingRow problem={problem} />
+        <RequiresRow problem={problem} />
+        <PolicyRow problem={problem} />
         <div>
           <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
           <dd>意思決定の材料は作りません (列の予測だけ)</dd>
@@ -229,6 +291,8 @@ export function HandoffCard({ problem }: { problem: Problem }) {
           </dd>
         </div>
         <TrainingRow problem={problem} />
+        <RequiresRow problem={problem} />
+        <PolicyRow problem={problem} />
         <div>
           <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
           <dd className="flex flex-col gap-1">

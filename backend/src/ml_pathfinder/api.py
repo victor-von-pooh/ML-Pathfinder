@@ -1,8 +1,10 @@
+import importlib
 import json
 import shutil
 import threading
 import uuid
 from collections import Counter, OrderedDict
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
@@ -34,6 +36,17 @@ ATTACHING: Counter[str] = Counter()
 
 # 画面に返す誤りとする例外 (手元のファイルの誤りを含む)
 USER_ERRORS = (ValueError, OSError, ImportError, yaml.YAMLError)
+
+# 学習の段階 (ML-Found) の登録簿の関数 (入っていなければ None. 読み込みは
+# 重いので 1 回だけ試す. ML-Found には依存しない)
+FOUND: dict[str, Optional[Callable[..., list[dict[str, Any]]]]] = {}
+
+# ML-Found が入っていない場合の入れ方の補足
+FEATURE_NOTE = (
+    "入れ方と足りないかの確かめは, 学習の段階 (ML-Found) の登録簿が持つ. "
+    "学習の環境で ML-Found の describe_requirements を呼ぶと, 入れ方の"
+    "コマンドか公式の手順が分かる"
+)
 
 
 class ProblemCreate(BaseModel):
@@ -285,6 +298,116 @@ def progress_of(items: list[dict[str, Any]]) -> dict[str, Any]:
     return progress
 
 
+def found_describer() -> Optional[Callable[..., list[dict[str, Any]]]]:
+    """
+    ML-Found の describe_requirements を, 入っていれば返す関数
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    ----------
+    describe: Optional[Callable[..., list[dict[str, Any]]]]
+        登録簿の関数, 入っていないか読めない場合は None
+    """
+    # 1 回だけ読み込みを試し, 結果を覚えておく (PyTorch などの読み込みの
+    # 失敗も入っていないものとして扱う)
+    if "describe" not in FOUND:
+        try:
+            module = importlib.import_module("ml_found")
+            FOUND["describe"] = getattr(
+                module, "describe_requirements", None
+            )
+        except Exception:
+            FOUND["describe"] = None
+    describe = FOUND["describe"]
+
+    return describe
+
+
+def feature_item(
+    name: str, describe: Optional[Callable[..., list[dict[str, Any]]]]
+) -> dict[str, Any]:
+    """
+    要る機能 1 つの名前, 説明, 入れ方をまとめる関数
+
+    Parameters
+    ----------
+    name: str
+        機能の名前 (ML-Quest の FEATURES)
+    describe: Optional[Callable[..., list[dict[str, Any]]]]
+        ML-Found の describe_requirements, 無ければ None
+
+    Returns
+    ----------
+    item: dict[str, Any]
+        name, label, description, install (入れ方. 分からなければ None),
+        note, source (入れ方の出どころ. ml_found か ml_quest)
+    """
+    # 名前の見出しは ML-Quest から
+    labels = {entry["value"]: entry["label"] for entry in ml_quest.FEATURES}
+    item: dict[str, Any] = {
+        "name": name,
+        "label": labels.get(name, name),
+        "description": None,
+        "install": None,
+        "note": FEATURE_NOTE,
+        "source": "ml_quest",
+    }
+
+    # ML-Found があれば登録簿の入れ方 (この画面の環境は学習の環境と
+    # 違うので, 入っているかは確かめない. 登録簿に無い名前は補足のまま)
+    if describe is None:
+        return item
+    try:
+        entry = describe([name], check=False)[0]
+    except Exception:
+        return item
+    install = entry.get("install") or {}
+    item.update(
+        description=entry.get("description"),
+        install={
+            "kind": install.get("kind"),
+            "command": install.get("command"),
+            "extra_command": install.get("extra_command"),
+            "url": install.get("url"),
+        },
+        note=entry.get("note"),
+        source="ml_found",
+    )
+
+    return item
+
+
+def requires_of(problem: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    答えから要る機能と, その入れ方の並びを作る関数
+
+    受け渡しの前 (答えの途中) でも返す (学習の段階の準備を早めに
+    知らせるため)
+
+    Parameters
+    ----------
+    problem: dict[str, Any]
+        問題の設定
+
+    Returns
+    ----------
+    items: list[dict[str, Any]]
+        機能ごとの feature_item の結果 (ML-Quest の FEATURES の順)
+    """
+    # 版の誤りなどで導けない場合は空 (他の誤りとして出るため)
+    try:
+        names = ml_quest.required_features(problem)
+    except ValueError:
+        names = []
+    describe = found_describer() if names else None
+    items = [feature_item(name, describe) for name in names]
+
+    return items
+
+
 def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
     """
     問題の設定と, 問い, 確かめ, 要約, 受け渡しをまとめる関数
@@ -327,6 +450,7 @@ def problem_view(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         "summary": ml_quest.describe(problem),
         "handoff": handoff,
         "handoff_error": reason,
+        "requires": requires_of(problem),
         "ready": handoff is not None,
         "exportable": handoff is not None and export_error is None,
         "export_error": export_error,

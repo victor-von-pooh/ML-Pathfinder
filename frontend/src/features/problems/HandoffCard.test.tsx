@@ -34,6 +34,7 @@ function problemWith(handoff: Handoff, questions: Question[]): Problem {
     summary: [],
     handoff,
     handoff_error: null,
+    requires: [],
     ready: true,
     exportable: false,
     export_error: null,
@@ -75,6 +76,8 @@ const POINT_CLOUD: Handoff = {
     target_kind: 'point_cloud',
   },
   inference: { decision: null, conclusion: {}, horizon: null },
+  requires: [],
+  policy: null,
 }
 
 describe('HandoffCard', () => {
@@ -112,5 +115,52 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/回帰, 分割は/)).toBeInTheDocument()
     expect(screen.getByText(/その他の指標です/)).toBeInTheDocument()
     expect(screen.queryByText(/受け持ち:/)).not.toBeInTheDocument()
+  })
+
+  it('方策の守りと, 人が決めることと実機は道具の外であることを出す', () => {
+    const handoff: Handoff = {
+      ...POINT_CLOUD,
+      part: { ...POINT_CLOUD.part, role: 'effect', target_process: null },
+      requires: ['rl', 'mujoco'],
+      policy: {
+        action_limits: '各関節の速さは毎秒 0.5 rad まで',
+        stop: '腕の先が台の上 0 から 0.3 m を出たら',
+        fallback: 'handover',
+        fallback_action: null,
+        safety_key: 'cost',
+        approver: '設備の責任者',
+      },
+    }
+    const questions = [
+      choice('ml.parts.0.policy.fallback', 'handover', [
+        ['handover', '元の制御に戻す (人か今の仕組み)'],
+      ]),
+    ]
+    const problem = {
+      ...problemWith(handoff, questions),
+      requires: [
+        {
+          name: 'rl',
+          label: '強化学習',
+          description: null,
+          install: null,
+          note: null,
+          source: 'ml_quest' as const,
+        },
+      ],
+    }
+    render(<HandoffCard problem={problem} />)
+    expect(screen.getByText('行動の上限: 各関節の速さは毎秒 0.5 rad まで')).toBeInTheDocument()
+    expect(screen.getByText('外れたときの動き: 元の制御に戻す')).toBeInTheDocument()
+    expect(screen.getByText('安全の違反の信号: cost')).toBeInTheDocument()
+    expect(screen.queryByText(/決めた行動:/)).not.toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent(/人 \(設備の責任者\) が決めます/)
+    expect(screen.getByRole('note')).toHaveTextContent(/実機で動かすのは道具の外/)
+    expect(screen.getByText('強化学習, mujoco')).toBeInTheDocument()
+  })
+
+  it('方策でなければ守りを出さない', () => {
+    render(<HandoffCard problem={problemWith(POINT_CLOUD, [])} />)
+    expect(screen.queryByText(/方策の守り/)).not.toBeInTheDocument()
   })
 })

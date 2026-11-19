@@ -1,6 +1,9 @@
+import sys
+import types
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import ml_quest
 import pandas as pd
@@ -8,6 +11,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
+from ml_pathfinder import api
 from ml_pathfinder.app import create_app
 
 # テストのトークン
@@ -369,6 +373,133 @@ def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
         "role": "predict", "target_kind": "column",
     }
     assert view["exportable"] is False and "その他" in view["export_error"]
+
+
+def fake_describe(
+    names: list[str], check: bool = True
+) -> list[dict[str, Any]]:
+    """
+    ML-Found の describe_requirements の代わりの関数
+
+    Parameters
+    ----------
+    names: list[str]
+        機能の名前
+    check: bool = True
+        入っているかを確かめるか (画面からは False のはず)
+
+    Returns
+    ----------
+    entries: list[dict[str, Any]]
+        機能ごとの説明 (rl は pip, それ以外は公式の手順)
+    """
+    # 確かめないで呼ばれること. 知らない名前は登録簿と同じく誤り
+    assert check is False
+    entries = []
+    for name in names:
+        if name == "ros2":
+            raise ValueError("機能 ros2 は登録されていません")
+        pip = name == "rl"
+        entries.append({
+            "name": name, "description": f"{name} の説明",
+            "checks": [], "match": "all", "available": None,
+            "install": {
+                "kind": "pip" if pip else "guide",
+                "command": 'pip install "gymnasium>=1.0"' if pip else None,
+                "extra_command": None,
+                "url": f"https://example.org/{name}",
+            },
+            "note": None if pip else "公式の手順で入れる",
+        })
+
+    return entries
+
+
+def test_requires_and_policy(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    要る機能を答えの途中から返し, ML-Found があれば入れ方を添え, 方策の
+    守りを受け渡すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    monkeypatch: pytest.MonkeyPatch
+        ML-Found の有無を差し替える道具
+
+    Returns
+    ----------
+    None
+    """
+    # ML-Found が無い場合 (この環境の既定)
+    monkeypatch.setattr(api, "FOUND", {})
+    monkeypatch.setitem(sys.modules, "ml_found", None)
+    part = ml_quest.PART
+    examples = client.get("/api/info").json()["examples"]
+    view = client.post("/api/problems",
+                       json={"example": examples[0]}).json()
+    assert view["requires"] == []
+    url = f"/api/problems/{view['id']}"
+
+    # 効果を見積もるでシミュレータと答えた途中 (まだ渡せない) から出る
+    for key, value in [("role", "effect"), ("collect", "simulator"),
+                       ("simulator", "mujoco")]:
+        view = client.put(f"{url}/answers",
+                          json={"id": f"{part}.{key}", "value": value}).json()
+    assert view["ready"] is False
+    assert [item["name"] for item in view["requires"]] == ["rl", "mujoco"]
+    first = view["requires"][0]
+    assert first["source"] == "ml_quest" and first["install"] is None
+    assert "Gymnasium" in first["label"] and "ML-Found" in first["note"]
+
+    # 残りに答えると, 受け渡しに要る機能と守りが乗る
+    answers = [("unit", "row"), ("output", "effect"),
+               ("target.source", "intervention"), ("method", "scratch"),
+               ("what", "試しの出力"), ("item", "1 件"),
+               ("baseline", "今のやり方"), ("evaluation.metric", "qini"),
+               ("evaluation.link", "良くなると損が減る"),
+               ("autonomous", True),
+               ("policy.action_limits", "各関節の速さは毎秒 0.5 rad まで"),
+               ("policy.stop", "腕の先が台の上 0 から 0.3 m を出たら"),
+               ("policy.fallback", "handover"),
+               ("policy.approver", "設備の責任者")]
+    for key, value in answers:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+    view = response.json()
+    assert view["ready"] is True, view["handoff_error"]
+    assert view["handoff"]["requires"] == ["rl", "mujoco"]
+    assert view["handoff"]["policy"] == {
+        "action_limits": "各関節の速さは毎秒 0.5 rad まで",
+        "stop": "腕の先が台の上 0 から 0.3 m を出たら",
+        "fallback": "handover", "fallback_action": None,
+        "safety_key": "cost", "approver": "設備の責任者",
+    }
+
+    # ML-Found があれば入れ方を添える (登録簿に無い名前は補足のまま)
+    module = types.ModuleType("ml_found")
+    module.describe_requirements = fake_describe  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "ml_found", module)
+    monkeypatch.setattr(api, "FOUND", {})
+    view = client.put(f"{url}/answers",
+                      json={"id": f"{part}.ros2", "value": True}).json()
+    items = {item["name"]: item for item in view["requires"]}
+    assert list(items) == ["rl", "mujoco", "ros2"]
+    assert items["rl"]["source"] == "ml_found"
+    assert items["rl"]["install"]["command"] == 'pip install "gymnasium>=1.0"'
+    assert items["mujoco"]["install"]["kind"] == "guide"
+    assert items["mujoco"]["note"] == "公式の手順で入れる"
+    assert items["ros2"]["source"] == "ml_quest"
+
+    # 方策でなくすると守りは渡さない
+    view = client.put(f"{url}/answers",
+                      json={"id": f"{part}.autonomous",
+                            "value": False}).json()
+    assert view["handoff"]["policy"] is None
+    assert [item["name"] for item in view["requires"]] == ["rl", "mujoco"]
 
 
 def test_browse(client: TestClient, tmp_path: Path) -> None:

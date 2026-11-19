@@ -411,3 +411,82 @@ test('版 1 のファイルを開くと版 2 に移して描き, 保存すると
   await expect(page.getByRole('note')).toHaveCount(0)
   expect(readFileSync(file, 'utf-8')).toContain('format_version: 2')
 })
+
+test('方策をシミュレータで学ぶと, 要る機能の準備のカードと方策の守りが出る', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  await expect(page.getByRole('heading', { name: '総菜の作る量' })).toBeVisible()
+  const prepare = page.locator('section').filter({
+    has: page.getByRole('heading', { name: /学習の段階の準備/ }),
+  })
+  await expect(prepare).toHaveCount(0)
+
+  // 効果を見積もるで, シミュレータ (MuJoCo) で試して集める. 答えの途中からカードが出る
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^5\b/ })
+    .click()
+  await choose(page, '機械学習は何を受け持ちますか', /^効果を見積もる/)
+  await choose(page, '機械学習が, 続けて自分で行動を選びますか (方策)', 'はい')
+  await choose(page, '行動の結果のデータは, どう集めますか', /^シミュレータで試して集める/)
+  await expect(prepare).toContainText('強化学習')
+  await choose(page, 'どのシミュレータを使いますか', /^MuJoCo/)
+  await expect(prepare.getByRole('listitem')).toHaveCount(2)
+  await expect(prepare).toContainText('MuJoCo (物理のシミュレータ)')
+  await expect(prepare).toContainText('このまま続けられます')
+  // 準備のカードは何も止めない (問いに答え続けられる)
+  await expect(page.getByRole('button', { name: '次の節' })).toBeEnabled()
+
+  // 残りの受け持ちの答えと守りは API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const part = 'ml.parts.0'
+  const answers: [string, unknown][] = [
+    ['unit', 'row'],
+    ['output', 'effect'],
+    ['target.source', 'intervention'],
+    ['method', 'scratch'],
+    ['what', '試しの出力'],
+    ['item', '1 件'],
+    ['baseline', '今のやり方'],
+    ['evaluation.metric', 'qini'],
+    ['evaluation.link', '良くなると損が減る'],
+    ['policy.action_limits', '各関節の速さは毎秒 0.5 rad まで'],
+    ['policy.stop', '腕の先が台の上 0 から 0.3 m を出たら'],
+    ['policy.approver', '設備の責任者'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: `${part}.${key}`, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 外れたときの動きは画面で選ぶ (7 の節)
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^7\b/ })
+    .click()
+  await choose(page, '外れたときは, どうしますか', /^元の制御/)
+  await expect(page.getByText('食い違いや足りない答えはありません.')).toBeVisible()
+
+  // 後ろの段階に渡す値に, 要る機能と方策の守り, 人が決めることが出る
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('方策の守り')
+  await expect(card).toContainText('行動の上限: 各関節の速さは毎秒 0.5 rad まで')
+  await expect(card).toContainText('外れたときの動き: 元の制御')
+  await expect(card).toContainText('安全の違反の信号: cost')
+  await expect(card).toContainText('人 (設備の責任者) が決めます')
+  await expect(card).toContainText('実機で動かすのは道具の外')
+  await expect(card).toContainText('学習の段階に要る機能')
+
+  // 集め方を今ある記録にすると, カードは消える
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^5\b/ })
+    .click()
+  await choose(page, '行動の結果のデータは, どう集めますか', /^今ある記録から/)
+  await expect(prepare).toHaveCount(0)
+})
