@@ -55,8 +55,8 @@ make serve   # 画面をビルドして http://127.0.0.1:8770 で起動 (使う�
 
 ## 文書
 
-- [操作ガイド](docs/GUIDE.md): 画面の順に, 問いの答え方, データの入れ方, 書き出しの後にすること
-- [設計](docs/DESIGN.md): 役割, ML-Quest との約束, 画面, API, 置き場
+- [操作ガイド](docs/GUIDE.md): 画面の順の操作ガイド (問いの答え方, データの入れ方, 書き出しの後にすること). 最後の章が「困ったとき」
+- [設計](docs/DESIGN.md): 今の設計と決まり (ML-Quest との約束, 画面, API, 用語, 置き場, 安全)
 - [TODO](TODO.md): まだやっていないこと (優先度の順)
 
 ## 開発
@@ -72,7 +72,7 @@ cd frontend && pnpm e2e   # 画面の通しのテスト
 | --- | --- |
 | `backend/` | API (Python, FastAPI). ML-Quest を呼び, 問題の設定を保存する |
 | `frontend/` | 画面 (TypeScript, React, Vite) |
-| `ML-Quest/` | submodule |
+| `ML-Quest/` | submodule (問題の設定のライブラリ) |
 | `docs/` | 操作ガイド, 設計, README の画面の例 (`images/`) |
 
 ## ライセンス
