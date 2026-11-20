@@ -163,5 +163,17 @@ describe('HandoffCard', () => {
   it('方策でなければ守りを出さない', () => {
     render(<HandoffCard problem={problemWith(POINT_CLOUD, [])} />)
     expect(screen.queryByText(/方策の守り/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/学習のプロジェクト/)).not.toBeInTheDocument()
+  })
+
+  it('書き出したプロジェクトの場所を出す (モデルの定義が無ければ出さない)', () => {
+    const problem = {
+      ...problemWith(POINT_CLOUD, []),
+      project: { path: '/work/p', dataset: '/work/p/data/clouds', model_spec: null },
+    }
+    render(<HandoffCard problem={problem} />)
+    expect(screen.getByText('/work/p')).toBeInTheDocument()
+    expect(screen.getByText('/work/p/data/clouds')).toBeInTheDocument()
+    expect(screen.queryByText(/モデルの定義の置き場/)).not.toBeInTheDocument()
   })
 })

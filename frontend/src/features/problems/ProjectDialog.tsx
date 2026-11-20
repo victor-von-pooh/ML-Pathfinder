@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FolderOutput } from 'lucide-react'
 import { useState } from 'react'
 
@@ -22,6 +22,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [overwrite, setOverwrite] = useState(false)
+  const client = useQueryClient()
   const write = useMutation({
     mutationFn: () =>
       api.writeProject(problem.id, {
@@ -29,6 +30,11 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
         name: name.trim() || undefined,
         overwrite,
       }),
+    // 書き出した場所は問題の設定に保存されるので, 読み直して受け渡しの値に出す (読み直した
+    // 印と同じなので, 他で変わった知らせは出ない)
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: ['problem', problem.id] })
+    },
   })
   return (
     <Dialog title="学習のプロジェクトを書き出す" onClose={onClose}>
@@ -82,6 +88,21 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 <li key={file}>{file}</li>
               ))}
             </ul>
+            <p className="mb-2 text-xs text-ink-2">
+              この場所を問題の設定に記録しました. データセットは{' '}
+              <span className="font-mono [overflow-wrap:anywhere]">
+                {write.data.project.dataset}
+              </span>
+              {write.data.project.model_spec && (
+                <>
+                  , モデルの定義は{' '}
+                  <span className="font-mono [overflow-wrap:anywhere]">
+                    {write.data.project.model_spec}
+                  </span>
+                </>
+              )}{' '}
+              に置きます (後ろの段階のアプリはこの記録から場所を読みます)
+            </p>
             <p className="mb-1 font-medium">次にすること (書き出した README.md にも同じ手順)</p>
             {items ? (
               <ol className="list-decimal pl-5 text-xs">
@@ -103,7 +124,11 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   に書き出す
                 </li>
                 <li>ML-CreateArchitecture でモデルを組み, models/model.yaml に置く</li>
-                <li>ML-Found (か ML-Dashboard) で train.py を動かして学習する</li>
+                <li>
+                  ML-Dashboard の「学習の準備」で要るもの (config の requires) を入れ, train.py
+                  を動かして学習する. 今のやり方をデータで書いていれば, 検証用とテスト用で
+                  今のやり方と比べた評価も残る
+                </li>
                 <li>実験の中の inference/ を ML-Provide に登録して推論する</li>
               </ol>
             )}
