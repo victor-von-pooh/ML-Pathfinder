@@ -14,10 +14,10 @@
 ## 優先度 低
 
 ### 後ろの段階のアプリに値を渡す
-- 何を: 後ろの段階に渡す値のうち, 今は利用者が見て各アプリで選んでいるもの (モデルの作成の受け持ちと出力の形, 学習の監視する指標と向き) を, ML-CreateArchitecture と ML-Dashboard が問題の設定から受け取れるようにする
-- なぜ: 写す手間と写し間違いを無くすため. ML-Fathom と ML-Provide はつないである
+- 何を: 後ろの段階に渡す値のうち, 今は利用者が見て各アプリで選んでいるもの (モデルの作成の受け持ち, 骨組みの外の学習の監視する指標と向き) を, ML-CreateArchitecture と ML-Dashboard が問題の設定から受け取れるようにする
+- なぜ: 写す手間と写し間違いを無くすため. ML-Fathom, ML-CreateArchitecture (モデルの定義の保存先), ML-Provide はつないである. 出力の大きさは ML-CreateArchitecture がデータセットから入れる
 - 終わりの条件: ML-CreateArchitecture と ML-Dashboard で問題の設定を選ぶと, 渡す値が入った状態で始まる
-- つながり: ML-Quest の「後ろの段階のアプリに値を渡す」(受け渡しの値 `handoff`), ML-CreateArchitecture と ML-Dashboard (問題の設定から始める口. 項目はまだ無い)
+- つながり: ML-Quest の「後ろの段階のアプリに値を渡す」(受け渡しの値 `handoff`), ML-CreateArchitecture (問題の設定のファイルを選ぶ口は保存先のためにある. 受け持ちを受け取る項目はまだ無い) と ML-Dashboard (問題の設定から始める口. 項目はまだ無い)
 
 ### 画面に写した名前を外す
 - 何を: 画面が固定で持っている ML-Quest の値の名前 (後ろの段階に渡す値の分割の名前 `SPLITS`, 今のやり方の書き方の名前 `BASELINE_TYPES`) を外し, ML-Quest が返す名前で描く. 節の数 (10) は画面が持ってよい
