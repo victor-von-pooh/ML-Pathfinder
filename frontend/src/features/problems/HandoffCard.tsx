@@ -170,7 +170,7 @@ function ProjectRow({ problem }: { problem: Problem }) {
   )
 }
 
-/** 列の予測でない受け持ちの値 (目的の列, 分割, 意思決定は渡さない) */
+/** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループを渡す) */
 function PartHandoff({ problem }: { problem: Problem }) {
   const handoff = problem.handoff
   if (!handoff) return null
@@ -223,8 +223,21 @@ function PartHandoff({ problem }: { problem: Problem }) {
             ) : (
               <span className="text-ink-3">データは入れていません</span>
             )}
+            {data.split && (
+              <span>
+                分割 <Code>{data.split}</Code>
+                {data.groups && Object.keys(data.groups).length > 0 && (
+                  <>
+                    {' '}
+                    (グループ {new Set(Object.values(data.groups)).size} 種類,{' '}
+                    {Object.keys(data.groups).length} 件)
+                  </>
+                )}
+              </span>
+            )}
             <span className="text-xs text-ink-2">
-              目的の列, 分割, 使う列は, 列の予測 (予測するで正解の種類が表の列) だけで渡します
+              目的の列と使う列は列の予測だけで渡します. ファイルの組 (領域, 点群) は,
+              データの分析で書き戻した分割とグループを渡します
             </span>
           </dd>
         </div>
