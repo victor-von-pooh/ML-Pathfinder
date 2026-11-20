@@ -33,12 +33,14 @@
 - **見本と取り込み**: 架空の課題の見本 3 つ (機械学習を使わないで終える例も) と, 書き出した `problem.yaml` の取り込みと保存
 - ライトとダークの表示
 
-## 必要なもの
+## 使い方
+
+### 必要なもの
 
 - [uv](https://docs.astral.sh/uv/) (Python は uv が用意する. 3.10 以上)
 - Node.js 24 以上と [pnpm](https://pnpm.io/) 11 以上 (`corepack enable` で `package.json` の版が入る)
 
-## 導入と起動
+### 導入と起動
 
 ```bash
 git clone --recursive https://github.com/victor-von-pooh/ML-Pathfinder.git
@@ -49,7 +51,13 @@ make serve   # 画面をビルドして http://127.0.0.1:8770 で起動 (使う�
 
 起動すると `ML-Pathfinder を開く: http://127.0.0.1:8770/api/auth?token=...` の行が出るので, その URL をブラウザで開く (トークンは起動ごとに変わる). 毎回同じトークンにする場合は環境変数 `ML_PATHFINDER_TOKEN` で指定する. ポートは `make serve PORT=8800` のように変えられる.
 
-試すだけなら, 一覧の「見本を開く」で見本の写しを開く. 使い方の詳細 (問いの答え方, データの入れ方, 書き出しの後にすること, 置き場) は [docs/GUIDE.md](docs/GUIDE.md), 設計の方針と API は [docs/DESIGN.md](docs/DESIGN.md) を参照.
+試すだけなら, 一覧の「見本を開く」で見本の写しを開く. 問題の設定の置き場は `~/.ml-pathfinder/` (環境変数 `ML_PATHFINDER_HOME` で変えられる).
+
+## 文書
+
+- [操作ガイド](docs/GUIDE.md): 画面の順の操作ガイド (問いの答え方, データの入れ方, 書き出しの後にすること). 最後の章が「困ったとき」
+- [設計](docs/DESIGN.md): 今の設計と決まり (ML-Quest との約束, 画面, API, 用語, 置き場, 安全)
+- [TODO](TODO.md): まだやっていないこと (優先度の順)
 
 ## 開発
 
@@ -64,10 +72,8 @@ cd frontend && pnpm e2e   # 画面の通しのテスト
 | --- | --- |
 | `backend/` | API (Python, FastAPI). ML-Quest を呼び, 問題の設定を保存する |
 | `frontend/` | 画面 (TypeScript, React, Vite) |
-| `ML-Quest/` | submodule |
-| `docs/GUIDE.md` | 使い方の詳細 |
-| `docs/DESIGN.md` | 設計の方針と段階 |
-| `docs/images/` | README の画面の例 |
+| `ML-Quest/` | submodule (問題の設定のライブラリ) |
+| `docs/` | 操作ガイド, 設計, README の画面の例 (`images/`) |
 
 ## ライセンス
 
