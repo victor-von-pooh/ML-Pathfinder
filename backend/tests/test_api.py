@@ -175,6 +175,18 @@ def test_example_handoff_and_project(
     result = client.post(url, json={"path": str(target)}).json()
     assert "train.py" in result["files"]
     assert (target / "configs" / "default" / "train.yaml").is_file()
+
+    # 書き出した場所の記録は問題の設定に残り, 受け渡しと画面の値に出る
+    place = target.resolve()
+    record = {"path": str(place),
+              "dataset": str(place / "outputs" / "dataset"),
+              "model_spec": str(place / "models" / "model.yaml")}
+    assert result["project"] == record
+    saved = client.get(f"/api/problems/{view['id']}").json()
+    assert saved["project"] == record
+    assert saved["handoff"]["project"] == {"path": str(place)}
+    assert saved["handoff"]["data"]["project_dataset"] == record["dataset"]
+    assert view["project"] is None
     again = client.post(url, json={"path": str(target)})
     assert again.status_code == 400 and "既に" in again.json()["detail"]
     assert client.post(url, json={"path": str(target),

@@ -138,6 +138,38 @@ function RequiresRow({ problem }: { problem: Problem }) {
   )
 }
 
+/**
+ * 書き出した学習のプロジェクト. データの分析の書き出し先, モデルの定義の置き場, 学習の
+ * プロジェクトは, 後ろの段階のアプリがこの記録から写さずに使う
+ */
+function ProjectRow({ problem }: { problem: Problem }) {
+  const project = problem.project
+  if (!project?.path) return null
+  return (
+    <div>
+      <dt className="mb-1 text-xs font-medium text-ink-2">学習のプロジェクト (書き出した場所)</dt>
+      <dd className="flex flex-col gap-1">
+        <span>
+          プロジェクト <Code>{project.path}</Code>
+        </span>
+        {project.dataset && (
+          <span>
+            データセットの書き出し先 <Code>{project.dataset}</Code>
+          </span>
+        )}
+        {project.model_spec && (
+          <span>
+            モデルの定義の置き場 <Code>{project.model_spec}</Code>
+          </span>
+        )}
+        <span className="text-xs text-ink-2">
+          データの分析, モデルの作成, 学習の画面はこの場所を使います (書き出し直すと置き換わる)
+        </span>
+      </dd>
+    </div>
+  )
+}
+
 /** 列の予測でない受け持ちの値 (目的の列, 分割, 意思決定は渡さない) */
 function PartHandoff({ problem }: { problem: Problem }) {
   const handoff = problem.handoff
@@ -205,6 +237,7 @@ function PartHandoff({ problem }: { problem: Problem }) {
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
         <PolicyRow problem={problem} />
+        <ProjectRow problem={problem} />
         <div>
           <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
           <dd>意思決定の材料は作りません (列の予測だけ)</dd>
@@ -290,12 +323,14 @@ export function HandoffCard({ problem }: { problem: Problem }) {
           <dd>
             出力の大きさ{' '}
             {model.outputs ?? 'クラスの数 (確率にする前の値を出す. softmax は付けない)'}.
-            入力の大きさは書き出したデータセットの学習に使う列の数
+            入力の形は書き出したデータセットから決まる (表と時系列は学習に使う列の数, 画像, 文,
+            点群の列は 1 件の配列の形)
           </dd>
         </div>
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
         <PolicyRow problem={problem} />
+        <ProjectRow problem={problem} />
         <div>
           <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
           <dd className="flex flex-col gap-1">

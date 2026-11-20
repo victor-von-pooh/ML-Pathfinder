@@ -174,12 +174,16 @@ export interface Handoff {
       loader: string | null
       options: Record<string, unknown> | null
     } | null
+    /** 書き出したプロジェクトのデータセットの置き場 (絶対パス. 書き出していなければ null) */
+    project_dataset?: string | null
   }
   model: {
     task: string | null
     outputs: number | null
     role: string | null
     target_kind: string | null
+    /** 書き出したプロジェクトのモデルの定義の置き場 (絶対パス. 書き出していなければ null) */
+    project_model_spec?: string | null
   }
   /** metric は最良を選ぶ指標 (その他なら書いた名前) */
   training: {
@@ -198,6 +202,17 @@ export interface Handoff {
   requires: string[]
   /** 方策の守り (方策でなければ null) */
   policy: Policy | null
+  /** 書き出したプロジェクト (書き出していなければ path は null) */
+  project?: { path: string | null }
+}
+
+/** 書き出した学習のプロジェクトの記録 (ML-Quest の record_project. どれも絶対パス) */
+export interface ProjectRecord {
+  path: string | null
+  /** train.py がデータセットを読む場所 (config の data.dataset) */
+  dataset: string | null
+  /** train.py がモデルの定義を読む場所 (config の model.spec. 書いていなければ null) */
+  model_spec: string | null
 }
 
 /** 問題の設定の全て */
@@ -223,6 +238,8 @@ export interface Problem {
   exportable: boolean
   /** 渡せるのに書き出せない理由 (ML-Quest の project_error の文) */
   export_error: string | null
+  /** 書き出した学習のプロジェクト (書き出していなければ null) */
+  project?: ProjectRecord | null
   finished: boolean
   /** ファイルに書いてある版 (古い版は ML-Quest が移して読み, 次の保存で今の版に) */
   file_version: number | null
@@ -253,6 +270,8 @@ export interface Info {
 export interface ProjectResult {
   path: string
   files: string[]
+  /** 問題の設定に保存したプロジェクトの記録 */
+  project: ProjectRecord
 }
 
 /** データからの答えの候補 */

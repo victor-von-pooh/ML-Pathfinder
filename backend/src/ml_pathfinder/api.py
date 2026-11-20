@@ -459,12 +459,41 @@ def problem_view(
         "ready": handoff is not None,
         "exportable": handoff is not None and export_error is None,
         "export_error": export_error,
+        "project": project_of(problem),
         "finished": uses is False and not any(
             item["level"] == "error" for item in findings
         ),
     }
 
     return view
+
+
+def project_of(problem: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """
+    書き出した学習のプロジェクトの記録 (ML-Quest の record_project) を返す
+    関数
+
+    Parameters
+    ----------
+    problem: dict[str, Any]
+        問題の設定
+
+    Returns
+    ----------
+    project: Optional[dict[str, Any]]
+        path, dataset, model_spec (文字でない値は None. 記録が無ければ
+        None)
+    """
+    # 手で崩した値は出さない
+    record = problem.get("project")
+    if not isinstance(record, dict):
+        return None
+    project = {
+        key: record.get(key) if isinstance(record.get(key), str) else None
+        for key in ("path", "dataset", "model_spec")
+    }
+
+    return project
 
 
 def view_of(store: Store, problem_id: str) -> dict[str, Any]:
@@ -1286,17 +1315,25 @@ def write_project(
     Returns
     ----------
     result: dict[str, Any]
-        path (書き出したディレクトリ) と files (書いたファイル)
+        path (書き出したディレクトリ), files (書いたファイル), project
+        (問題の設定に保存したプロジェクトの記録)
     """
-    # 渡せない問題の設定と, 上書きしない既にあるファイルは 400
-    problem = load_or_404(get_store(request), problem_id)
+    # 渡せない問題の設定と, 上書きしない既にあるファイルは 400. 書き出した
+    # プロジェクトの場所 (データセットとモデルの定義の置き場も) は問題の
+    # 設定に保存し, 後ろの段階のアプリが写さずに使えるように
+    store = get_store(request)
     target = local_path(body.path).resolve()
-    try:
-        files = ml_quest.make_project(problem, target, name=body.name,
-                                      overwrite=body.overwrite)
-    except USER_ERRORS as error:
-        raise user_error(error) from error
-    result = {"path": str(target), "files": files}
+    with EDIT_LOCK:
+        problem = load_or_404(store, problem_id)
+        try:
+            files = ml_quest.make_project(problem, target, name=body.name,
+                                          overwrite=body.overwrite)
+            recorded = ml_quest.record_project(problem, target)
+        except USER_ERRORS as error:
+            raise user_error(error) from error
+        store.save(problem_id, recorded)
+    result = {"path": str(target), "files": files,
+              "project": recorded["project"]}
 
     return result
 

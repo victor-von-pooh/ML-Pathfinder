@@ -47,6 +47,17 @@ test('見本を開いて答えを変え, 学習のプロジェクトを書き出
     .fill(`${process.cwd()}/e2e/.work/project`)
   await dialog.getByRole('button', { name: '書き出す' }).click()
   await expect(dialog.getByRole('status')).toContainText('train.py')
+
+  // 書き出した場所は問題の設定に記録され, 受け渡しの値に出る (データセットとモデルの定義の置き場も)
+  await expect(dialog.getByRole('status')).toContainText('この場所を問題の設定に記録しました')
+  await page.keyboard.press('Escape')
+  await expect(page.getByText('学習のプロジェクト (書き出した場所)')).toBeVisible()
+  await expect(
+    page.getByText(`${process.cwd()}/e2e/.work/project/outputs/dataset`, { exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByText(`${process.cwd()}/e2e/.work/project/models/model.yaml`, { exact: true }),
+  ).toBeVisible()
 })
 
 test('新しく作って課題に答え, 一覧に進み具合が出る', async ({ page }) => {
