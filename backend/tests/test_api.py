@@ -199,6 +199,11 @@ def test_example_handoff_and_project(
     imported = client.post("/api/problems/import",
                            json={"path": str(target / "problem.yaml")})
     assert imported.status_code in (200, 201), imported.text
+    stored = [
+        yaml.safe_load(path.read_text())
+        for path in tmp_path.rglob(f"{imported.json()['id']}/problem.yaml")
+    ]
+    assert len(stored) == 1 and "origin" not in stored[0]
     again_target = tmp_path / "again"
     client.post(f"/api/problems/{imported.json()['id']}/project",
                 json={"path": str(again_target)})
