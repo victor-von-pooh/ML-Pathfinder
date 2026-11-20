@@ -98,6 +98,24 @@ describe('HandoffCard', () => {
     expect(screen.queryByText(/分割は/)).not.toBeInTheDocument()
   })
 
+  it('ファイルの組の受け持ちで渡す分割とグループを件数で出す', () => {
+    const questions = [
+      choice('ml.parts.0.role', 'predict', [['predict', '予測する (当てる)']]),
+      choice('ml.parts.0.target.kind', 'point_cloud', [['point_cloud', '点群']]),
+    ]
+    const handoff: Handoff = {
+      ...POINT_CLOUD,
+      data: {
+        ...POINT_CLOUD.data,
+        split: 'group',
+        groups: { a: 'site_1', b: 'site_1', c: 'site_2' },
+      },
+    }
+    render(<HandoffCard problem={problemWith(handoff, questions)} />)
+    expect(screen.getByText('group')).toBeInTheDocument()
+    expect(screen.getByText(/グループ 2 種類, 3 件/)).toBeInTheDocument()
+  })
+
   it('列の予測は目的の列とタスクを出し, その他の指標は記録を頼む', () => {
     const handoff: Handoff = {
       ...POINT_CLOUD,

@@ -170,7 +170,7 @@ function ProjectRow({ problem }: { problem: Problem }) {
   )
 }
 
-/** 列の予測でない受け持ちの値 (目的の列, 分割, 意思決定は渡さない) */
+/** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループを渡す) */
 function PartHandoff({ problem }: { problem: Problem }) {
   const handoff = problem.handoff
   if (!handoff) return null
@@ -229,7 +229,8 @@ function PartHandoff({ problem }: { problem: Problem }) {
                 {data.groups && Object.keys(data.groups).length > 0 && (
                   <>
                     {' '}
-                    (グループ <Code>{JSON.stringify(data.groups)}</Code>)
+                    (グループ {new Set(Object.values(data.groups)).size} 種類,{' '}
+                    {Object.keys(data.groups).length} 件)
                   </>
                 )}
               </span>

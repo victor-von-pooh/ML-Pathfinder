@@ -164,8 +164,8 @@ export interface Handoff {
     split: string | null
     /** 同じ相手の行をまとめる列 (分割をまたがせない) */
     group_column?: string | null
-    /** ファイルの組の受け持ちで, 件をまとめるグループ (項目の名前ごと. 無ければ null) */
-    groups?: Record<string, unknown> | null
+    /** ファイルの組の受け持ちで, 件の id ごとのグループの名前 (無ければ null) */
+    groups?: Record<string, string> | null
     /** 過去の値の列に使ってよい最も小さいずらし幅 (時系列の予測だけ) */
     min_lag: number | null
     known: string[]
