@@ -806,6 +806,9 @@ def import_problem(request: Request, body: PathRequest) -> dict[str, Any]:
     path = local_path(body.path)
     try:
         problem = ml_quest.load_problem(path)
+        # 取り込んだものが元になる. 写しの元の場所 (origin) を持ち込むと,
+        # ここから書き出した写しが取り込み元の古い問題の設定をたどるため
+        problem.pop("origin", None)
         if not isinstance(problem.get("name"), str) or not problem[
             "name"
         ].strip():
@@ -1326,8 +1329,11 @@ def write_project(
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
         try:
-            files = ml_quest.make_project(problem, target, name=body.name,
-                                          overwrite=body.overwrite)
+            # 写しが置き場の元の問題の設定を指すように, 元の場所を渡す
+            files = ml_quest.make_project(
+                problem, target, name=body.name, overwrite=body.overwrite,
+                origin=store.place(problem_id) / "problem.yaml"
+            )
             recorded = ml_quest.record_project(problem, target)
         except USER_ERRORS as error:
             raise user_error(error) from error

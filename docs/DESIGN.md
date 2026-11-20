@@ -68,7 +68,7 @@ ML-Pathfinder の今の設計と決まりをまとめる. まだやっていな�
 | GET | `/browse` | ディレクトリの中身 (ML-Found のプロジェクトと, ML-EDA のデータセット (`dataset.yaml` を持つディレクトリ) に印) |
 | GET | `/problems` | 一覧 |
 | POST | `/problems` | 名前か見本の名前から作る |
-| POST | `/problems/import` | 手元の `problem.yaml` を写して取り込む |
+| POST | `/problems/import` | 手元の `problem.yaml` を写して取り込む. 写しの元の場所 (`origin`) は外す (取り込んだものが元になるため) |
 | GET | `/problems/{id}` | 問題の設定と, 問い, 進み具合, 確かめ, 要約, 受け渡し, 要る機能と入れ方 (`requires`. 受け渡せる前から), 書き出せるか (`exportable` と理由の `export_error`), 書き出したプロジェクトの記録 (`project`. 無ければ null), ファイルの中身の印 (`version`) とファイルに書いてある版 (`file_version`). 保存して返す全ての応答も同じ |
 | GET | `/problems/{id}/version` | ファイルの中身の印だけ (他での書き換えに気付くため. 軽い) |
 | PUT | `/problems/{id}/answers` | 問いに答える (`null` で消す). 形の誤りは 400 |
@@ -97,7 +97,7 @@ ML-Pathfinder の今の設計と決まりをまとめる. まだやっていな�
 | 筋道 | 課題から行動までの要約の文 |
 | 後ろの段階に渡す値 | ML-Quest の受け渡し (`handoff`). データの分析から推論までの段階が使う値 |
 | 列の予測 | 受け持ちが予測する (`predict`) で, 正解の種類が表の列 (`column`) のもの |
-| 骨組み | 書き出す ML-Found のプロジェクト (config, `train.py`, README, `problem.yaml` の写し) |
+| 骨組み | 書き出す ML-Found のプロジェクト (config, `train.py`, README, `problem.yaml` の写し). 写しは置き場の元の問題の設定の場所 (`origin`) を持つ (推論の段階が元を読み, 後で直した損得を使うため) |
 
 ## 6. 置き場
 

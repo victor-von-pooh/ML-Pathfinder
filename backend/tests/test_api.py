@@ -192,6 +192,21 @@ def test_example_handoff_and_project(
     assert client.post(url, json={"path": str(target),
                                   "overwrite": True}).status_code == 200
 
+    # 写しは置き場の元の問題の設定を指す. 写しを取り込むと元の場所を外す
+    copy = yaml.safe_load((target / "problem.yaml").read_text())
+    assert copy["origin"].endswith(f"{view['id']}/problem.yaml")
+    assert Path(copy["origin"]).is_file()
+    imported = client.post("/api/problems/import",
+                           json={"path": str(target / "problem.yaml")})
+    assert imported.status_code in (200, 201), imported.text
+    again_target = tmp_path / "again"
+    client.post(f"/api/problems/{imported.json()['id']}/project",
+                json={"path": str(again_target)})
+    copy = yaml.safe_load((again_target / "problem.yaml").read_text())
+    assert copy["origin"].endswith(
+        f"{imported.json()['id']}/problem.yaml"
+    )
+
     # 機械学習を使わない見本は出口 (受け渡せない)
     exit_view = client.post("/api/problems",
                             json={"example": examples[2]}).json()
