@@ -88,7 +88,7 @@ export function ProblemsPage() {
               className="flex flex-col gap-2"
             >
               <label htmlFor="new-name" className="text-xs font-medium text-ink-2">
-                問題の名前 (業務の言葉で. 例: 総菜の作る量)
+                問題の名前 (課題の言葉で. 例: 総菜の作る量, 計測からの形の再構成, 遊び続ける時間)
               </label>
               <input
                 id="new-name"
