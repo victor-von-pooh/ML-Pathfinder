@@ -285,6 +285,126 @@ def test_project_with_open_errors(
     assert refused.json()["detail"] == view["export_error"]
 
 
+class CountedInspect:
+    def __init__(self, inspect: Callable[[dict[str, Any]], Any]):
+        # 元の分析と, 呼んだ数を保存
+        self.inspect = inspect
+        self.calls = 0
+
+    def __call__(self, problem: dict[str, Any]) -> Any:
+        """
+        呼んだ数を数えて元の分析を呼ぶ関数
+
+        Parameters
+        ----------
+        problem: dict[str, Any]
+            問題の設定
+
+        Returns
+        ----------
+        found: Any
+            元の分析の結果
+        """
+        # 数えてから元の分析
+        self.calls += 1
+        found = self.inspect(problem)
+
+        return found
+
+
+def test_project_with_data_errors(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    入れたデータの確かめの error が直すところの一覧に入り, 覚えた分析を
+    書き出しまで使い回し, 確かめて書き出しても既にあるファイルと相対
+    パスは 400 にすることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        分析の呼び出しの数え (覚えた結果を使い回すかの確かめ)
+
+    Returns
+    ----------
+    None
+    """
+    # 連絡する会員を選ぶ課題に, 目的の列が 3 種類のデータ (2 クラスでない)
+    rows = 120
+    pd.DataFrame({
+        "member_id": range(rows), "plan": ["a", "b"] * (rows // 2),
+        "months": [i % 30 for i in range(rows)],
+        "inquiries": [i % 5 for i in range(rows)],
+        "monthly_fee": [2000] * rows,
+        "churned": ["yes", "no", "maybe"] * (rows // 3),
+    }).to_csv(tmp_path / "churn.csv", index=False)
+    view = client.post("/api/problems",
+                       json={"example": "解約の引き止め"}).json()
+    url = f"/api/problems/{view['id']}"
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "churn.csv")}).json()
+    assert view["exportable"] is True and view["ready"] is True
+    found = client.get(f"{url}/insight").json()
+    data_errors = [item for item in found["findings"]
+                   if item["level"] == "error"]
+    assert data_errors
+    assert all(item in view["open_errors"] for item in data_errors)
+
+    # 覚えた分析を, 詳しい画面, 候補, 書き出し (記録の後も) で使い回す
+    counted = CountedInspect(ml_quest.inspect_data)
+    monkeypatch.setattr(ml_quest, "inspect_data", counted)
+    monkeypatch.setattr(ml_quest.skeleton, "inspect_data", counted)
+    assert client.get(url).json()["open_errors"] == view["open_errors"]
+    assert client.get(f"{url}/insight").json() == found
+    target = tmp_path / "project"
+    written = client.post(f"{url}/project",
+                          json={"path": str(target), "accept_errors": True})
+    assert written.status_code == 200, written.json()
+    assert client.get(url).json()["open_errors"] == view["open_errors"]
+    assert counted.calls == 0
+
+    # 確かめても, 上書きしない既にあるファイルと相対パスは 400
+    again = client.post(f"{url}/project",
+                        json={"path": str(target), "accept_errors": True})
+    assert again.status_code == 400
+    relative = client.post(f"{url}/project",
+                           json={"path": "project", "accept_errors": True})
+    assert relative.status_code == 400
+
+
+def test_insight_key_directory(tmp_path: Path) -> None:
+    """
+    覚えた分析の鍵が, ディレクトリのデータの中のファイルの変化で変わり,
+    プロジェクトの記録では変わらないことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 中のファイルを足すと変わり, 記録と元の場所では変わらない
+    folder = tmp_path / "images" / "circle"
+    folder.mkdir(parents=True)
+    (folder / "a.png").write_bytes(b"a")
+    problem = ml_quest.example_problem("総菜の作る量")
+    problem["data"] = {"source": str(tmp_path / "images"),
+                       "loader": "image_folder"}
+    before = api.insight_key("p", problem)
+    recorded = dict(problem, project={"path": str(tmp_path / "x")})
+    assert api.insight_key("p", recorded) == before
+    assert api.insight_key("q", problem) != before
+    (folder / "b.png").write_bytes(b"bb")
+    assert api.insight_key("p", problem) != before
+
+
 def test_columns_import_and_download(
     client: TestClient, tmp_path: Path
 ) -> None:

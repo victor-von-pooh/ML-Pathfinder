@@ -12,7 +12,7 @@ import ml_quest
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-from ml_quest.data import COPY_NAME
+from ml_quest.data import COPY_NAME, inspect_key
 from pydantic import BaseModel, Field
 
 from ml_pathfinder.store import ID_PATTERN, READ_ERRORS, Store
@@ -1204,26 +1204,22 @@ def insight_key(problem_id: str, problem: dict[str, Any]) -> str:
     Returns
     ----------
     key: str
-        データの場所, 更新の時刻と大きさ, 候補に効く答えをつないだ文字列
+        識別子と, ML-Quest の分析の結果の印 (inspect_key. 答えとデータの
+        場所, 大きさ, 更新の時刻. ディレクトリは中のファイルまで) をつない
+        だ文字列
     """
-    # データか, 候補に効く答えが変わったときの作り直し (手で書いた文字列
-    # でない場所は読まない)
-    source = ml_quest.get_value(problem, "data.source")
-    if not isinstance(source, str):
-        source, stamp = repr(source), "invalid"
-    else:
-        try:
-            stat = Path(source).stat()
-            stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
-        except OSError:
-            stamp = "missing"
-    # 候補に効く答えの漏れを防ぐため, 時刻を除く問題の設定の全てを鍵に
-    answers = json.dumps(
-        {k: v for k, v in problem.items()
-         if k not in ("created_at", "updated_at")},
-        ensure_ascii=False, sort_keys=True, default=str
-    )
-    key = f"{problem_id}|{source}|{stamp}|{answers}"
+    # ML-Quest が open_errors と make_project で覚えた結果を確かめる印と
+    # 同じにする (食い違うと, 古い結果を返し続けるか毎回求め直すため).
+    # 印を作れない崩れた場所 (手で書いた文字列でないもの) は答えの全てで
+    try:
+        mark = inspect_key(problem)
+    except (TypeError, ValueError, OSError):
+        mark = json.dumps(
+            {k: v for k, v in problem.items()
+             if k not in ("created_at", "updated_at")},
+            ensure_ascii=False, sort_keys=True, default=str
+        )
+    key = f"{problem_id}|{mark}"
 
     return key
 
@@ -1360,17 +1356,21 @@ def write_project(
         直すところが残っていて accept_errors でなければ 409 (detail に
         message と open_errors)
     """
-    # 重いデータの分析は鍵の外で覚えておく (鍵の中で変わっていれば,
-    # ML-Quest が印の違いで求め直す)
+    # 組めるなら, 重いデータの分析は鍵の外で先に求めて覚える (他の保存を
+    # 長く止めないように. 鍵の中で答えかデータが変わっていれば, 印が違う
+    # ので鍵の中で求め直す). 組めなければ 400 なので分析しない
     store = get_store(request)
     target = local_path(body.path).resolve()
-    insight_of(problem_id, load_or_404(store, problem_id))
+    before = load_or_404(store, problem_id)
+    if ml_quest.project_error(before) is None:
+        insight_of(problem_id, before)
 
     # 書き出したプロジェクトの場所 (データセットとモデルの定義の置き場も)
     # は問題の設定に保存し, 後ろの段階のアプリが写さずに使えるように
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
-        inspected = insight_of(problem_id, problem)
+        inspected = (insight_of(problem_id, problem)
+                     if ml_quest.project_error(problem) is None else None)
         try:
             refuse_open_errors(problem, inspected, body.accept_errors)
             # 写しが置き場の元の問題の設定を指すように, 元の場所を渡す
@@ -1390,7 +1390,8 @@ def write_project(
 
 
 def refuse_open_errors(
-    problem: dict[str, Any], inspected: dict[str, Any], accept: bool
+    problem: dict[str, Any], inspected: Optional[dict[str, Any]],
+    accept: bool
 ) -> None:
     """
     直すところが残っていて「それでも書き出す」の指定が無ければ, 一覧を
@@ -1402,8 +1403,8 @@ def refuse_open_errors(
     ----------
     problem: dict[str, Any]
         問題の設定
-    inspected: dict[str, Any]
-        覚えたデータの分析 (insight_of)
+    inspected: Optional[dict[str, Any]]
+        覚えたデータの分析 (insight_of. 組めなければ None)
     accept: bool
         「それでも書き出す」と確かめたか
 

@@ -274,12 +274,6 @@ export interface Info {
   examples: string[]
 }
 
-/** 直すところが残っていて「それでも書き出す」の指定が無い書き出しの 409 の detail */
-export interface OpenErrorsDetail {
-  message: string
-  open_errors: Finding[]
-}
-
 /** 骨組みの書き出しの結果 */
 export interface ProjectResult {
   path: string
