@@ -407,12 +407,14 @@ def test_view_unreadable_data(
     url = f"/api/problems/{imported.json()['id']}"
     view = client.get(url)
     assert view.status_code == 200, view.text
-    assert any(item["id"] == "data.source"
-               and "データを読めません" in item["message"]
-               for item in view.json()["open_errors"])
+    message = "データの場所は文字の場所 (パス) で書いてください"
+    assert {"level": "error", "id": "data.source",
+            "message": message} in view.json()["open_errors"]
     found = client.get(f"{url}/insight")
     assert found.status_code == 200
-    assert found.json()["findings"][0]["id"] == "data.source"
+    assert found.json()["findings"] == [
+        {"level": "error", "id": "data.source", "message": message}
+    ]
     refused = client.post(f"{url}/project",
                           json={"path": str(tmp_path / "never")})
     assert refused.status_code == 409
@@ -420,20 +422,27 @@ def test_view_unreadable_data(
                           json={"path": str(tmp_path / "never"),
                                 "accept_errors": True})
     assert written.status_code == 400
+    assert written.json()["detail"] == message
+    assert not (tmp_path / "never").exists()
 
-    # 入れたデータのディレクトリの中を調べる権限が無い (分析と印が例外に
-    # なる. 中のディレクトリの権限は OS ごとに違うので置き換えで)
-    view = client.post("/api/problems",
-                       json={"example": "総菜の作る量"}).json()
-    url = f"/api/problems/{view['id']}"
-    monkeypatch.setattr(api, "inspect_key", denied)
-    monkeypatch.setattr(ml_quest, "inspect_data", denied)
-    monkeypatch.setattr(ml_quest, "open_errors", denied)
+    # 入れたデータのディレクトリの中を調べる権限が無い (分析の印を作る所
+    # が例外になる. 中のディレクトリの権限は OS ごとに違うので置き換えで)
+    folder = tmp_path / "images"
+    folder.mkdir()
+    problem = ml_quest.example_problem("総菜の作る量")
+    problem["data"] = {"source": str(folder), "loader": "csv"}
+    path.write_text(yaml.safe_dump(problem, allow_unicode=True),
+                    encoding="utf-8")
+    imported = client.post("/api/problems/import", json={"path": str(path)})
+    url = f"/api/problems/{imported.json()['id']}"
+    monkeypatch.setattr(ml_quest.data, "data_stat", denied)
     view = client.get(url)
     assert view.status_code == 200, view.text
-    assert view.json()["open_errors"][-1]["message"] == (
-        "データを読めません: [Errno 13] 権限がありません"
-    )
+    finding = {"level": "error", "id": "data.source",
+               "message": "データを読めません: images を読み書きする権限が"
+                          "ありません"}
+    assert finding in view.json()["open_errors"]
+    assert client.get(f"{url}/insight").json()["findings"] == [finding]
 
 
 def denied(*args: Any, **kwargs: Any) -> Any:
@@ -451,8 +460,8 @@ def denied(*args: Any, **kwargs: Any) -> Any:
     ----------
     None
     """
-    # 権限の誤り
-    raise PermissionError(13, "権限がありません")
+    # 権限の誤り (場所はデータのディレクトリ)
+    raise PermissionError(13, "Permission denied", str(args[0]))
 
 
 def test_insight_key_directory(tmp_path: Path) -> None:
