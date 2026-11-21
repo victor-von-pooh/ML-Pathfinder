@@ -223,6 +223,267 @@ def test_example_handoff_and_project(
                        json={"example": "無い"}).status_code == 400
 
 
+def test_project_with_open_errors(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    直すところが残っても骨組みを組めれば書き出せ, 確かめの指定が無ければ
+    409 で一覧を返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題の答えを消すと受け渡せないが, 骨組みは組める
+    examples = client.get("/api/info").json()["examples"]
+    view = client.post("/api/problems",
+                       json={"example": examples[0]}).json()
+    assert view["open_errors"] == []
+    url = f"/api/problems/{view['id']}"
+    view = client.put(f"{url}/answers",
+                      json={"id": "issue.owner", "value": None}).json()
+    assert view["ready"] is False and view["handoff"] is None
+    assert view["exportable"] is True and view["export_error"] is None
+    assert [item["id"] for item in view["open_errors"]] == ["issue.owner"]
+    assert view["open_errors"][0]["level"] == "error"
+    listed = client.get("/api/problems").json()
+    assert all("open_errors" not in item for item in listed)
+
+    # 指定が無ければ 409 で一覧 (ライブラリを使うコード向けの文は出さない)
+    target = tmp_path / "project"
+    refused = client.post(f"{url}/project", json={"path": str(target)})
+    assert refused.status_code == 409
+    detail = refused.json()["detail"]
+    assert detail["open_errors"] == view["open_errors"]
+    assert "1 件" in detail["message"]
+    assert "accept_errors" not in detail["message"]
+    assert not target.exists()
+
+    # 確かめて指定すると書き出し, README に一覧が残る
+    written = client.post(f"{url}/project",
+                          json={"path": str(target), "accept_errors": True})
+    assert written.status_code == 200, written.json()
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "書き出した時点で残っていた直すところ" in readme
+    assert "issue.owner" in readme
+
+    # 組めない問題の設定は指定しても 400 (組めない理由の文)
+    view = client.put(f"{url}/answers",
+                      json={"id": "ml.use", "value": None}).json()
+    assert view["exportable"] is False and view["open_errors"] == []
+    refused = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "never"),
+                                "accept_errors": True})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == view["export_error"]
+
+
+class CountedInspect:
+    def __init__(self, inspect: Callable[[dict[str, Any]], Any]):
+        # 元の分析と, 呼んだ数を保存
+        self.inspect = inspect
+        self.calls = 0
+
+    def __call__(self, problem: dict[str, Any]) -> Any:
+        """
+        呼んだ数を数えて元の分析を呼ぶ関数
+
+        Parameters
+        ----------
+        problem: dict[str, Any]
+            問題の設定
+
+        Returns
+        ----------
+        found: Any
+            元の分析の結果
+        """
+        # 数えてから元の分析
+        self.calls += 1
+        found = self.inspect(problem)
+
+        return found
+
+
+def test_project_with_data_errors(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    入れたデータの確かめの error が直すところの一覧に入り, 覚えた分析を
+    書き出しまで使い回し, 確かめて書き出しても既にあるファイルと相対
+    パスは 400 にすることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        分析の呼び出しの数え (覚えた結果を使い回すかの確かめ)
+
+    Returns
+    ----------
+    None
+    """
+    # 連絡する会員を選ぶ課題に, 目的の列が 3 種類のデータ (2 クラスでない)
+    rows = 120
+    pd.DataFrame({
+        "member_id": range(rows), "plan": ["a", "b"] * (rows // 2),
+        "months": [i % 30 for i in range(rows)],
+        "inquiries": [i % 5 for i in range(rows)],
+        "monthly_fee": [2000] * rows,
+        "churned": ["yes", "no", "maybe"] * (rows // 3),
+    }).to_csv(tmp_path / "churn.csv", index=False)
+    view = client.post("/api/problems",
+                       json={"example": "解約の引き止め"}).json()
+    url = f"/api/problems/{view['id']}"
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "churn.csv")}).json()
+    assert view["exportable"] is True and view["ready"] is True
+    found = client.get(f"{url}/insight").json()
+    data_errors = [item for item in found["findings"]
+                   if item["level"] == "error"]
+    assert data_errors
+    assert all(item in view["open_errors"] for item in data_errors)
+
+    # 覚えた分析を, 詳しい画面, 候補, 書き出し (記録の後も) で使い回す
+    counted = CountedInspect(ml_quest.inspect_data)
+    monkeypatch.setattr(ml_quest, "inspect_data", counted)
+    monkeypatch.setattr(ml_quest.skeleton, "inspect_data", counted)
+    assert client.get(url).json()["open_errors"] == view["open_errors"]
+    assert client.get(f"{url}/insight").json() == found
+    target = tmp_path / "project"
+    written = client.post(f"{url}/project",
+                          json={"path": str(target), "accept_errors": True})
+    assert written.status_code == 200, written.json()
+    assert client.get(url).json()["open_errors"] == view["open_errors"]
+    assert counted.calls == 0
+
+    # 確かめても, 上書きしない既にあるファイルと相対パスは 400
+    again = client.post(f"{url}/project",
+                        json={"path": str(target), "accept_errors": True})
+    assert again.status_code == 400
+    relative = client.post(f"{url}/project",
+                           json={"path": "project", "accept_errors": True})
+    assert relative.status_code == 400
+
+
+def test_view_unreadable_data(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    データの場所が文字列でないか, 調べる権限が無い問題の設定でも, 詳しい
+    画面を開け, 読めないことが直すところに出ることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        調べる権限が無いときの置き換え
+
+    Returns
+    ----------
+    None
+    """
+    # 場所が数の問題の設定を取り込む
+    problem = ml_quest.example_problem("総菜の作る量")
+    problem["data"] = {"source": 123, "loader": "csv"}
+    path = tmp_path / "broken.yaml"
+    path.write_text(yaml.safe_dump(problem, allow_unicode=True),
+                    encoding="utf-8")
+    imported = client.post("/api/problems/import", json={"path": str(path)})
+    assert imported.status_code in (200, 201), imported.text
+    url = f"/api/problems/{imported.json()['id']}"
+    view = client.get(url)
+    assert view.status_code == 200, view.text
+    assert any(item["id"] == "data.source"
+               and "データを読めません" in item["message"]
+               for item in view.json()["open_errors"])
+    found = client.get(f"{url}/insight")
+    assert found.status_code == 200
+    assert found.json()["findings"][0]["id"] == "data.source"
+    refused = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "never")})
+    assert refused.status_code == 409
+    written = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "never"),
+                                "accept_errors": True})
+    assert written.status_code == 400
+
+    # 入れたデータのディレクトリの中を調べる権限が無い (分析と印が例外に
+    # なる. 中のディレクトリの権限は OS ごとに違うので置き換えで)
+    view = client.post("/api/problems",
+                       json={"example": "総菜の作る量"}).json()
+    url = f"/api/problems/{view['id']}"
+    monkeypatch.setattr(api, "inspect_key", denied)
+    monkeypatch.setattr(ml_quest, "inspect_data", denied)
+    monkeypatch.setattr(ml_quest, "open_errors", denied)
+    view = client.get(url)
+    assert view.status_code == 200, view.text
+    assert view.json()["open_errors"][-1]["message"] == (
+        "データを読めません: [Errno 13] 権限がありません"
+    )
+
+
+def denied(*args: Any, **kwargs: Any) -> Any:
+    """
+    調べる権限が無いときの例外を投げる関数
+
+    Parameters
+    ----------
+    *args: Any
+        使わない
+    **kwargs: Any
+        使わない
+
+    Returns
+    ----------
+    None
+    """
+    # 権限の誤り
+    raise PermissionError(13, "権限がありません")
+
+
+def test_insight_key_directory(tmp_path: Path) -> None:
+    """
+    覚えた分析の鍵が, ディレクトリのデータの中のファイルの変化で変わり,
+    プロジェクトの記録では変わらないことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 中のファイルを足すと変わり, 記録と元の場所では変わらない
+    folder = tmp_path / "images" / "circle"
+    folder.mkdir(parents=True)
+    (folder / "a.png").write_bytes(b"a")
+    problem = ml_quest.example_problem("総菜の作る量")
+    problem["data"] = {"source": str(tmp_path / "images"),
+                       "loader": "image_folder"}
+    before = api.insight_key("p", problem)
+    recorded = dict(problem, project={"path": str(tmp_path / "x")})
+    assert api.insight_key("p", recorded) == before
+    assert api.insight_key("q", problem) != before
+    (folder / "b.png").write_bytes(b"bb")
+    assert api.insight_key("p", problem) != before
+
+
 def test_columns_import_and_download(
     client: TestClient, tmp_path: Path
 ) -> None:

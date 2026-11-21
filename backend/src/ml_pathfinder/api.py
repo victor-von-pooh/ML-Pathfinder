@@ -12,7 +12,7 @@ import ml_quest
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-from ml_quest.data import COPY_NAME
+from ml_quest.data import COPY_NAME, inspect_key
 from pydantic import BaseModel, Field
 
 from ml_pathfinder.store import ID_PATTERN, READ_ERRORS, Store
@@ -36,6 +36,9 @@ ATTACHING: Counter[str] = Counter()
 
 # 画面に返す誤りとする例外 (手元のファイルの誤りを含む)
 USER_ERRORS = (ValueError, OSError, ImportError, yaml.YAMLError)
+
+# データの場所を調べるときの例外 (場所が文字列でない, 調べる権限が無い)
+DATA_ERRORS = (TypeError, ValueError, OSError)
 
 # 学習の段階 (ML-Found) の登録簿の関数 (入っていなければ None. 読み込みは
 # 重いので 1 回だけ試す. ML-Found には依存しない)
@@ -71,6 +74,7 @@ class ProjectRequest(BaseModel):
     path: str = Field(min_length=1)
     name: Optional[str] = Field(default=None, max_length=MAX_NAME)
     overwrite: bool = False
+    accept_errors: bool = False
 
 
 def get_store(request: Request) -> Store:
@@ -421,8 +425,9 @@ def problem_view(
     problem: dict[str, Any]
         問題の設定
     with_requires: bool = True
-        要る機能と入れ方を含める場合は True (一覧では使わないので False.
-        ML-Found の読み込みを一覧で起こさないため)
+        要る機能と入れ方と, 残っている直すところを含める場合は True (一覧
+        では使わないので False. ML-Found の読み込みとデータの分析を一覧で
+        起こさないため)
 
     Returns
     ----------
@@ -439,9 +444,12 @@ def problem_view(
     except ValueError as error:
         handoff, reason = None, str(error)
     uses = ml_quest.get_value(problem, "ml.use")
-    # 渡せるのに骨組みを書き出せない理由 (ML-Quest の make_project の文)
-    export_error = (
-        ml_quest.project_error(problem) if handoff is not None else None
+    # 骨組みを組めない理由 (ML-Quest の make_project の文). 直すところが
+    # 残っていても組めれば, 確かめた上で書き出せる
+    export_error = ml_quest.project_error(problem)
+    remaining = (
+        open_errors_of(problem, insight_of(problem_id, problem))
+        if with_requires and export_error is None else []
     )
     view = {
         "id": problem_id,
@@ -457,8 +465,9 @@ def problem_view(
         "handoff_error": reason,
         "requires": requires_of(problem) if with_requires else [],
         "ready": handoff is not None,
-        "exportable": handoff is not None and export_error is None,
+        "exportable": export_error is None,
         "export_error": export_error,
+        "open_errors": remaining,
         "project": project_of(problem),
         "finished": uses is False and not any(
             item["level"] == "error" for item in findings
@@ -813,7 +822,7 @@ def import_problem(request: Request, body: PathRequest) -> dict[str, Any]:
             "name"
         ].strip():
             problem["name"] = path.stem if path.is_file() else path.name
-        problem_view("0" * 12, problem)
+        problem_view("0" * 12, problem, with_requires=False)
     except USER_ERRORS as error:
         raise user_error(error) from error
     except (TypeError, KeyError, AttributeError) as error:
@@ -1197,26 +1206,22 @@ def insight_key(problem_id: str, problem: dict[str, Any]) -> str:
     Returns
     ----------
     key: str
-        データの場所, 更新の時刻と大きさ, 候補に効く答えをつないだ文字列
+        識別子と, ML-Quest の分析の結果の印 (inspect_key. 答えとデータの
+        場所, 大きさ, 更新の時刻. ディレクトリは中のファイルまで) をつない
+        だ文字列
     """
-    # データか, 候補に効く答えが変わったときの作り直し (手で書いた文字列
-    # でない場所は読まない)
-    source = ml_quest.get_value(problem, "data.source")
-    if not isinstance(source, str):
-        source, stamp = repr(source), "invalid"
-    else:
-        try:
-            stat = Path(source).stat()
-            stamp = f"{stat.st_mtime_ns}:{stat.st_size}"
-        except OSError:
-            stamp = "missing"
-    # 候補に効く答えの漏れを防ぐため, 時刻を除く問題の設定の全てを鍵に
-    answers = json.dumps(
-        {k: v for k, v in problem.items()
-         if k not in ("created_at", "updated_at")},
-        ensure_ascii=False, sort_keys=True, default=str
-    )
-    key = f"{problem_id}|{source}|{stamp}|{answers}"
+    # ML-Quest が open_errors と make_project で覚えた結果を確かめる印と
+    # 同じにする (食い違うと, 古い結果を返し続けるか毎回求め直すため).
+    # 印を作れない崩れた場所 (手で書いた文字列でないもの) は答えの全てで
+    try:
+        mark = inspect_key(problem)
+    except DATA_ERRORS:
+        mark = json.dumps(
+            {k: v for k, v in problem.items()
+             if k not in ("created_at", "updated_at")},
+            ensure_ascii=False, sort_keys=True, default=str
+        )
+    key = f"{problem_id}|{mark}"
 
     return key
 
@@ -1280,14 +1285,43 @@ def get_insight(request: Request, problem_id: str) -> dict[str, Any]:
     """
     # 分析は重いので, データと答えが同じ間は覚えた結果の返却
     problem = load_or_404(get_store(request), problem_id)
+    insight = insight_of(problem_id, problem)
+
+    return insight
+
+
+def insight_of(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
+    """
+    入れたデータの分析 (ML-Quest の inspect_data) を, 覚えた結果か求めて
+    返す関数
+
+    Parameters
+    ----------
+    problem_id: str
+        識別子
+    problem: dict[str, Any]
+        問題の設定
+
+    Returns
+    ----------
+    insight: dict[str, Any]
+        overview, suggestions, findings と, 求めた元の印 key (データを
+        入れていなければ空で key 無し)
+    """
+    # データと答えが同じ間は覚えた結果
     key = insight_key(problem_id, problem)
     with INSIGHT_LOCK:
         cached = INSIGHTS.get(key)
         if cached is not None:
             INSIGHTS.move_to_end(key)
             return cached
-    # 読めない場合も inspect_data が確かめの error にして返す
-    found = ml_quest.inspect_data(problem)
+    # 読めない場合も inspect_data が確かめの error にして返す. 場所が
+    # 文字列でないか, 場所を調べる権限が無い (例外になる) 場合も error に
+    try:
+        found = ml_quest.inspect_data(problem)
+    except DATA_ERRORS as error:
+        found = {"overview": None, "suggestions": [],
+                 "findings": [unreadable(error)]}
     insight: dict[str, Any] = found or {
         "overview": None, "suggestions": [], "findings": []
     }
@@ -1297,6 +1331,60 @@ def get_insight(request: Request, problem_id: str) -> dict[str, Any]:
             INSIGHTS.popitem(last=False)
 
     return insight
+
+
+def unreadable(error: Exception) -> dict[str, Any]:
+    """
+    データの場所を調べられない誤りを, 確かめの error にする関数
+
+    Parameters
+    ----------
+    error: Exception
+        起きた例外 (場所が文字列でない, 調べる権限が無い, など)
+
+    Returns
+    ----------
+    finding: dict[str, Any]
+        level, id (data.source), message の確かめ
+    """
+    # ML-Quest の読めないデータの確かめと同じ書き方
+    finding = {"level": "error", "id": "data.source",
+               "message": f"データを読めません: {error}"}
+
+    return finding
+
+
+def open_errors_of(
+    problem: dict[str, Any], inspected: Optional[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """
+    骨組みを組める問題の設定の, 残っている直すところ (ML-Quest の
+    open_errors) を返す関数
+
+    Parameters
+    ----------
+    problem: dict[str, Any]
+        問題の設定 (骨組みを組めるもの)
+    inspected: Optional[dict[str, Any]]
+        覚えたデータの分析 (insight_of)
+
+    Returns
+    ----------
+    errors: list[dict[str, Any]]
+        直すところ. データの場所を調べられない (例外になる) 場合は,
+        問題の設定の確かめの error と, 読めないことの error
+    """
+    # 組めるなら問題の設定の確かめの error は全て組める直すところなので,
+    # 例外のときはそれと読めないことを並べる (詳しい画面を開けるように)
+    try:
+        errors: list[dict[str, Any]] = ml_quest.open_errors(
+            problem, inspected=inspected
+        )
+    except DATA_ERRORS as error:
+        errors = [item for item in ml_quest.check(problem)
+                  if item["level"] == "error"] + [unreadable(error)]
+
+    return errors
 
 
 @router.post("/problems/{problem_id}/project")
@@ -1313,35 +1401,95 @@ def write_project(
     problem_id: str
         識別子
     body: ProjectRequest
-        書き出す場所, 実験の名前, 上書きするか
+        書き出す場所, 実験の名前, 上書きするか, 直すところが残ったまま
+        書き出すか
 
     Returns
     ----------
     result: dict[str, Any]
         path (書き出したディレクトリ), files (書いたファイル), project
         (問題の設定に保存したプロジェクトの記録)
+
+    Raises
+    ----------
+    HTTPException
+        骨組みを組めない問題の設定と, 上書きしない既にあるファイルは 400.
+        直すところが残っていて accept_errors でなければ 409 (detail に
+        message と open_errors)
     """
-    # 渡せない問題の設定と, 上書きしない既にあるファイルは 400. 書き出した
-    # プロジェクトの場所 (データセットとモデルの定義の置き場も) は問題の
-    # 設定に保存し, 後ろの段階のアプリが写さずに使えるように
+    # 組めるなら, 重いデータの分析は鍵の外で先に求めて覚える (他の保存を
+    # 長く止めないように. 鍵の中で答えかデータが変わっていれば, 印が違う
+    # ので鍵の中で求め直す). 組めなければ 400 なので分析しない
     store = get_store(request)
     target = local_path(body.path).resolve()
+    before = load_or_404(store, problem_id)
+    if ml_quest.project_error(before) is None:
+        insight_of(problem_id, before)
+
+    # 書き出したプロジェクトの場所 (データセットとモデルの定義の置き場も)
+    # は問題の設定に保存し, 後ろの段階のアプリが写さずに使えるように
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
+        inspected = (insight_of(problem_id, problem)
+                     if ml_quest.project_error(problem) is None else None)
         try:
+            refuse_open_errors(problem, inspected, body.accept_errors)
             # 写しが置き場の元の問題の設定を指すように, 元の場所を渡す
             files = ml_quest.make_project(
                 problem, target, name=body.name, overwrite=body.overwrite,
-                origin=store.place(problem_id) / "problem.yaml"
+                origin=store.place(problem_id) / "problem.yaml",
+                accept_errors=body.accept_errors, inspected=inspected
             )
             recorded = ml_quest.record_project(problem, target)
-        except USER_ERRORS as error:
+        except (*USER_ERRORS, TypeError) as error:
             raise user_error(error) from error
         store.save(problem_id, recorded)
     result = {"path": str(target), "files": files,
               "project": recorded["project"]}
 
     return result
+
+
+def refuse_open_errors(
+    problem: dict[str, Any], inspected: Optional[dict[str, Any]],
+    accept: bool
+) -> None:
+    """
+    直すところが残っていて「それでも書き出す」の指定が無ければ, 一覧を
+    付けて断る関数
+
+    骨組みを組めない場合は何もしない (make_project が 400 の誤りにする)
+
+    Parameters
+    ----------
+    problem: dict[str, Any]
+        問題の設定
+    inspected: Optional[dict[str, Any]]
+        覚えたデータの分析 (insight_of. 組めなければ None)
+    accept: bool
+        「それでも書き出す」と確かめたか
+
+    Returns
+    ----------
+    None
+
+    Raises
+    ----------
+    HTTPException
+        409 (detail に画面の文 message と一覧 open_errors. ML-Quest の
+        ライブラリを使うコード向けの文は出さない)
+    """
+    # 組めない理由が先 (その文で 400)
+    if accept or ml_quest.project_error(problem) is not None:
+        return
+    errors = open_errors_of(problem, inspected)
+    if errors:
+        raise HTTPException(409, {
+            "message": (f"直すところが {len(errors)} 件残っています. 直して"
+                        "から書き出すか, 残ったまま書き出すかを確かめて"
+                        "ください"),
+            "open_errors": errors,
+        })
 
 
 @router.get("/problems/{problem_id}/download")
