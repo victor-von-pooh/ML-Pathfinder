@@ -96,8 +96,19 @@ describe('ProjectDialog', () => {
     const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
     expect(JSON.parse(String(init.body))).toMatchObject({ path: '/x', accept_errors: true })
 
-    // 書き出した後は, 場所などを変えるまで押せない
+    // 書き出した後は, 場所などを変えるまで押せない. 領域の一式も確かめて書き出したと添える
     expect(await screen.findByRole('button', { name: '書き出しました' })).toBeDisabled()
+    expect(screen.getByText(/inference\/ に推論の一式を作るので/)).toHaveTextContent(
+      'README.md の最後の一覧を直すまで問題の設定はつながない',
+    )
+  })
+
+  it('ファイルの組では損得と制約の注意を出さない', () => {
+    renderDialog(
+      problemWith([{ level: 'error', id: 'action.decision.value', message: '数を答えてください' }]),
+    )
+    expect(screen.getByText(/渡す値を作れず/)).toBeInTheDocument()
+    expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
   })
 
   it('入れたデータの確かめだけなら渡す値は作れると書き, 損得と制約が残れば既定値を付けないと添える', async () => {
