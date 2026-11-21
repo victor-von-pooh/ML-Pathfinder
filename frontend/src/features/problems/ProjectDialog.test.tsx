@@ -95,6 +95,35 @@ describe('ProjectDialog', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
     expect(JSON.parse(String(init.body))).toMatchObject({ path: '/x', accept_errors: true })
+
+    // 書き出した後は, 場所などを変えるまで押せない
+    expect(await screen.findByRole('button', { name: '書き出しました' })).toBeDisabled()
+  })
+
+  it('入れたデータの確かめだけなら渡す値は作れると書き, 損得と制約が残れば既定値を付けないと添える', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const problem = problemWith([
+      { level: 'error', id: 'action.decision', message: '目的の列の値が 2 種類でありません' },
+    ])
+    renderDialog({
+      ...problem,
+      questions: [{ ...KIND, value: 'column' }, OWNER],
+      handoff: {} as Problem['handoff'],
+      ready: true,
+    })
+    const note = screen.getByText(/渡す値は作れますが/)
+    expect(note).toHaveTextContent('既定値を付けずに作ります')
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
+    fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
+    const next = await screen.findByText(/inference\/ を ML-Provide に登録して推論する/)
+    expect(next).toHaveTextContent('README.md の最後の一覧を直すまで問題の設定はつながない')
+    expect(next).toHaveTextContent('一式に意思決定の既定値は付かない')
   })
 
   it('直すところが無ければ確かめを出さず, accept_errors を送らない', async () => {

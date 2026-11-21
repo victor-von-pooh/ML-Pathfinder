@@ -20,6 +20,11 @@ function targetKind(problem: Problem): string | null {
   return typeof value === 'string' ? value : null
 }
 
+/** 損得と制約 (action.decision) に直すところが残るか (残れば推論の一式に意思決定の既定値を付けない) */
+function decisionDropped(errors: Finding[]): boolean {
+  return errors.some((f) => f.id === 'action.decision' || f.id.startsWith('action.decision.'))
+}
+
 /** 確かめの項目の場所の問いの題 (下の項目の場所は, 持つ問いの題) */
 function questionTitle(problem: Problem, finding: Finding): string | null {
   const found = problem.questions.find(
@@ -41,15 +46,20 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   const signature = errors.map((f) => `${f.id}\u0000${f.message}`).join('\u0001')
   const [confirmed, setConfirmed] = useState<string | null>(null)
   const accepted = errors.length > 0 && confirmed === signature
+  // 問題の設定の確かめの直すところが残ると推論の段階に渡す値を作れない (入れたデータの確かめ
+  // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
+  const checked = problem.handoff === null
+  const dropped = decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
-    mutationFn: () =>
+    // 書き出した時点の確かめ (読み直した一覧が変わっても, 次にすることはその時点のまま)
+    mutationFn: (sent: { accept: boolean; dropped: boolean }) =>
       api.writeProject(problem.id, {
         path: path.trim(),
         name: name.trim() || undefined,
         overwrite,
         // 一覧を確かめたときだけ
-        accept_errors: accepted || undefined,
+        accept_errors: sent.accept || undefined,
       }),
     // 書き出した場所は問題の設定に保存されるので, 読み直して受け渡しの値に出す (読み直した
     // 印と同じなので, 他で変わった知らせは出ない)
@@ -99,7 +109,10 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
           <input
             type="checkbox"
             checked={overwrite}
-            onChange={(event) => setOverwrite(event.target.checked)}
+            onChange={(event) => {
+              setOverwrite(event.target.checked)
+              write.reset()
+            }}
           />
           既にあるファイル (problem.yaml, README.md, configs, train.py) を上書きする
         </label>
@@ -114,7 +127,12 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
             </h3>
             <p id="open-errors-note" className="mb-2 text-xs text-ink-2">
               直してから書き出すことを勧めます. 残ったまま書き出すと, 書き出した README.md
-              の最後に一覧を残し, 直すまで推論の段階 (ML-Provide) で問題の設定につなげません.
+              の最後に一覧を残します.{' '}
+              {checked
+                ? '問題の設定の確かめの直すところが残るので, 推論の段階 (ML-Provide) に渡す値を作れず, 直すまで問題の設定につなげません.'
+                : '入れたデータの確かめの直すところだけなので, 推論の段階 (ML-Provide) に渡す値は作れますが, 同じ誤りのまま使われないように, 直すまで問題の設定にはつなぎません.'}
+              {dropped &&
+                ' 損得と制約に直すところが残るので, 推論の一式は意思決定の既定値を付けずに作ります.'}
             </p>
             <ul aria-label="残っている直すところ" className="mb-2 list-disc pl-5 text-xs">
               {errors.map((finding) => {
@@ -194,7 +212,13 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   を動かして学習する. 今のやり方をデータで書いていれば, 検証用とテスト用で
                   今のやり方と比べた評価も残る
                 </li>
-                <li>実験の中の inference/ を ML-Provide に登録して推論する</li>
+                <li>
+                  実験の中の inference/ を ML-Provide に登録して推論する
+                  {write.variables?.accept &&
+                    '. inference/ は登録できるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
+                  {write.variables?.dropped &&
+                    '. 損得と制約に直すところが残ったので, 一式に意思決定の既定値は付かない'}
+                </li>
               </ol>
             )}
           </div>
@@ -206,16 +230,21 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
           <Button
             variant="primary"
             icon={FolderOutput}
-            // 直すところが残っていれば, 「それでも書き出す」を確かめるまで押せない
-            disabled={!path.trim() || write.isPending || (errors.length > 0 && !accepted)}
+            // 直すところが残っていれば, 「それでも書き出す」を確かめるまで押せない. 書き出した後は,
+            // 場所, 名前, 上書きを変えるまで押せない (同じ場所の書き出し直しは上書きの誤りになるため)
+            disabled={
+              !path.trim() || write.isPending || write.isSuccess || (errors.length > 0 && !accepted)
+            }
             aria-describedby={errors.length > 0 && !accepted ? 'open-errors-title' : undefined}
-            onClick={() => write.mutate()}
+            onClick={() => write.mutate({ accept: accepted, dropped: accepted && dropped })}
           >
             {write.isPending
               ? '書き出しています…'
-              : accepted
-                ? '直すところが残ったまま書き出す'
-                : '書き出す'}
+              : write.isSuccess
+                ? '書き出しました'
+                : accepted
+                  ? '直すところが残ったまま書き出す'
+                  : '書き出す'}
           </Button>
         </div>
       </div>
