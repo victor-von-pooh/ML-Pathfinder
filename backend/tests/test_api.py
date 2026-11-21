@@ -376,6 +376,85 @@ def test_project_with_data_errors(
     assert relative.status_code == 400
 
 
+def test_view_unreadable_data(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    データの場所が文字列でないか, 調べる権限が無い問題の設定でも, 詳しい
+    画面を開け, 読めないことが直すところに出ることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        調べる権限が無いときの置き換え
+
+    Returns
+    ----------
+    None
+    """
+    # 場所が数の問題の設定を取り込む
+    problem = ml_quest.example_problem("総菜の作る量")
+    problem["data"] = {"source": 123, "loader": "csv"}
+    path = tmp_path / "broken.yaml"
+    path.write_text(yaml.safe_dump(problem, allow_unicode=True),
+                    encoding="utf-8")
+    imported = client.post("/api/problems/import", json={"path": str(path)})
+    assert imported.status_code in (200, 201), imported.text
+    url = f"/api/problems/{imported.json()['id']}"
+    view = client.get(url)
+    assert view.status_code == 200, view.text
+    assert any(item["id"] == "data.source"
+               and "データを読めません" in item["message"]
+               for item in view.json()["open_errors"])
+    found = client.get(f"{url}/insight")
+    assert found.status_code == 200
+    assert found.json()["findings"][0]["id"] == "data.source"
+    refused = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "never")})
+    assert refused.status_code == 409
+    written = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "never"),
+                                "accept_errors": True})
+    assert written.status_code == 400
+
+    # 入れたデータのディレクトリの中を調べる権限が無い (分析と印が例外に
+    # なる. 中のディレクトリの権限は OS ごとに違うので置き換えで)
+    view = client.post("/api/problems",
+                       json={"example": "総菜の作る量"}).json()
+    url = f"/api/problems/{view['id']}"
+    monkeypatch.setattr(api, "inspect_key", denied)
+    monkeypatch.setattr(ml_quest, "inspect_data", denied)
+    monkeypatch.setattr(ml_quest, "open_errors", denied)
+    view = client.get(url)
+    assert view.status_code == 200, view.text
+    assert view.json()["open_errors"][-1]["message"] == (
+        "データを読めません: [Errno 13] 権限がありません"
+    )
+
+
+def denied(*args: Any, **kwargs: Any) -> Any:
+    """
+    調べる権限が無いときの例外を投げる関数
+
+    Parameters
+    ----------
+    *args: Any
+        使わない
+    **kwargs: Any
+        使わない
+
+    Returns
+    ----------
+    None
+    """
+    # 権限の誤り
+    raise PermissionError(13, "権限がありません")
+
+
 def test_insight_key_directory(tmp_path: Path) -> None:
     """
     覚えた分析の鍵が, ディレクトリのデータの中のファイルの変化で変わり,
