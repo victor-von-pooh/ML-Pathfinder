@@ -49,7 +49,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 問題の設定の確かめの直すところが残ると推論の段階に渡す値を作れない (入れたデータの確かめ
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
-  const dropped = decisionDropped(errors)
+  // ファイルの組の推論の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
+  const dropped = !items && decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
     // 書き出した時点の確かめ (読み直した一覧が変わっても, 次にすることはその時点のまま)
@@ -194,11 +195,16 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   ML-EDA の書き出しの関数でデータセットを outputs/dataset に書き出す
                 </li>
                 <li>
-                  仮のモデルのままでも動く. ML-CreateArchitecture で組んだモデルは, config の
-                  model.spec に定義の場所を書く
+                  ML-CreateArchitecture で組んだ定義を models/model.yaml (config の model.spec
+                  の場所) に保存する. 定義が無いうちは仮のモデルで学習する
                 </li>
                 <li>ML-Found (か ML-Dashboard) で train.py を動かして学習する</li>
-                <li>推論の一式はまだ書き出さない (README.md を参照)</li>
+                <li>
+                  定義を置いて学習すると, train.py が実験の中の inference/ に推論の一式を作るので,
+                  ML-Provide に登録して推論する (仮のモデルでは作らない)
+                  {write.variables?.accept &&
+                    '. inference/ は登録できるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
               </ol>
             ) : (
               <ol className="list-decimal pl-5 text-xs">
