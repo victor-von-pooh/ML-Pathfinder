@@ -21,6 +21,11 @@ const LEVEL_STYLE: Record<Finding['level'], string> = {
   info: 'border-line bg-surface-2',
 }
 
+/** 文の終わりの句点 (ML-Quest の文は句点で終わらないことがある) */
+function withPeriod(text: string): string {
+  return text.endsWith('.') ? text : `${text}.`
+}
+
 /** 節ごとの直すところ (error) の数 */
 function errorsBySection(problem: Problem): Record<number, number> {
   const counts: Record<number, number> = {}
@@ -288,7 +293,6 @@ export function ProblemPage() {
   const title = problem.progress.sections.find((s) => s.number === section)?.title ?? ''
   const visible = problem.questions.filter((q) => q.applies)
   const here = visible.filter((q) => q.section === section)
-  const errorCount = problem.findings.filter((f) => f.level === 'error').length
   // 保存中と誤りは, その問いだけに出す
   const savingId = answer.isPending ? answer.variables?.question : undefined
   const failedId = answer.isError ? answer.variables?.question : undefined
@@ -337,8 +341,11 @@ export function ProblemPage() {
             <Button
               variant="primary"
               icon={FolderOutput}
+              // 押せないのは骨組みを組めないときだけ (直すところは押した後に確かめる)
               disabled={!problem.exportable}
-              aria-describedby={problem.exportable ? undefined : 'export-reason'}
+              aria-describedby={
+                !problem.exportable || problem.open_errors.length > 0 ? 'export-reason' : undefined
+              }
               onClick={() => setExporting(true)}
             >
               学習のプロジェクトを書き出す
@@ -355,11 +362,16 @@ export function ProblemPage() {
       />
       {!problem.exportable && !problem.finished && (
         <p id="export-reason" className="-mt-4 mb-4 text-xs text-ink-3">
-          {problem.ready
-            ? `${problem.export_error ?? ''}. 後ろの段階に渡す値は「後ろの段階に渡す値」の欄で見られます.`
-            : errorCount > 0
-              ? `直すところが ${errorCount} 件残っているので, 学習のプロジェクトはまだ書き出せません.`
-              : '学習のプロジェクトは, 機械学習を使うと決めて直すところが無くなると書き出せます.'}
+          {problem.export_error
+            ? `学習のプロジェクトはまだ書き出せません. ${withPeriod(problem.export_error)}`
+            : '学習のプロジェクトは, 機械学習を使うと決めて骨組みを組める答えがそろうと書き出せます.'}
+          {problem.ready && ' 後ろの段階に渡す値は「後ろの段階に渡す値」の欄で見られます.'}
+        </p>
+      )}
+      {problem.exportable && problem.open_errors.length > 0 && (
+        <p id="export-reason" className="-mt-4 mb-4 text-xs text-ink-3">
+          直すところが {problem.open_errors.length} 件残っています. 書き出すときに一覧を確かめ,
+          それでも書き出すかを選べます.
         </p>
       )}
       {formatVersion !== undefined &&
