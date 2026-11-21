@@ -71,6 +71,7 @@ class ProjectRequest(BaseModel):
     path: str = Field(min_length=1)
     name: Optional[str] = Field(default=None, max_length=MAX_NAME)
     overwrite: bool = False
+    accept_errors: bool = False
 
 
 def get_store(request: Request) -> Store:
@@ -421,8 +422,9 @@ def problem_view(
     problem: dict[str, Any]
         問題の設定
     with_requires: bool = True
-        要る機能と入れ方を含める場合は True (一覧では使わないので False.
-        ML-Found の読み込みを一覧で起こさないため)
+        要る機能と入れ方と, 残っている直すところを含める場合は True (一覧
+        では使わないので False. ML-Found の読み込みとデータの分析を一覧で
+        起こさないため)
 
     Returns
     ----------
@@ -439,9 +441,13 @@ def problem_view(
     except ValueError as error:
         handoff, reason = None, str(error)
     uses = ml_quest.get_value(problem, "ml.use")
-    # 渡せるのに骨組みを書き出せない理由 (ML-Quest の make_project の文)
-    export_error = (
-        ml_quest.project_error(problem) if handoff is not None else None
+    # 骨組みを組めない理由 (ML-Quest の make_project の文). 直すところが
+    # 残っていても組めれば, 確かめた上で書き出せる
+    export_error = ml_quest.project_error(problem)
+    remaining = (
+        ml_quest.open_errors(problem, inspected=insight_of(problem_id,
+                                                           problem))
+        if with_requires and export_error is None else []
     )
     view = {
         "id": problem_id,
@@ -457,8 +463,9 @@ def problem_view(
         "handoff_error": reason,
         "requires": requires_of(problem) if with_requires else [],
         "ready": handoff is not None,
-        "exportable": handoff is not None and export_error is None,
+        "exportable": export_error is None,
         "export_error": export_error,
+        "open_errors": remaining,
         "project": project_of(problem),
         "finished": uses is False and not any(
             item["level"] == "error" for item in findings
@@ -813,7 +820,7 @@ def import_problem(request: Request, body: PathRequest) -> dict[str, Any]:
             "name"
         ].strip():
             problem["name"] = path.stem if path.is_file() else path.name
-        problem_view("0" * 12, problem)
+        problem_view("0" * 12, problem, with_requires=False)
     except USER_ERRORS as error:
         raise user_error(error) from error
     except (TypeError, KeyError, AttributeError) as error:
@@ -1280,6 +1287,30 @@ def get_insight(request: Request, problem_id: str) -> dict[str, Any]:
     """
     # 分析は重いので, データと答えが同じ間は覚えた結果の返却
     problem = load_or_404(get_store(request), problem_id)
+    insight = insight_of(problem_id, problem)
+
+    return insight
+
+
+def insight_of(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
+    """
+    入れたデータの分析 (ML-Quest の inspect_data) を, 覚えた結果か求めて
+    返す関数
+
+    Parameters
+    ----------
+    problem_id: str
+        識別子
+    problem: dict[str, Any]
+        問題の設定
+
+    Returns
+    ----------
+    insight: dict[str, Any]
+        overview, suggestions, findings と, 求めた元の印 key (データを
+        入れていなければ空で key 無し)
+    """
+    # データと答えが同じ間は覚えた結果
     key = insight_key(problem_id, problem)
     with INSIGHT_LOCK:
         cached = INSIGHTS.get(key)
@@ -1313,26 +1344,40 @@ def write_project(
     problem_id: str
         識別子
     body: ProjectRequest
-        書き出す場所, 実験の名前, 上書きするか
+        書き出す場所, 実験の名前, 上書きするか, 直すところが残ったまま
+        書き出すか
 
     Returns
     ----------
     result: dict[str, Any]
         path (書き出したディレクトリ), files (書いたファイル), project
         (問題の設定に保存したプロジェクトの記録)
+
+    Raises
+    ----------
+    HTTPException
+        骨組みを組めない問題の設定と, 上書きしない既にあるファイルは 400.
+        直すところが残っていて accept_errors でなければ 409 (detail に
+        message と open_errors)
     """
-    # 渡せない問題の設定と, 上書きしない既にあるファイルは 400. 書き出した
-    # プロジェクトの場所 (データセットとモデルの定義の置き場も) は問題の
-    # 設定に保存し, 後ろの段階のアプリが写さずに使えるように
+    # 重いデータの分析は鍵の外で覚えておく (鍵の中で変わっていれば,
+    # ML-Quest が印の違いで求め直す)
     store = get_store(request)
     target = local_path(body.path).resolve()
+    insight_of(problem_id, load_or_404(store, problem_id))
+
+    # 書き出したプロジェクトの場所 (データセットとモデルの定義の置き場も)
+    # は問題の設定に保存し, 後ろの段階のアプリが写さずに使えるように
     with EDIT_LOCK:
         problem = load_or_404(store, problem_id)
+        inspected = insight_of(problem_id, problem)
         try:
+            refuse_open_errors(problem, inspected, body.accept_errors)
             # 写しが置き場の元の問題の設定を指すように, 元の場所を渡す
             files = ml_quest.make_project(
                 problem, target, name=body.name, overwrite=body.overwrite,
-                origin=store.place(problem_id) / "problem.yaml"
+                origin=store.place(problem_id) / "problem.yaml",
+                accept_errors=body.accept_errors, inspected=inspected
             )
             recorded = ml_quest.record_project(problem, target)
         except USER_ERRORS as error:
@@ -1342,6 +1387,47 @@ def write_project(
               "project": recorded["project"]}
 
     return result
+
+
+def refuse_open_errors(
+    problem: dict[str, Any], inspected: dict[str, Any], accept: bool
+) -> None:
+    """
+    直すところが残っていて「それでも書き出す」の指定が無ければ, 一覧を
+    付けて断る関数
+
+    骨組みを組めない場合は何もしない (make_project が 400 の誤りにする)
+
+    Parameters
+    ----------
+    problem: dict[str, Any]
+        問題の設定
+    inspected: dict[str, Any]
+        覚えたデータの分析 (insight_of)
+    accept: bool
+        「それでも書き出す」と確かめたか
+
+    Returns
+    ----------
+    None
+
+    Raises
+    ----------
+    HTTPException
+        409 (detail に画面の文 message と一覧 open_errors. ML-Quest の
+        ライブラリを使うコード向けの文は出さない)
+    """
+    # 組めない理由が先 (その文で 400)
+    if accept or ml_quest.project_error(problem) is not None:
+        return
+    errors = ml_quest.open_errors(problem, inspected=inspected)
+    if errors:
+        raise HTTPException(409, {
+            "message": (f"直すところが {len(errors)} 件残っています. 直して"
+                        "から書き出すか, 残ったまま書き出すかを確かめて"
+                        "ください"),
+            "open_errors": errors,
+        })
 
 
 @router.get("/problems/{problem_id}/download")

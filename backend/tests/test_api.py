@@ -223,6 +223,68 @@ def test_example_handoff_and_project(
                        json={"example": "無い"}).status_code == 400
 
 
+def test_project_with_open_errors(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """
+    直すところが残っても骨組みを組めれば書き出せ, 確かめの指定が無ければ
+    409 で一覧を返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題の答えを消すと受け渡せないが, 骨組みは組める
+    examples = client.get("/api/info").json()["examples"]
+    view = client.post("/api/problems",
+                       json={"example": examples[0]}).json()
+    assert view["open_errors"] == []
+    url = f"/api/problems/{view['id']}"
+    view = client.put(f"{url}/answers",
+                      json={"id": "issue.owner", "value": None}).json()
+    assert view["ready"] is False and view["handoff"] is None
+    assert view["exportable"] is True and view["export_error"] is None
+    assert [item["id"] for item in view["open_errors"]] == ["issue.owner"]
+    assert view["open_errors"][0]["level"] == "error"
+    listed = client.get("/api/problems").json()
+    assert all("open_errors" not in item for item in listed)
+
+    # 指定が無ければ 409 で一覧 (ライブラリを使うコード向けの文は出さない)
+    target = tmp_path / "project"
+    refused = client.post(f"{url}/project", json={"path": str(target)})
+    assert refused.status_code == 409
+    detail = refused.json()["detail"]
+    assert detail["open_errors"] == view["open_errors"]
+    assert "1 件" in detail["message"]
+    assert "accept_errors" not in detail["message"]
+    assert not target.exists()
+
+    # 確かめて指定すると書き出し, README に一覧が残る
+    written = client.post(f"{url}/project",
+                          json={"path": str(target), "accept_errors": True})
+    assert written.status_code == 200, written.json()
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "書き出した時点で残っていた直すところ" in readme
+    assert "issue.owner" in readme
+
+    # 組めない問題の設定は指定しても 400 (組めない理由の文)
+    view = client.put(f"{url}/answers",
+                      json={"id": "ml.use", "value": None}).json()
+    assert view["exportable"] is False and view["open_errors"] == []
+    refused = client.post(f"{url}/project",
+                          json={"path": str(tmp_path / "never"),
+                                "accept_errors": True})
+    assert refused.status_code == 400
+    assert refused.json()["detail"] == view["export_error"]
+
+
 def test_columns_import_and_download(
     client: TestClient, tmp_path: Path
 ) -> None:

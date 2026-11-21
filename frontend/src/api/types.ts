@@ -234,12 +234,18 @@ export interface Problem {
   requires: FeatureRequirement[]
   ready: boolean
   /**
-   * 学習のプロジェクトの骨組みを書き出せるか (列の予測か, 予測するの画像の領域と点群で,
-   * 指標がその他でなく, 入れたデータセットが受け持ちに合う. 決まりは ML-Quest の project_error)
+   * 学習のプロジェクトの骨組みを組めるか (機械学習を使い, 骨組みを組めない直すところが無く,
+   * 列の予測か, 予測するの画像の領域と点群で, 指標がその他でなく, 入れたデータセットが受け持ちに
+   * 合う. 決まりは ML-Quest の project_error. 受け渡せるかは条件にしない)
    */
   exportable: boolean
-  /** 渡せるのに書き出せない理由 (ML-Quest の project_error の文) */
+  /** 骨組みを組めない理由 (ML-Quest の project_error の文) */
   export_error: string | null
+  /**
+   * 書き出すときに残っている直すところ (ML-Quest の open_errors. 問題の設定の確かめと入れた
+   * データの確かめの error. 書き出せないときは空). 残っていれば「それでも書き出す」の確かめが要る
+   */
+  open_errors: Finding[]
   /** 書き出した学習のプロジェクト (書き出していなければ null) */
   project?: ProjectRecord | null
   finished: boolean
@@ -266,6 +272,12 @@ export interface Info {
   format_version: number
   sections: { number: number; title: string }[]
   examples: string[]
+}
+
+/** 直すところが残っていて「それでも書き出す」の指定が無い書き出しの 409 の detail */
+export interface OpenErrorsDetail {
+  message: string
+  open_errors: Finding[]
 }
 
 /** 骨組みの書き出しの結果 */

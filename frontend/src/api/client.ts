@@ -17,6 +17,11 @@ async function readError(response: Response): Promise<string> {
     if (body && typeof body === 'object' && 'detail' in body) {
       const detail = (body as { detail: unknown }).detail
       if (typeof detail === 'string') return detail
+      // 構造で返す誤り (書き出しの 409 など) は画面の文
+      if (detail && typeof detail === 'object' && 'message' in detail) {
+        const message = (detail as { message: unknown }).message
+        if (typeof message === 'string') return message
+      }
       return JSON.stringify(detail)
     }
   } catch {
@@ -63,8 +68,10 @@ export const api = {
   insight: (id: string) => request<Insight>(`/api/problems/${id}/insight`),
   readColumns: (id: string, path: string) =>
     request<Problem>(`/api/problems/${id}/columns`, json('POST', { path })),
-  writeProject: (id: string, body: { path: string; name?: string; overwrite?: boolean }) =>
-    request<ProjectResult>(`/api/problems/${id}/project`, json('POST', body)),
+  writeProject: (
+    id: string,
+    body: { path: string; name?: string; overwrite?: boolean; accept_errors?: boolean },
+  ) => request<ProjectResult>(`/api/problems/${id}/project`, json('POST', body)),
   remove: (id: string) => request<void>(`/api/problems/${id}`, { method: 'DELETE' }),
   downloadUrl: (id: string) => `/api/problems/${id}/download`,
 }
