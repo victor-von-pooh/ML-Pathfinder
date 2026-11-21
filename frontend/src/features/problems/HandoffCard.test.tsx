@@ -38,6 +38,7 @@ function problemWith(handoff: Handoff, questions: Question[]): Problem {
     ready: true,
     exportable: false,
     export_error: null,
+    open_errors: [],
     finished: false,
     file_version: 2,
     version: 'x',
