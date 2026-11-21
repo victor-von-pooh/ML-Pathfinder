@@ -276,12 +276,14 @@ export function ProblemPage() {
     })
   }, [localVersion, remoteVersion, busy, refetch, client, id])
 
-  // 入れたデータからの候補 (保存のたびに store で読み直す. 分析はサーバーが覚えている)
+  // 入れたデータからの候補 (保存のたびに store で読み直す. 分析はサーバーが覚えている).
+  // 場所が文字列でない (手で書いたファイルの取り込みなど) ときも, 読めないことの確かめを出す
+  // ために取りに行く
   const source = query.data?.questions.find((q) => q.id === 'data.source')?.value
   const insight = useQuery({
     queryKey: ['insight', id],
     queryFn: () => api.insight(id),
-    enabled: typeof source === 'string' && source !== '',
+    enabled: source !== undefined && source !== null && source !== '',
   })
   if (query.isPending) return <Spinner />
   if (query.error) return <ErrorBox error={query.error} live={false} />

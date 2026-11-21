@@ -567,3 +567,19 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   await choose(page, '行動の結果のデータは, どう集めますか', /^今ある記録から/)
   await expect(prepare).toHaveCount(0)
 })
+
+test('データの場所が文字でないファイルは, 確かめに読めないことを出す', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('場所が数')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '場所が数' })).toBeVisible()
+
+  // 手で書いて場所を数にしたファイル
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const file = `${process.cwd()}/e2e/.work/home/problems/${id}/problem.yaml`
+  writeFileSync(file, 'format_version: 2\nname: 場所が数\ndata: {source: 123, loader: csv}\n')
+  await page.reload()
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText(
+    'データの場所は文字の場所 (パス) で書いてください',
+  )
+})
