@@ -60,6 +60,34 @@ test('見本を開いて答えを変え, 学習のプロジェクトを書き出
   ).toBeVisible()
 })
 
+test('直すところが残ると, 一覧を確かめてから書き出し, README に一覧が残る', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  await expect(page.getByRole('heading', { name: '総菜の作る量' })).toBeVisible()
+
+  // 課題の持ち主を消すと受け渡せないが, 骨組みは組めるので押せる
+  await write(page, '誰の課題ですか', '')
+  await expect(page.getByText(/直すところが 1 件残っています. 書き出すときに/)).toBeVisible()
+  const open = page.getByRole('button', { name: '学習のプロジェクトを書き出す' })
+  await expect(open).toBeEnabled()
+  await open.click()
+
+  // 一覧を出し, 「それでも書き出す」を確かめるまで書き出せない (キーボードで確かめる)
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('list', { name: '残っている直すところ' })).toContainText(
+    '誰の課題ですか',
+  )
+  const target = `${process.cwd()}/e2e/.work/open-errors-project`
+  await dialog.getByLabel('書き出すディレクトリ (無ければ作る)').fill(target)
+  await expect(dialog.getByRole('button', { name: '書き出す', exact: true })).toBeDisabled()
+  await dialog.getByRole('checkbox', { name: /それでも書き出す/ }).focus()
+  await page.keyboard.press('Space')
+  await dialog.getByRole('button', { name: '直すところが残ったまま書き出す' }).click()
+  await expect(dialog.getByRole('status')).toContainText('train.py')
+  const readme = readFileSync(`${target}/README.md`, 'utf-8')
+  expect(readme).toContain('書き出した時点で残っていた直すところ')
+})
+
 test('新しく作って課題に答え, 一覧に進み具合が出る', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('試しの問題')
