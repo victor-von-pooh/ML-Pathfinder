@@ -21,6 +21,11 @@ const LEVEL_STYLE: Record<Finding['level'], string> = {
   info: 'border-line bg-surface-2',
 }
 
+/** 文の終わりの句点 (ML-Quest の文は句点で終わらないことがある) */
+function withPeriod(text: string): string {
+  return text.endsWith('.') ? text : `${text}.`
+}
+
 /** 節ごとの直すところ (error) の数 */
 function errorsBySection(problem: Problem): Record<number, number> {
   const counts: Record<number, number> = {}
@@ -358,7 +363,7 @@ export function ProblemPage() {
       {!problem.exportable && !problem.finished && (
         <p id="export-reason" className="-mt-4 mb-4 text-xs text-ink-3">
           {problem.export_error
-            ? `学習のプロジェクトはまだ書き出せません: ${problem.export_error}`
+            ? `学習のプロジェクトはまだ書き出せません. ${withPeriod(problem.export_error)}`
             : '学習のプロジェクトは, 機械学習を使うと決めて骨組みを組める答えがそろうと書き出せます.'}
           {problem.ready && ' 後ろの段階に渡す値は「後ろの段階に渡す値」の欄で見られます.'}
         </p>
