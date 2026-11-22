@@ -122,6 +122,39 @@ function PolicyRow({ problem }: { problem: Problem }) {
   )
 }
 
+/**
+ * 方策を学ぶ環境 (方策で, 環境の登録名の問いが要るときだけ). 登録名を答えていれば
+ * Gymnasium のその環境, 答えていなければ自作の環境の雛形 (env.py) を骨組みに書き出すことを出す
+ */
+function EnvRow({ problem }: { problem: Problem }) {
+  const policy = problem.handoff?.policy
+  const question = problem.questions.find((item) => item.id === `${PART}.env_id`)
+  // 今ある記録から学ぶ (環境とやり取りしない) ときは問いが要らないので出さない
+  if (!policy || !question?.applies) return null
+  return (
+    <div>
+      <dt className="mb-1 text-xs font-medium text-ink-2">方策を学ぶ環境 (学習, 評価)</dt>
+      <dd className="flex flex-col gap-1">
+        {policy.env_id ? (
+          <span>
+            Gymnasium の <Code>{policy.env_id}</Code> (骨組みは config の env.id に書き,
+            登録名で環境を作ります)
+          </span>
+        ) : (
+          <>
+            <span>自作の環境 (環境の登録名は答えていません)</span>
+            <span className="text-xs text-ink-2">
+              骨組みには自作の環境の雛形 (env.py) を書き出すので, 中身 (実機とのつなぎ,
+              自作のシミュレータ) は自分で書きます. Gymnasium に登録された環境なら, 5 の「Gymnasium
+              の環境の登録名は (あれば)」に答えると, その環境で学びます.
+            </span>
+          </>
+        )}
+      </dd>
+    </div>
+  )
+}
+
 /** 要る機能の名前 (ML-Quest の FEATURES の見出し. 入れ方は画面の上のカード) */
 function RequiresRow({ problem }: { problem: Problem }) {
   const names = problem.handoff?.requires ?? []
@@ -249,6 +282,7 @@ function PartHandoff({ problem }: { problem: Problem }) {
         </div>
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
+        <EnvRow problem={problem} />
         <PolicyRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>
@@ -342,6 +376,7 @@ export function HandoffCard({ problem }: { problem: Problem }) {
         </div>
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
+        <EnvRow problem={problem} />
         <PolicyRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>

@@ -128,6 +128,8 @@ export interface Policy {
   safety_key: string | null
   /** 方策を使ってよいかと守りの範囲を決める人 */
   approver: string | null
+  /** Gymnasium の環境の登録名 (答えていなければ null. 骨組みは自作の環境の雛形を書き出す) */
+  env_id: string | null
 }
 
 /** 要る機能の入れ方 (ML-Found の登録簿 describe_requirements から) */

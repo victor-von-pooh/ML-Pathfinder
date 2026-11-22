@@ -903,6 +903,24 @@ def test_requires_and_policy(
         "safety_key": "cost", "approver": "設備の責任者", "env_id": None,
     }
 
+    # 環境の登録名を答えると受け渡しの方策とファイルに入り (骨組みはそこ
+    # から読む), 形が違えば直すところになる. 空に戻すと None
+    env_id = f"{part}.env_id"
+    question = {item["id"]: item for item in view["questions"]}[env_id]
+    assert question["applies"] and not question["required"]
+    view = client.put(f"{url}/answers",
+                      json={"id": env_id, "value": " Hopper-v5 "}).json()
+    assert view["handoff"]["policy"]["env_id"] == "Hopper-v5"
+    assert "Hopper-v5" in client.get(f"{url}/download").text
+    view = client.put(f"{url}/answers",
+                      json={"id": env_id, "value": "Hopper v5"}).json()
+    assert view["ready"] is False
+    assert any(item["id"] == env_id and item["level"] == "error"
+               for item in view["findings"])
+    view = client.put(f"{url}/answers",
+                      json={"id": env_id, "value": None}).json()
+    assert view["handoff"]["policy"]["env_id"] is None
+
     # ML-Found があれば入れ方を添える (登録簿に無い名前は補足のまま)
     module = types.ModuleType("ml_found")
     module.describe_requirements = fake_describe  # type: ignore[attr-defined]

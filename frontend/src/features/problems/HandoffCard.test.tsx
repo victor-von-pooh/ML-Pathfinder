@@ -148,6 +148,7 @@ describe('HandoffCard', () => {
         fallback_action: null,
         safety_key: 'cost',
         approver: '設備の責任者',
+        env_id: null,
       },
     }
     const questions = [
@@ -177,6 +178,46 @@ describe('HandoffCard', () => {
       /実機で動かすのは道具の外/,
     )
     expect(screen.getByText('強化学習, mujoco')).toBeInTheDocument()
+  })
+
+  it('方策を学ぶ環境に, 答えた登録名か, 答えないと自作の環境の雛形を書き出すことを出す', () => {
+    const policy = {
+      action_limits: null,
+      stop: null,
+      fallback: null,
+      fallback_action: null,
+      safety_key: 'cost',
+      approver: null,
+    }
+    const handoff = (env_id: string | null): Handoff => ({
+      ...POINT_CLOUD,
+      part: { ...POINT_CLOUD.part, role: 'effect', target_process: null },
+      policy: { ...policy, env_id },
+    })
+    const envQuestion = (value: string | null, applies = true): Question => ({
+      ...choice('ml.parts.0.env_id', value, []),
+      kind: 'text',
+      required: false,
+      applies,
+    })
+    const { rerender } = render(
+      <HandoffCard problem={problemWith(handoff('CartPole-v1'), [envQuestion('CartPole-v1')])} />,
+    )
+    expect(screen.getByText('方策を学ぶ環境 (学習, 評価)')).toBeInTheDocument()
+    expect(screen.getByText('CartPole-v1')).toBeInTheDocument()
+    expect(screen.getByText(/config の env\.id に書き/)).toBeInTheDocument()
+    expect(screen.queryByText(/自作の環境の雛形/)).not.toBeInTheDocument()
+
+    // 答えていなければ, 自作の環境の雛形を書き出すことと答え方を添える
+    rerender(<HandoffCard problem={problemWith(handoff(null), [envQuestion(null)])} />)
+    expect(screen.getByText(/自作の環境 \(環境の登録名は答えていません\)/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/骨組みには自作の環境の雛形 \(env\.py\) を書き出す/),
+    ).toBeInTheDocument()
+
+    // 今ある記録から学ぶ (問いが要らない) ときは出さない
+    rerender(<HandoffCard problem={problemWith(handoff(null), [envQuestion(null, false)])} />)
+    expect(screen.queryByText(/方策を学ぶ環境/)).not.toBeInTheDocument()
   })
 
   it('方策でなければ守りを出さない', () => {

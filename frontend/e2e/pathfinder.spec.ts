@@ -16,6 +16,19 @@ async function write(page: Page, title: string, text: string) {
   await expect(page.getByText(`「${title}」を保存しました`)).toBeVisible()
 }
 
+/** 学習のプロジェクトを書き出して対話を閉じ, 書き出した場所を返す (直すところが無いとき) */
+async function exportProject(page: Page, name: string): Promise<string> {
+  const dir = `${process.cwd()}/e2e/.work/${name}`
+  await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('書き出すディレクトリ (無ければ作る)').fill(dir)
+  await dialog.getByRole('button', { name: '書き出す' }).click()
+  await expect(dialog.getByRole('status')).toContainText('train.py')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  return dir
+}
+
 /** 5 の節の頭で, 表の列を予測すると答える (目的の列やタスクの問いが出る) */
 async function answerColumnPart(page: Page) {
   await choose(page, '機械学習は何を受け持ちますか', /^予測する/)
@@ -511,6 +524,8 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   await expect(prepare.getByRole('listitem')).toHaveCount(2)
   await expect(prepare).toContainText('MuJoCo (物理のシミュレータ)')
   await expect(prepare).toContainText('このまま続けられます')
+  // 環境の登録名は任意. 画面で答えて保存する (MuJoCo の環境もここで名前を答える)
+  await write(page, 'Gymnasium の環境の登録名は (あれば)', 'Hopper-v5')
   // 準備のカードは何も止めない (問いに答え続けられる)
   await expect(page.getByRole('button', { name: '次の節' })).toBeEnabled()
 
@@ -525,7 +540,7 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
     ['what', '試しの出力'],
     ['item', '1 件'],
     ['baseline', '今のやり方'],
-    ['evaluation.metric', 'qini'],
+    ['evaluation.metric', 'loss'],
     ['evaluation.link', '良くなると損が減る'],
     ['policy.action_limits', '各関節の速さは毎秒 0.5 rad まで'],
     ['policy.stop', '腕の先が台の上 0 から 0.3 m を出たら'],
@@ -559,13 +574,40 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   await expect(card).toContainText('実機で動かすのは道具の外')
   await expect(card).toContainText('学習の段階に要る機能')
 
-  // 集め方を今ある記録にすると, カードは消える
+  // 答えた環境の登録名は受け渡しの方策と保存したファイルに入る (骨組みはそこから読む)
+  await expect(card).toContainText('方策を学ぶ環境 (学習, 評価)')
+  await expect(card).toContainText('Gymnasium の Hopper-v5')
+  const saved = await (await page.request.get(`/api/problems/${id}`)).json()
+  expect(saved.handoff.policy.env_id).toBe('Hopper-v5')
+  const file = await (await page.request.get(`/api/problems/${id}/download`)).text()
+  expect(file).toContain('env_id: Hopper-v5')
+
+  // 書き出した骨組みは, config の env.id にその登録名を書き, 自作の環境の雛形は書かない
+  const named = await exportProject(page, 'policy-named')
+  expect(readFileSync(`${named}/configs/default/train.yaml`, 'utf8')).toContain('id: "Hopper-v5"')
+  expect(existsSync(`${named}/env.py`)).toBe(false)
+
+  // 空に戻すと, 骨組みに自作の環境の雛形を書き出すことを案内する
   await page
     .getByRole('navigation', { name: '問いの節' })
     .getByRole('button', { name: /^5\b/ })
     .click()
+  await write(page, 'Gymnasium の環境の登録名は (あれば)', '')
+  await expect(card).toContainText('自作の環境 (環境の登録名は答えていません)')
+  await expect(card).toContainText('骨組みには自作の環境の雛形 (env.py) を書き出す')
+
+  // 書き出した骨組みは, env.id が null で, 自作の環境の雛形 env.py を持つ
+  const own = await exportProject(page, 'policy-own')
+  expect(readFileSync(`${own}/configs/default/train.yaml`, 'utf8')).toMatch(/^ {2}id: null$/m)
+  expect(readFileSync(`${own}/env.py`, 'utf8')).toContain('class ProjectEnv')
+
+  // 集め方を今ある記録にすると, カードと環境の登録名の問いは消える
   await choose(page, '行動の結果のデータは, どう集めますか', /^今ある記録から/)
   await expect(prepare).toHaveCount(0)
+  await expect(
+    page.getByRole('textbox', { name: 'Gymnasium の環境の登録名は (あれば)', exact: true }),
+  ).toHaveCount(0)
+  await expect(card).not.toContainText('方策を学ぶ環境')
 })
 
 test('作るで画像と答えると, 画像の生成の骨組みを書き出し, 次にすることが生成の手順になる', async ({
