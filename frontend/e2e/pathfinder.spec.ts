@@ -67,6 +67,7 @@ test('見本を開いて答えを変え, 学習のプロジェクトを書き出
 
   // 書き出した場所は問題の設定に記録され, 受け渡しの値に出る (データセットとモデルの定義の置き場も)
   await expect(dialog.getByRole('status')).toContainText('この場所を問題の設定に記録しました')
+  await expect(dialog.getByRole('status')).toContainText('検証用とテスト用で今のやり方と比べた評価')
   await page.keyboard.press('Escape')
   await expect(page.getByText('学習のプロジェクト (書き出した場所)')).toBeVisible()
   await expect(
@@ -606,6 +607,19 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   await write(page, 'Gymnasium の環境の登録名は (あれば)', '')
   await expect(card).toContainText('自作の環境 (環境の登録名は答えていません)')
   await expect(card).toContainText('骨組みには自作の環境の雛形 (env.py) を書き出す')
+
+  // カードの問いへのリンクで, 1 行の登録名の欄に移る
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^7\b/ })
+    .click()
+  await card.getByRole('button', { name: '5 の「Gymnasium の環境の登録名は (あれば)」' }).click()
+  const envBox = page.getByRole('textbox', {
+    name: 'Gymnasium の環境の登録名は (あれば)',
+    exact: true,
+  })
+  await expect(envBox).toBeFocused()
+  expect(await envBox.evaluate((node) => node.tagName)).toBe('INPUT')
 
   // 書き出した骨組みは, env.id が null で, 自作の環境の雛形 env.py を持つ
   const own = await exportProject(page, 'policy-own', ['自作の環境の雛形 env.py (ProjectEnv)'])

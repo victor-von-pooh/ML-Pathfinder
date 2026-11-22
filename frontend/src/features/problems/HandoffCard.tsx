@@ -126,7 +126,7 @@ function PolicyRow({ problem }: { problem: Problem }) {
  * 方策を学ぶ環境 (方策で, 環境の登録名の問いが要るときだけ). 登録名を答えていれば
  * Gymnasium のその環境, 答えていなければ自作の環境の雛形 (env.py) を骨組みに書き出すことを出す
  */
-function EnvRow({ problem }: { problem: Problem }) {
+function EnvRow({ problem, onJump }: { problem: Problem; onJump?: (questionId: string) => void }) {
   const policy = problem.handoff?.policy
   const question = problem.questions.find((item) => item.id === `${PART}.env_id`)
   // 今ある記録から学ぶ (環境とやり取りしない) ときは問いが要らないので出さない
@@ -145,8 +145,19 @@ function EnvRow({ problem }: { problem: Problem }) {
             <span>自作の環境 (環境の登録名は答えていません)</span>
             <span className="text-xs text-ink-2">
               骨組みには自作の環境の雛形 (env.py) を書き出すので, 中身 (実機とのつなぎ,
-              自作のシミュレータ) は自分で書きます. Gymnasium に登録された環境なら, 5 の「Gymnasium
-              の環境の登録名は (あれば)」に答えると, その環境で学びます.
+              自作のシミュレータ) は自分で書きます. Gymnasium に登録された環境なら,{' '}
+              {onJump ? (
+                <button
+                  type="button"
+                  onClick={() => onJump(question.id)}
+                  className="text-accent-text underline"
+                >
+                  {question.section} の「{question.title}」
+                </button>
+              ) : (
+                `${question.section} の「${question.title}」`
+              )}
+              に答えると, その環境で学びます.
             </span>
           </>
         )}
@@ -204,7 +215,13 @@ function ProjectRow({ problem }: { problem: Problem }) {
 }
 
 /** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループ, 画像の生成は分割を渡す) */
-function PartHandoff({ problem }: { problem: Problem }) {
+function PartHandoff({
+  problem,
+  onJump,
+}: {
+  problem: Problem
+  onJump?: (questionId: string) => void
+}) {
   const handoff = problem.handoff
   if (!handoff) return null
   const { part, data } = handoff
@@ -282,7 +299,7 @@ function PartHandoff({ problem }: { problem: Problem }) {
         </div>
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
-        <EnvRow problem={problem} />
+        <EnvRow problem={problem} onJump={onJump} />
         <PolicyRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>
@@ -295,7 +312,14 @@ function PartHandoff({ problem }: { problem: Problem }) {
 }
 
 /** 後ろの段階ごとに, 各段階の画面で選ぶ値 */
-export function HandoffCard({ problem }: { problem: Problem }) {
+export function HandoffCard({
+  problem,
+  onJump,
+}: {
+  problem: Problem
+  /** 問いへ移る (環境の登録名の問いへのリンク) */
+  onJump?: (questionId: string) => void
+}) {
   const handoff = problem.handoff
   if (!handoff)
     return (
@@ -310,7 +334,7 @@ export function HandoffCard({ problem }: { problem: Problem }) {
       </Card>
     )
   // 列の予測でなければ, タスクが無い (受け持ちごとの表示)
-  if (handoff.data.task === null) return <PartHandoff problem={problem} />
+  if (handoff.data.task === null) return <PartHandoff problem={problem} onJump={onJump} />
   const { data, model, inference } = handoff
   const decision = inference.decision
   const type = choicesOf(problem, 'action.decision').find(
@@ -376,7 +400,7 @@ export function HandoffCard({ problem }: { problem: Problem }) {
         </div>
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
-        <EnvRow problem={problem} />
+        <EnvRow problem={problem} onJump={onJump} />
         <PolicyRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>

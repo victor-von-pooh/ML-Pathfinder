@@ -11,6 +11,12 @@ import { LEVEL_NAMES } from '../../lib/labels'
 /** 入力の共通の見た目 */
 const INPUT = 'w-full rounded-lg border border-line bg-surface px-2 text-sm'
 
+/**
+ * 1 行で答える文の問い (改行の無い名前. Gymnasium の環境の登録名). ML-Quest の問いは文か
+ * どうかだけを持つので, 欄の形はここで決める
+ */
+const ONE_LINE = /^ml\.parts\.\d+\.env_id$/
+
 /** 答えを保存する関数 */
 type Answer = (value: unknown) => void
 
@@ -730,7 +736,13 @@ export function QuestionField({
   const state: InputState = { question, onAnswer, saving, errorId }
   let input: ReactNode
   if (question.kind === 'text' || question.kind === 'number')
-    input = <TextInput key={key} {...state} multiline={question.kind === 'text'} />
+    input = (
+      <TextInput
+        key={key}
+        {...state}
+        multiline={question.kind === 'text' && !ONE_LINE.test(question.id)}
+      />
+    )
   else if (question.kind === 'choice' || question.kind === 'boolean')
     input = <ChoiceInput {...state} />
   else if (usesColumns && columns.length)

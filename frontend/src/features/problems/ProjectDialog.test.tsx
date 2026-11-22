@@ -176,7 +176,9 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/環境と守りを整えて方策を学習します/)).toHaveTextContent(
       'model.py, 登録名が無ければ自作の環境の env.py',
     )
-    expect(screen.getByText(/を上書きする/)).toHaveTextContent('train.py, model.py, env.py)')
+    expect(screen.getByText(/を上書きする/)).toHaveTextContent(
+      'train.py, model.py, env.py, 入れたデータの写しの data/)',
+    )
     expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
     await write()
     expect(screen.getByText(/Gymnasium の CartPole-v1 \(config の env\.id\)/)).toBeInTheDocument()

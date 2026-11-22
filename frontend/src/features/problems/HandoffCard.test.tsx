@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Handoff, Problem, Question } from '../../api/types'
 import { HandoffCard } from './HandoffCard'
@@ -214,6 +214,14 @@ describe('HandoffCard', () => {
     expect(
       screen.getByText(/骨組みには自作の環境の雛形 \(env\.py\) を書き出す/),
     ).toBeInTheDocument()
+
+    // 問いへ移れるときは, 問いの節と題をリンクにする
+    const onJump = vi.fn()
+    rerender(
+      <HandoffCard problem={problemWith(handoff(null), [envQuestion(null)])} onJump={onJump} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '5 の「ml.parts.0.env_id」' }))
+    expect(onJump).toHaveBeenCalledWith('ml.parts.0.env_id')
 
     // 今ある記録から学ぶ (問いが要らない) ときは出さない
     rerender(<HandoffCard problem={problemWith(handoff(null), [envQuestion(null, false)])} />)
