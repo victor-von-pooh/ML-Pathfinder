@@ -288,7 +288,8 @@ test('今のやり方をデータで書くと, 損と指標の今の値の候補
   // 7 の節で「1 日前と同じ」と書くと, 曜日の差の分の損が出る
   await nav.getByRole('button', { name: /^7\b/ }).click()
   await page.getByLabel('今のやり方をデータで書くと').selectOption('lag')
-  await page.getByLabel(/k \(期の数/).fill('1')
+  // 期の数の欄の名前は ML-Quest の問いの欄から
+  await page.getByLabel(/期の数 k/).fill('1')
   await page.getByRole('button', { name: '保存' }).last().click()
   await expect(page.getByText(/今のやり方の損は, 39 日で/).first()).toBeVisible({ timeout: 20_000 })
 

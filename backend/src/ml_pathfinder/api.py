@@ -606,7 +606,8 @@ def broken_item(problem_id: str, error: Exception) -> dict[str, Any]:
 @router.get("/info")
 def get_info() -> dict[str, Any]:
     """
-    問いの節, 見本の名前, 問題の設定の形の版を返す関数
+    問いの節, 見本の名前, 問題の設定の形の版, 受け渡しの分割の名前を返す
+    関数
 
     Parameters
     ----------
@@ -615,7 +616,8 @@ def get_info() -> dict[str, Any]:
     Returns
     ----------
     info: dict[str, Any]
-        sections, examples, format_version
+        sections, examples, format_version, splits (受け渡しの分割の値と
+        説明. ML-Quest の SPLITS)
     """
     # 画面が固定で持たずに済むもの
     info = {
@@ -623,6 +625,8 @@ def get_info() -> dict[str, Any]:
         "sections": [{"number": number, "title": title}
                      for number, title in ml_quest.SECTIONS.items()],
         "examples": list(ml_quest.EXAMPLES),
+        "splits": [{"value": item["value"], "label": item["label"]}
+                   for item in ml_quest.SPLITS],
     }
 
     return info

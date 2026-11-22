@@ -276,6 +276,8 @@ export interface Info {
   format_version: number
   sections: { number: number; title: string }[]
   examples: string[]
+  /** 受け渡しの分割の値と説明 (ML-Quest の SPLITS) */
+  splits: Choice[]
 }
 
 /** 骨組みの書き出しの結果 */

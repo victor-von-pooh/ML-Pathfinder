@@ -501,13 +501,6 @@ function SourceInput({
   )
 }
 
-/** 今のやり方の書き方の名前 */
-const BASELINE_TYPES = {
-  lag: 'k 期前と同じ (前の週の同じ曜日なら 7)',
-  mean: '直前の k 期の平均',
-  column: '今のやり方の値の列 (置いた量, 行動したか)',
-} as const
-
 /** 期の数の文字の正規化 ("07" や "7.0" を, 保存した値と同じ "7" に) */
 function normalPeriods(text: string): string {
   const trimmed = text.trim()
@@ -515,7 +508,15 @@ function normalPeriods(text: string): string {
   return trimmed !== '' && Number.isFinite(number) ? String(number) : trimmed
 }
 
-/** 今のやり方をデータで書く: 種類を選び, 期の数か列を書いて保存を押す */
+/** 今のやり方の欄の値の文字 (列の名前はそのまま, 期の数は正規化) */
+function baselineText(key: string, text: string): string {
+  return key === 'column' ? text.trim() : normalPeriods(text)
+}
+
+/**
+ * 今のやり方をデータで書く: 種類を選び, 欄 (期の数か列) を書いて保存を押す. 種類と欄の名前は
+ * ML-Quest の問いの選択肢 (答えた意思決定の型に使えるものだけ) と欄から
+ */
 function BaselineInput({
   question,
   columns,
@@ -526,25 +527,44 @@ function BaselineInput({
   const value = question.value
   const saved =
     value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as { type?: string; periods?: number; column?: string })
+      ? (value as Record<string, unknown>)
       : null
-  const [kind, setKind] = useState<string>(saved?.type ?? '')
-  const [periods, setPeriods] = useState(saved?.periods ? String(saved.periods) : '7')
-  const [column, setColumn] = useState(saved?.column ?? '')
-  const draft =
-    kind === 'column'
-      ? { type: kind, column: column.trim() }
-      : kind
-        ? { type: kind, periods: normalPeriods(periods) }
-        : null
+  const savedType = typeof saved?.type === 'string' ? saved.type : ''
+  const [kind, setKind] = useState<string>(savedType)
+  // 欄の書きかけ (種類を変えても残す. 期の数の既定は 7)
+  const [texts, setTexts] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = { periods: '7' }
+    for (const [key, item] of Object.entries(saved ?? {}))
+      if (key !== 'type' && item !== null && item !== undefined) initial[key] = String(item)
+    return initial
+  })
+  const choice = question.choices.find((item) => item.value === kind)
+  // 今の選択肢に無い保存した種類 (意思決定の型を変えたなど) は, 選べない印を付けて残す
+  const unavailable = savedType !== '' && !question.choices.some((c) => c.value === savedType)
+  const fields = choice?.fields ?? []
+  const fieldText = (key: string) => baselineText(key, texts[key] ?? '')
+  const draft = kind
+    ? {
+        type: kind,
+        ...Object.fromEntries(fields.map((field) => [field.key, fieldText(field.key)])),
+      }
+    : null
   const savedText = JSON.stringify(
     saved
-      ? saved.type === 'column'
-        ? { type: saved.type, column: saved.column }
-        : { type: saved.type, periods: String(saved.periods) }
+      ? {
+          type: savedType,
+          ...Object.fromEntries(fields.map((field) => [field.key, String(saved[field.key] ?? '')])),
+        }
       : null,
   )
-  const dirty = JSON.stringify(draft) !== savedText
+  // 選べない種類のままなら保存しない (変えていない扱い)
+  const dirty = !(unavailable && kind === savedType) && JSON.stringify(draft) !== savedText
+  const valid = fields.every((field) =>
+    field.key === 'column'
+      ? fieldText(field.key) !== ''
+      : /^[1-9][0-9]*$/.test(fieldText(field.key)),
+  )
+  const setText = (key: string, text: string) => setTexts((old) => ({ ...old, [key]: text }))
   return (
     <div className="flex flex-col gap-2">
       <select
@@ -556,70 +576,77 @@ function BaselineInput({
         className={clsx(INPUT, 'h-8 max-w-96')}
       >
         <option value="">書かない (選ばずに保存すると答えを消す)</option>
-        {Object.entries(BASELINE_TYPES).map(([key, label]) => (
-          <option key={key} value={key}>
-            {label}
+        {unavailable && (
+          <option value={savedType} disabled={kind !== savedType}>
+            {savedType} (使えません)
+          </option>
+        )}
+        {question.choices.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
           </option>
         ))}
       </select>
-      {(kind === 'lag' || kind === 'mean') && (
-        <label className="flex items-center gap-2 text-sm">
-          k (期の数. データの 1 行の間隔で数える)
-          <input
-            value={periods}
-            type="number"
-            min={1}
-            step={1}
-            aria-invalid={!!errorId}
-            aria-describedby={errorId}
-            onChange={(event) => setPeriods(event.target.value)}
-            className={clsx(INPUT, 'h-8 w-24')}
-          />
-        </label>
-      )}
-      {kind === 'column' && (
-        <label className="flex items-center gap-2 text-sm">
-          列
-          {columns.length === 0 ? (
+      {fields.map((field) =>
+        field.key === 'column' ? (
+          <label key={field.key} className="flex items-center gap-2 text-sm">
+            {field.label}
+            {columns.length === 0 ? (
+              <input
+                value={texts.column ?? ''}
+                placeholder="列の名前 (5 の使えるデータの列に答えると選べます)"
+                aria-invalid={!!errorId}
+                aria-describedby={errorId}
+                onChange={(event) => setText('column', event.target.value)}
+                className={clsx(INPUT, 'h-8 w-96')}
+              />
+            ) : (
+              <select
+                value={texts.column ?? ''}
+                aria-invalid={!!errorId}
+                aria-describedby={errorId}
+                onChange={(event) => setText('column', event.target.value)}
+                className={clsx(INPUT, 'h-8 max-w-72')}
+              >
+                <option value="">選ぶ</option>
+                {texts.column && !columns.includes(texts.column) && (
+                  <option value={texts.column}>{texts.column} (列にありません)</option>
+                )}
+                {columns.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </label>
+        ) : (
+          <label key={field.key} className="flex items-center gap-2 text-sm">
+            {field.label}
             <input
-              value={column}
-              placeholder="列の名前 (5 の使えるデータの列に答えると選べます)"
+              value={texts[field.key] ?? ''}
+              type="number"
+              min={1}
+              step={1}
               aria-invalid={!!errorId}
               aria-describedby={errorId}
-              onChange={(event) => setColumn(event.target.value)}
-              className={clsx(INPUT, 'h-8 w-96')}
+              onChange={(event) => setText(field.key, event.target.value)}
+              className={clsx(INPUT, 'h-8 w-24')}
             />
-          ) : (
-            <select
-              value={column}
-              aria-invalid={!!errorId}
-              aria-describedby={errorId}
-              onChange={(event) => setColumn(event.target.value)}
-              className={clsx(INPUT, 'h-8 max-w-72')}
-            >
-              <option value="">選ぶ</option>
-              {column && !columns.includes(column) && (
-                <option value={column}>{column} (列にありません)</option>
-              )}
-              {columns.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          )}
-        </label>
+          </label>
+        ),
+      )}
+      {unavailable && kind === savedType && (
+        <p className="text-xs text-warning-text">
+          保存した書き方 ({savedType}) は, 今の意思決定の型では使えません. 選び直すか,
+          「書かない」で保存して消してください
+        </p>
       )}
       <div className="flex gap-2">
         <Button
           variant="primary"
           icon={Save}
-          disabled={
-            saving ||
-            !dirty ||
-            (kind === 'column' && !column.trim()) ||
-            ((kind === 'lag' || kind === 'mean') && !/^[1-9][0-9]*$/.test(normalPeriods(periods)))
-          }
+          disabled={saving || !dirty || !valid}
           onClick={() => onAnswer(draft)}
         >
           保存

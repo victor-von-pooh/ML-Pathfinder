@@ -1,14 +1,6 @@
 import type { Choice, Problem } from '../../api/types'
 import { Card } from '../../components/ui'
 
-/** 分割の名前 (ML-EDA の分け方) */
-const SPLITS: Record<string, string> = {
-  time: '時刻の順',
-  group: '相手ごと',
-  random: '無作為',
-  stratified: '層別',
-}
-
 /** 受け持ちの問いの識別子の頭 (ML-Quest の版 2. 受け持ちは今は 1 つ) */
 const PART = 'ml.parts.0'
 
@@ -217,9 +209,11 @@ function ProjectRow({ problem }: { problem: Problem }) {
 /** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループ, 画像の生成は分割を渡す) */
 function PartHandoff({
   problem,
+  splits,
   onJump,
 }: {
   problem: Problem
+  splits: Choice[]
   onJump?: (questionId: string) => void
 }) {
   const handoff = problem.handoff
@@ -275,7 +269,7 @@ function PartHandoff({
             )}
             {data.split && (
               <span>
-                分割 <Code>{data.split}</Code>
+                分割は{shortLabel(splits, data.split)}
                 {data.groups && Object.keys(data.groups).length > 0 && (
                   <>
                     {' '}
@@ -314,9 +308,12 @@ function PartHandoff({
 /** 後ろの段階ごとに, 各段階の画面で選ぶ値 */
 export function HandoffCard({
   problem,
+  splits = [],
   onJump,
 }: {
   problem: Problem
+  /** 受け渡しの分割の値と説明 (/api/info の splits. 読むまでは値のまま出す) */
+  splits?: Choice[]
   /** 問いへ移る (環境の登録名の問いへのリンク) */
   onJump?: (questionId: string) => void
 }) {
@@ -334,7 +331,8 @@ export function HandoffCard({
       </Card>
     )
   // 列の予測でなければ, タスクが無い (受け持ちごとの表示)
-  if (handoff.data.task === null) return <PartHandoff problem={problem} onJump={onJump} />
+  if (handoff.data.task === null)
+    return <PartHandoff problem={problem} splits={splits} onJump={onJump} />
   const { data, model, inference } = handoff
   const decision = inference.decision
   const type = choicesOf(problem, 'action.decision').find(
@@ -350,7 +348,7 @@ export function HandoffCard({
             <span>
               目的の列 <Code>{data.target ?? ''}</Code>,{' '}
               {shortLabel(choicesOf(problem, `${PART}.task`), data.task ?? '')}, 分割は
-              {SPLITS[data.split ?? ''] ?? data.split}
+              {data.split ? shortLabel(splits, data.split) : ''}
             </span>
             {data.group_column && (
               <span>

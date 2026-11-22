@@ -538,7 +538,7 @@ export function ProblemPage() {
             )}
           </Card>
           <FindingsCard problem={problem} extra={insight.data?.findings ?? []} onJump={jump} />
-          <HandoffCard problem={problem} onJump={jump} />
+          <HandoffCard problem={problem} splits={info.data?.splits} onJump={jump} />
         </div>
       </div>
       {exporting && <ProjectDialog problem={problem} onClose={() => setExporting(false)} />}
