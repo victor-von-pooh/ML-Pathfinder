@@ -13,7 +13,7 @@ import ml_quest
 import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
-from ml_quest.data import COPY_NAME, inspect_key
+from ml_quest import COPY_NAME, inspect_key
 from pydantic import BaseModel, Field
 
 from ml_pathfinder.store import ID_PATTERN, READ_ERRORS, Store
