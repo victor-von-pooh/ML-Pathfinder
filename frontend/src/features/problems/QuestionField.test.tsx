@@ -36,6 +36,26 @@ describe('QuestionField', () => {
     expect(onAnswer).toHaveBeenCalledWith(null)
   })
 
+  it('環境の登録名は 1 行の欄, 他の文の問いは複数行の欄で答える', () => {
+    const text = (id: string): Question => ({
+      id,
+      section: 5,
+      kind: 'text',
+      title: id,
+      help: '',
+      required: false,
+      choices: [],
+      value: null,
+      answered: false,
+      applies: true,
+    })
+    const props = { columns: [], findings: [], saving: false, error: null, onAnswer: vi.fn() }
+    const { rerender } = render(<QuestionField question={text('ml.parts.0.env_id')} {...props} />)
+    expect(screen.getByRole('textbox').tagName).toBe('INPUT')
+    rerender(<QuestionField question={text('ml.parts.0.what')} {...props} />)
+    expect(screen.getByRole('textbox').tagName).toBe('TEXTAREA')
+  })
+
   it('任意のはいかいいえの問いは, 答えた後に外せる (答えていなければ出さない)', () => {
     const onAnswer = vi.fn()
     const gpu: Question = {

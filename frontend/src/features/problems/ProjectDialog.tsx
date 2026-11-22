@@ -153,7 +153,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
             }}
           />
           既にあるファイル (problem.yaml, README.md, configs, train.py
-          {type === 'policy' ? ', model.py, env.py' : ', 入れたデータの写しの data/'}) を上書きする
+          {type === 'policy' ? ', model.py, env.py' : ''}, 入れたデータの写しの data/) を上書きする
         </label>
         {errors.length > 0 && !write.data && (
           <section
@@ -299,8 +299,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 <li>ML-CreateArchitecture でモデルを組み, models/model.yaml に置く</li>
                 <li>
                   ML-Dashboard の「学習の準備」で要るもの (config の requires) を入れ, train.py
-                  を動かして学習する. 今のやり方をデータで書いていれば, 検証用とテスト用で
-                  今のやり方と比べた評価も残る
+                  を動かして学習する. 今のやり方をデータで書いていれば,
+                  検証用とテスト用で今のやり方と比べた評価も残る
                 </li>
                 <li>
                   実験の中の inference/ を ML-Provide に登録して推論する
