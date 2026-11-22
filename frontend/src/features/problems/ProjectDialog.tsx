@@ -14,10 +14,20 @@ import { Button, ErrorBox } from '../../components/ui'
  */
 const ITEMS_KINDS = ['mask', 'point_cloud']
 
-/** 問いの答えの正解の種類 (受け渡しの値は直すところが残ると無いので, 問いの答えから読む) */
-function targetKind(problem: Problem): string | null {
-  const value = problem.questions.find((q) => q.id === 'ml.parts.0.target.kind')?.value
+/** 問いの答え (受け渡しの値は直すところが残ると無いので, 問いの答えから読む) */
+function answerOf(problem: Problem, id: string): string | null {
+  const value = problem.questions.find((q) => q.id === id)?.value
   return typeof value === 'string' ? value : null
+}
+
+/**
+ * 骨組みの型 (説明の文の出し分けだけ). ファイルの組 (領域と点群), 画像の生成 (作るで正解の
+ * 種類が画像), 他は列の予測
+ */
+function skeletonType(problem: Problem): 'column' | 'items' | 'generate' {
+  const kind = answerOf(problem, 'ml.parts.0.target.kind')
+  if (answerOf(problem, 'ml.parts.0.role') === 'generate' && kind === 'image') return 'generate'
+  return kind !== null && ITEMS_KINDS.includes(kind) ? 'items' : 'column'
 }
 
 /** 損得と制約 (action.decision) に直すところが残るか (残れば推論の一式に意思決定の既定値を付けない) */
@@ -35,9 +45,8 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群は, 列の予測と既定の名前と次にすることが違う
-  const kind = targetKind(problem)
-  const items = kind !== null && ITEMS_KINDS.includes(kind)
+  // 画像の領域と点群, 画像の生成は, 列の予測と既定の名前と次にすることが違う
+  const type = skeletonType(problem)
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [overwrite, setOverwrite] = useState(false)
@@ -49,8 +58,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 問題の設定の確かめの直すところが残ると推論の段階に渡す値を作れない (入れたデータの確かめ
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
-  // ファイルの組の推論の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
-  const dropped = !items && decisionDropped(errors)
+  // ファイルの組と画像の生成の推論の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
+  const dropped = type === 'column' && decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
     // 書き出した時点の確かめ (読み直した一覧が変わっても, 次にすることはその時点のまま)
@@ -94,7 +103,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
         />
         <div>
           <label htmlFor="experiment-name" className="mb-1 block text-xs font-medium text-ink-2">
-            実験の名前 (任意. 省略すると{items ? '正解の種類と受け持ち' : '目的の列とタスク'}から)
+            実験の名前 (任意. 省略すると
+            {type === 'column' ? '目的の列とタスク' : '正解の種類と受け持ち'}から)
           </label>
           <input
             id="experiment-name"
@@ -188,7 +198,29 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               に置きます (後ろの段階のアプリはこの記録から場所を読みます)
             </p>
             <p className="mb-1 font-medium">次にすること (書き出した README.md にも同じ手順)</p>
-            {items ? (
+            {type === 'generate' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  ML-Fathom で画像のディレクトリを読み, 目的の列の無いレシピで検証用の分割を作って
+                  outputs/dataset に書き出す (画像のディレクトリを入れていれば data/ に写してある)
+                </li>
+                <li>
+                  ML-CreateArchitecture で組んだ定義 (入力は雑音を加えた画像と時刻,
+                  出力は加えた雑音) を models/model.yaml に保存する.
+                  定義が無いうちは仮のモデルで学習する
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かして学習する. 損失と,
+                  作った画像の見本 (samples/) で見る
+                </li>
+                <li>
+                  定義を置いて学習すると, train.py が実験の中の inference/ に件数と種で画像を作る
+                  推論の一式を作るので, ML-Provide に登録する (仮のモデルでは作らない)
+                  {write.variables?.accept &&
+                    '. inference/ は登録できるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
+              </ol>
+            ) : type === 'items' ? (
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   データセットを入れていれば data/ の写しを読む. 入れていなければ, README.md の

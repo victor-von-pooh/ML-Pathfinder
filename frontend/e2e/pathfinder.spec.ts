@@ -568,6 +568,51 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   await expect(prepare).toHaveCount(0)
 })
 
+test('作るで画像と答えると, 画像の生成の骨組みを書き出し, 次にすることが生成の手順になる', async ({
+  page,
+}) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  await expect(page.getByRole('heading', { name: '総菜の作る量' })).toBeVisible()
+
+  // 受け持ちと正解の種類, 出力の形, 指標を API で答える (条件の無い画像の生成)
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['role', 'generate'],
+    ['target.kind', 'image'],
+    ['output', 'image'],
+    ['evaluation.metric', 'loss'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: `ml.parts.0.${key}`, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 後ろの段階に渡す値は, 画像の生成では分割を渡すと書く
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('画像の生成は分割を渡します')
+
+  await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog).toContainText('正解の種類と受け持ちから')
+  await dialog
+    .getByLabel('書き出すディレクトリ (無ければ作る)')
+    .fill(`${process.cwd()}/e2e/.work/generate`)
+  await dialog.getByRole('button', { name: '書き出す' }).click()
+  const status = dialog.getByRole('status')
+  await expect(status).toContainText('train.py')
+  await expect(status).toContainText('目的の列の無いレシピ')
+  await expect(status).toContainText('件数と種で画像を作る')
+  await expect(status).not.toContainText('意思決定')
+  const readme = readFileSync(`${process.cwd()}/e2e/.work/generate/README.md`, 'utf8')
+  expect(readme).toContain('条件の無い拡散のモデルを学ぶ')
+})
+
 test('データの場所が文字でないファイルは, 確かめに読めないことを出す', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('場所が数')

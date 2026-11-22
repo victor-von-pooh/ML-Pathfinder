@@ -111,6 +111,31 @@ describe('ProjectDialog', () => {
     expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
   })
 
+  it('作るで画像は, 画像の生成の次にすることを出し, 損得と制約の注意を出さない', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'generate' }
+    const problem = problemWith([
+      { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
+    ])
+    renderDialog({ ...problem, questions: [{ ...KIND, value: 'image' }, role, OWNER] })
+    expect(screen.getByText(/正解の種類と受け持ちから/)).toBeInTheDocument()
+    expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
+
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
+    fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
+    expect(await screen.findByText(/目的の列の無いレシピ/)).toBeInTheDocument()
+    expect(screen.getByText(/件数と種で画像を作る/)).toHaveTextContent(
+      'README.md の最後の一覧を直すまで問題の設定はつながない',
+    )
+    expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
+  })
+
   it('入れたデータの確かめだけなら渡す値は作れると書き, 損得と制約が残れば既定値を付けないと添える', async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
