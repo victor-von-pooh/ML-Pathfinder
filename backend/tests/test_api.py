@@ -900,7 +900,7 @@ def test_requires_and_policy(
         "action_limits": "各関節の速さは毎秒 0.5 rad まで",
         "stop": "腕の先が台の上 0 から 0.3 m を出たら",
         "fallback": "handover", "fallback_action": None,
-        "safety_key": "cost", "approver": "設備の責任者",
+        "safety_key": "cost", "approver": "設備の責任者", "env_id": None,
     }
 
     # ML-Found があれば入れ方を添える (登録簿に無い名前は補足のまま)
