@@ -133,14 +133,14 @@ describe('HandoffCard', () => {
   it('モデルの作成の雛形の名前を見出しと出し, 無ければ理由を言葉で出す', () => {
     const { rerender } = render(<HandoffCard problem={problemWith(POINT_CLOUD, [])} />)
     expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
-      'モデルの作成の雛形 (ML-ModelControl の同梱の例の名前) point_cloud_predictor',
+      'モデルの作成の雛形: point_cloud_predictor (モデルの作成の画面で開ける例)',
     )
 
     // 一から学習するが合う例が無い受け持ち
     const none: Handoff = { ...POINT_CLOUD, model: { ...POINT_CLOUD.model, example: null } }
     rerender(<HandoffCard problem={problemWith(none, [])} />)
     expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
-      '受け持ちに合う雛形はありません',
+      'モデルの作成の雛形: 受け持ちに合う雛形はありません (モデルの作成の画面で定義を選ぶ)',
     )
     expect(screen.queryByText('point_cloud_predictor')).not.toBeInTheDocument()
 
@@ -148,8 +148,19 @@ describe('HandoffCard', () => {
     const tuned: Handoff = { ...none, part: { ...none.part, method: 'finetune' } }
     rerender(<HandoffCard problem={problemWith(tuned, [])} />)
     expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
-      '一から学習しないので, 合う雛形はありません',
+      'モデルの作成の雛形: 一から学習しないので, 合う雛形はありません',
     )
+    expect(screen.getByText(/モデルの作成の雛形/)).not.toHaveTextContent('定義を選ぶ')
+  })
+
+  it('監視の向きが無ければ, 向きの行を出さない', () => {
+    const handoff: Handoff = {
+      ...POINT_CLOUD,
+      training: { ...POINT_CLOUD.training, mode: null },
+    }
+    render(<HandoffCard problem={problemWith(handoff, [])} />)
+    expect(screen.getByText('valid/chamfer')).toBeInTheDocument()
+    expect(screen.queryByText(/監視の向き/)).not.toBeInTheDocument()
   })
 
   it('ファイルの組の受け持ちで渡す分割とグループを件数で出す', () => {

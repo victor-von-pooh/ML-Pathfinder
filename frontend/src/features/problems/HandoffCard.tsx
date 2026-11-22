@@ -62,11 +62,12 @@ function TrainingRow({ problem }: { problem: Problem }) {
         <span className="flex flex-wrap items-center gap-1">
           監視する指標 <Code>{training.monitor}</Code>
         </span>
-        <span className="flex flex-wrap items-center gap-1">
-          監視の向き <Code>{training.mode ?? ''}</Code> (
-          {training.mode === 'max' ? '大きい' : '小さい'}
-          ほど良い)
-        </span>
+        {training.mode !== null && (
+          <span className="flex flex-wrap items-center gap-1">
+            監視の向き <Code>{training.mode}</Code> ({training.mode === 'max' ? '大きい' : '小さい'}
+            ほど良い)
+          </span>
+        )}
         {other && (
           <span className="text-xs text-ink-2">
             その他の指標です. 学習で検証用の分割の <Code>{training.monitor}</Code>{' '}
@@ -89,7 +90,7 @@ function ModelExample({ problem }: { problem: Problem }) {
   if (example)
     return (
       <span className="flex flex-wrap items-center gap-1">
-        モデルの作成の雛形 (ML-ModelControl の同梱の例の名前) <Code>{example}</Code>
+        モデルの作成の雛形: <Code>{example}</Code> (モデルの作成の画面で開ける例)
       </span>
     )
   return (

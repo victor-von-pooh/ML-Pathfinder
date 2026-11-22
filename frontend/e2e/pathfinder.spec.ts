@@ -473,7 +473,7 @@ test('予測するで点群の正解が今の処理の出力なら, 処理を問
   await expect(card.getByText(/監視の向き/)).toHaveText(/監視の向き\s*min\s*\(小さいほど良い\)/)
   // 一から学習する点群の予測は, 受け持ちに合う雛形の名前を渡す
   await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(
-    /ML-ModelControl の同梱の例の名前\)\s*point_cloud_predictor/,
+    /モデルの作成の雛形:\s*point_cloud_predictor\s*\(モデルの作成の画面で開ける例\)/,
   )
   await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
   await expect(page.locator('#export-reason')).toHaveCount(0)
@@ -539,7 +539,9 @@ test('最良を選ぶ指標をその他にすると, 名前と向きを問い, �
   await expect(card.getByText(/監視する指標\s*valid\/wape/)).toBeVisible()
   await expect(card.getByText(/監視の向き\s*min\s*\(小さいほど良い\)/)).toBeVisible()
   // 列の予測には合う雛形が無いので, 言葉で出す
-  await expect(card.getByText(/モデルの作成の雛形/)).toContainText('受け持ちに合う雛形はありません')
+  await expect(card.getByText(/モデルの作成の雛形/)).toContainText(
+    'モデルの作成の雛形: 受け持ちに合う雛形はありません',
+  )
   await expect(card.getByText(/その他の指標です/)).toBeVisible()
   await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeDisabled()
   await expect(page.locator('#export-reason')).toContainText('その他')
