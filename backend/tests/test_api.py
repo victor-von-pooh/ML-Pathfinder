@@ -409,9 +409,12 @@ def test_view_unreadable_data(
     assert view.status_code == 200, view.text
     # ML-Quest の確かめが形の誤りにし (骨組みを組めない), データの分析も
     # 同じ誤りを返す. 書き出しは組めない誤りで断る
-    message = ("データの場所は文字の場所 (絶対パス) で書いてください "
-               "(今は 123)")
-    finding = {"level": "error", "id": "data.source", "message": message}
+    # 期待の確かめは ML-Quest の check から (文は ML-Quest が決める)
+    expected = [item for item in ml_quest.check(problem)
+                if item["id"] == "data.source"]
+    assert [item["level"] for item in expected] == ["error"]
+    finding = expected[0]
+    message = finding["message"]
     shown = view.json()
     assert finding in shown["findings"]
     assert shown["exportable"] is False and message in shown["export_error"]

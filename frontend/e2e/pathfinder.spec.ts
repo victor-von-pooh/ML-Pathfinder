@@ -692,10 +692,22 @@ test('データの場所が文字でないファイルは, 確かめに形の誤
   const file = `${process.cwd()}/e2e/.work/home/problems/${id}/problem.yaml`
   writeFileSync(file, 'format_version: 2\nname: 場所が数\ndata: {source: 123, loader: csv}\n')
   await page.reload()
-  // ML-Quest の確かめとデータの分析が同じ誤りを返しても, 1 件だけ出す
-  const list = page.getByRole('list', { name: '確かめ', exact: true })
-  await expect(list).toContainText(
-    'データの場所は文字の場所 (絶対パス) で書いてください (今は 123)',
+  // ML-Quest の確かめとデータの分析が同じ誤りを返しても, 1 件だけ出す (文は ML-Quest が
+  // 決めるので, API の確かめから引く)
+  const view = await (await page.request.get(`/api/problems/${id}`)).json()
+  const errors = (view.findings as { level: string; id: string; message: string }[]).filter(
+    (finding) => finding.id === 'data.source',
   )
-  await expect(list.getByText(/データの場所は文字の場所/)).toHaveCount(1)
+  expect(errors.map((finding) => finding.level)).toEqual(['error'])
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByRole('listitem').filter({ hasText: errors[0].message })).toHaveCount(1)
+
+  // 形の誤りのあいだは他の確かめをしないので, データを入れ直すと他の確かめが戻る
+  const csv = `${process.cwd()}/e2e/.work/sales.csv`
+  writeFileSync(csv, 'date,sales\n2024-01-01,1\n2024-01-02,2\n')
+  const attached = await page.request.post(`/api/problems/${id}/data`, { data: { path: csv } })
+  expect(attached.ok(), await attached.text()).toBe(true)
+  await page.reload()
+  await expect(list.getByRole('listitem').filter({ hasText: errors[0].message })).toHaveCount(0)
+  await expect(list).toContainText('何に困っていますか')
 })
