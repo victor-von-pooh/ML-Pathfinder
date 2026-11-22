@@ -124,6 +124,15 @@ function SectionList({
   )
 }
 
+/**
+ * 問題の設定の確かめとデータからの確かめを 1 つの並びにする. 同じ確かめ (データの場所の形の
+ * 誤りなど, ML-Quest が両方に返すもの) は 1 つにする
+ */
+function joinFindings(own: Finding[], extra: Finding[]): Finding[] {
+  const seen = new Set(own.map((f) => `${f.level}\u0000${f.id}\u0000${f.message}`))
+  return [...own, ...extra.filter((f) => !seen.has(`${f.level}\u0000${f.id}\u0000${f.message}`))]
+}
+
 /** 全体の確かめ (直す, 見直す, 知らせ). 押すとその問いへ移る */
 function FindingsCard({
   problem,
@@ -136,7 +145,9 @@ function FindingsCard({
 }) {
   // データからの確かめも同じ並び (重さの順) に
   const order = { error: 0, warning: 1, info: 2 }
-  const findings = [...problem.findings, ...extra].sort((a, b) => order[a.level] - order[b.level])
+  const findings = joinFindings(problem.findings, extra).sort(
+    (a, b) => order[a.level] - order[b.level],
+  )
   const titles = Object.fromEntries(problem.progress.sections.map((s) => [s.number, s.title]))
   return (
     <Card title={`確かめ (${findings.length})`}>
@@ -462,7 +473,7 @@ export function ProblemPage() {
               <QuestionField
                 question={question}
                 columns={columnNames}
-                findings={[...problem.findings, ...(insight.data?.findings ?? [])].filter(
+                findings={joinFindings(problem.findings, insight.data?.findings ?? []).filter(
                   (f) => f.id === question.id,
                 )}
                 saving={

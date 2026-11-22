@@ -381,7 +381,7 @@ def test_view_unreadable_data(
 ) -> None:
     """
     データの場所が文字列でないか, 調べる権限が無い問題の設定でも, 詳しい
-    画面を開け, 読めないことが直すところに出ることを確かめる関数
+    画面を開け, 誤りが確かめに出ることを確かめる関数
 
     Parameters
     ----------
@@ -407,22 +407,22 @@ def test_view_unreadable_data(
     url = f"/api/problems/{imported.json()['id']}"
     view = client.get(url)
     assert view.status_code == 200, view.text
-    message = "データの場所は文字の場所 (パス) で書いてください"
-    assert {"level": "error", "id": "data.source",
-            "message": message} in view.json()["open_errors"]
+    # ML-Quest の確かめが形の誤りにし (骨組みを組めない), データの分析も
+    # 同じ誤りを返す. 書き出しは組めない誤りで断る
+    message = ("データの場所は文字の場所 (絶対パス) で書いてください "
+               "(今は 123)")
+    finding = {"level": "error", "id": "data.source", "message": message}
+    shown = view.json()
+    assert finding in shown["findings"]
+    assert shown["exportable"] is False and message in shown["export_error"]
     found = client.get(f"{url}/insight")
     assert found.status_code == 200
-    assert found.json()["findings"] == [
-        {"level": "error", "id": "data.source", "message": message}
-    ]
-    refused = client.post(f"{url}/project",
-                          json={"path": str(tmp_path / "never")})
-    assert refused.status_code == 409
+    assert found.json()["findings"] == [finding]
     written = client.post(f"{url}/project",
                           json={"path": str(tmp_path / "never"),
                                 "accept_errors": True})
     assert written.status_code == 400
-    assert written.json()["detail"] == message
+    assert message in written.json()["detail"]
     assert not (tmp_path / "never").exists()
 
     # 入れたデータのディレクトリの中を調べる権限が無い (分析の印を作る所
