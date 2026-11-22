@@ -59,11 +59,15 @@ function TrainingRow({ problem }: { problem: Problem }) {
     <div>
       <dt className="mb-1 text-xs font-medium text-ink-2">学習 (ML-Found, ML-Dashboard)</dt>
       <dd className="flex flex-col gap-1">
-        <span>
-          監視する指標 <Code>{training.monitor}</Code> (
-          {training.mode === 'max' ? '大きい' : '小さい'}
-          ほど良い)
+        <span className="flex flex-wrap items-center gap-1">
+          監視する指標 <Code>{training.monitor}</Code>
         </span>
+        {training.mode !== null && (
+          <span className="flex flex-wrap items-center gap-1">
+            監視の向き <Code>{training.mode}</Code> ({training.mode === 'max' ? '大きい' : '小さい'}
+            ほど良い)
+          </span>
+        )}
         {other && (
           <span className="text-xs text-ink-2">
             その他の指標です. 学習で検証用の分割の <Code>{training.monitor}</Code>{' '}
@@ -72,6 +76,32 @@ function TrainingRow({ problem }: { problem: Problem }) {
         )}
       </dd>
     </div>
+  )
+}
+
+/**
+ * モデルの作成の雛形 (受け持ちに合う ML-ModelControl の同梱の例の名前). 無ければ理由を言葉で出す
+ * (雛形は学習前の定義なので, 一から学習するときだけ渡る)
+ */
+function ModelExample({ problem }: { problem: Problem }) {
+  const handoff = problem.handoff
+  if (!handoff) return null
+  const example = handoff.model.example
+  if (example)
+    return (
+      <span className="flex flex-wrap items-center gap-1">
+        モデルの作成の雛形: <Code>{example}</Code> (モデルの作成の画面で開ける例)
+      </span>
+    )
+  return (
+    <span>
+      モデルの作成の雛形:{' '}
+      <span className="text-ink-3">
+        {handoff.part.method === 'scratch'
+          ? '受け持ちに合う雛形はありません (モデルの作成の画面で定義を選ぶ)'
+          : '一から学習しないので, 合う雛形はありません'}
+      </span>
+    </span>
   )
 }
 
@@ -332,10 +362,15 @@ function PartHandoff({
           <dt className="mb-1 text-xs font-medium text-ink-2">
             モデルの作成 (ML-CreateArchitecture)
           </dt>
-          <dd>
-            {handoff.inference.ready
-              ? 'モデルは作りません (既製のモデルを使うため)'
-              : '受け持ちと出力の形から選ぶ (出力の大きさは, 列の予測だけで渡します)'}
+          <dd className="flex flex-col gap-1">
+            {handoff.inference.ready ? (
+              'モデルは作りません (既製のモデルを使うため)'
+            ) : (
+              <>
+                <ModelExample problem={problem} />
+                <span>受け持ちと出力の形から選ぶ (出力の大きさは, 列の予測だけで渡します)</span>
+              </>
+            )}
           </dd>
         </div>
         <TrainingRow problem={problem} />
@@ -441,11 +476,14 @@ export function HandoffCard({
           <dt className="mb-1 text-xs font-medium text-ink-2">
             モデルの作成 (ML-CreateArchitecture)
           </dt>
-          <dd>
-            出力の大きさ{' '}
-            {model.outputs ?? 'クラスの数 (確率にする前の値を出す. softmax は付けない)'}.
-            入力の形は書き出したデータセットから決まる (表と時系列は学習に使う列の数, 画像, 文,
-            点群の列は 1 件の配列の形)
+          <dd className="flex flex-col gap-1">
+            <ModelExample problem={problem} />
+            <span>
+              出力の大きさ{' '}
+              {model.outputs ?? 'クラスの数 (確率にする前の値を出す. softmax は付けない)'}.
+              入力の形は書き出したデータセットから決まる (表と時系列は学習に使う列の数, 画像, 文,
+              点群の列は 1 件の配列の形)
+            </span>
           </dd>
         </div>
         <TrainingRow problem={problem} />

@@ -190,6 +190,8 @@ export interface Handoff {
     outputs: number | null
     role: string | null
     target_kind: string | null
+    /** 受け持ちに合うモデルの作成の雛形 (ML-ModelControl の同梱の例の名前. 一から学習しないか, 合う例が無ければ null) */
+    example: string | null
     /** 書き出したプロジェクトのモデルの定義の置き場 (絶対パス. 書き出していなければ null) */
     project_model_spec?: string | null
   }

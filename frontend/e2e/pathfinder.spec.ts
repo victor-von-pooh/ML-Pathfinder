@@ -470,6 +470,11 @@ test('予測するで点群の正解が今の処理の出力なら, 処理を問
   await expect(card).toContainText('正解を作る処理 今の計算')
   await expect(card).toContainText('処理の設定: 既定の設定')
   await expect(card).toContainText('valid/chamfer')
+  await expect(card.getByText(/監視の向き/)).toHaveText(/監視の向き\s*min\s*\(小さいほど良い\)/)
+  // 一から学習する点群の予測は, 受け持ちに合う雛形の名前を渡す
+  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(
+    /モデルの作成の雛形:\s*point_cloud_predictor\s*\(モデルの作成の画面で開ける例\)/,
+  )
   await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
   await expect(page.locator('#export-reason')).toHaveCount(0)
 
@@ -531,7 +536,12 @@ test('最良を選ぶ指標をその他にすると, 名前と向きを問い, �
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
   await expect(card.getByText(/目的の列\s*sales/)).toBeVisible()
-  await expect(card.getByText(/監視する指標\s*valid\/wape\s*\(小さいほど良い\)/)).toBeVisible()
+  await expect(card.getByText(/監視する指標\s*valid\/wape/)).toBeVisible()
+  await expect(card.getByText(/監視の向き\s*min\s*\(小さいほど良い\)/)).toBeVisible()
+  // 列の予測には合う雛形が無いので, 言葉で出す
+  await expect(card.getByText(/モデルの作成の雛形/)).toContainText(
+    'モデルの作成の雛形: 受け持ちに合う雛形はありません',
+  )
   await expect(card.getByText(/その他の指標です/)).toBeVisible()
   await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeDisabled()
   await expect(page.locator('#export-reason')).toContainText('その他')
@@ -865,6 +875,7 @@ test('既製のモデルの見本は, 学習の欄を出さず, 推論の一式�
   await expect(page.getByText('監視する指標')).toHaveCount(0)
   await expect(page.getByText('既製のモデルをそのまま使います')).toBeVisible()
   await expect(page.getByText(/モデルは作りません/)).toBeVisible()
+  await expect(page.getByText(/モデルの作成の雛形/)).toHaveCount(0)
   await expect(page.getByText('resnet18', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
