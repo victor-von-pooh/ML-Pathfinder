@@ -183,6 +183,29 @@ test('文の問いは, 問いの欄の形で 1 行の欄か複数行の欄にな
   )
 })
 
+test('1 行の欄は, 手で書いた答えの改行を空白にして出し, 直すと 1 行で保存する', async ({
+  page,
+}) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('改行')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '改行' })).toBeVisible()
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const file = `${process.cwd()}/e2e/.work/home/problems/${id}/problem.yaml`
+  writeFileSync(file, 'format_version: 2\nname: 改行\nissue:\n  owner: "店長\\n副店長"\n')
+  await page.reload()
+  const box = page.getByRole('textbox', { name: '誰の課題ですか', exact: true })
+  await expect(box).toHaveValue('店長 副店長')
+  await box.fill(`${await box.inputValue()} と本部`)
+  await box.blur()
+  await expect(page.getByText('「誰の課題ですか」を保存しました')).toBeVisible()
+  const view = await (await page.request.get(`/api/problems/${id}`)).json()
+  const owner = (view.questions as { id: string; value: unknown }[]).find(
+    (q) => q.id === 'issue.owner',
+  )
+  expect(owner?.value).toBe('店長 副店長 と本部')
+})
+
 test('確かめから問いへ移ると, その入力に移る', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('移る')
