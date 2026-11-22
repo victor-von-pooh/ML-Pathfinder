@@ -17,6 +17,7 @@ const KIND: Question = {
   value: 'mask',
   answered: true,
   applies: true,
+  multiline: false,
 }
 
 /** 課題の持ち主の問い (確かめの項目の場所の題) */

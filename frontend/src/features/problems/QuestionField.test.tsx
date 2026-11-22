@@ -16,6 +16,7 @@ const OUTPUT: Question = {
   value: 'shape',
   answered: true,
   applies: true,
+  multiline: false,
 }
 
 describe('QuestionField', () => {
@@ -36,8 +37,8 @@ describe('QuestionField', () => {
     expect(onAnswer).toHaveBeenCalledWith(null)
   })
 
-  it('環境の登録名は 1 行の欄, 他の文の問いは複数行の欄で答える', () => {
-    const text = (id: string): Question => ({
+  it('文の問いは, 問いの欄の形 (multiline) で 1 行の欄か複数行の欄にする', () => {
+    const text = (id: string, multiline: boolean): Question => ({
       id,
       section: 5,
       kind: 'text',
@@ -48,11 +49,15 @@ describe('QuestionField', () => {
       value: null,
       answered: false,
       applies: true,
+      multiline,
     })
     const props = { columns: [], findings: [], saving: false, error: null, onAnswer: vi.fn() }
-    const { rerender } = render(<QuestionField question={text('ml.parts.0.env_id')} {...props} />)
+    // 欄の形は問いの名前でなく multiline で決まる
+    const { rerender } = render(
+      <QuestionField question={text('ml.parts.0.what', false)} {...props} />,
+    )
     expect(screen.getByRole('textbox').tagName).toBe('INPUT')
-    rerender(<QuestionField question={text('ml.parts.0.what')} {...props} />)
+    rerender(<QuestionField question={text('ml.parts.0.env_id', true)} {...props} />)
     expect(screen.getByRole('textbox').tagName).toBe('TEXTAREA')
   })
 
@@ -70,6 +75,7 @@ describe('QuestionField', () => {
       value: 123,
       answered: true,
       applies: true,
+      multiline: false,
     }
     const props = { columns: [], saving: false, error: null, onAnswer: vi.fn(), onDetach }
     const broken = { level: 'error' as const, id: 'data.source', message: '場所の形の誤り' }
@@ -109,6 +115,7 @@ describe('QuestionField', () => {
       value: true,
       answered: true,
       applies: true,
+      multiline: false,
     }
     const props = { columns: [], findings: [], saving: false, error: null, onAnswer }
     const { rerender } = render(<QuestionField question={gpu} {...props} />)

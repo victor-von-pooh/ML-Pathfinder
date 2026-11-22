@@ -148,6 +148,41 @@ test('書きかけは節を移っても残り, 列の並びは 1 行に 1 つで
   await expect(known).toHaveValue('promo\nweather')
 })
 
+test('文の問いは, 問いの欄の形で 1 行の欄か複数行の欄になる', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  await expect(page.getByRole('heading', { name: '総菜の作る量' })).toBeVisible()
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const view = await (await page.request.get(`/api/problems/${id}`)).json()
+  const texts = (
+    view.questions as {
+      id: string
+      section: number
+      kind: string
+      applies: boolean
+      multiline: boolean
+    }[]
+  ).filter((q) => q.kind === 'text' && q.applies)
+  // 名前で答える問い (課題の持ち主, 指標の名前と単位, 承認する人など) は 1 行, 他は複数行
+  expect(texts.some((q) => !q.multiline)).toBe(true)
+  expect(texts.some((q) => q.multiline)).toBe(true)
+  for (const question of texts) {
+    await page
+      .getByRole('navigation', { name: '問いの節' })
+      .getByRole('button', { name: new RegExp(`^${question.section}\\b`) })
+      .click()
+    const box = page.locator(`[id="q-${question.id}"]`)
+    await expect(box).toBeVisible()
+    expect(await box.evaluate((node) => node.tagName), question.id).toBe(
+      question.multiline ? 'TEXTAREA' : 'INPUT',
+    )
+  }
+  const names = texts.filter((q) => !q.multiline).map((q) => q.id)
+  expect(names).toEqual(
+    expect.arrayContaining(['issue.owner', 'issue.kpi.name', 'operation.approver']),
+  )
+})
+
 test('確かめから問いへ移ると, その入力に移る', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('移る')
@@ -565,6 +600,22 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
     .getByRole('button', { name: /^7\b/ })
     .click()
   await choose(page, '外れたときは, どうしますか', /^元の制御/)
+  // 安全の違反の信号と承認する人は名前で答えるので 1 行の欄
+  const signal = page.getByRole('textbox', {
+    name: '安全の違反を知らせる信号の名前は',
+    exact: true,
+  })
+  expect(await signal.evaluate((node) => node.tagName)).toBe('INPUT')
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^10\b/ })
+    .click()
+  const approver = page.getByRole('textbox', {
+    name: '方策を使ってよいかと, 守りの範囲は誰が決めますか',
+    exact: true,
+  })
+  await expect(approver).toHaveValue('設備の責任者')
+  expect(await approver.evaluate((node) => node.tagName)).toBe('INPUT')
   await expect(page.getByText('食い違いや足りない答えはありません.')).toBeVisible()
 
   // 後ろの段階に渡す値に, 要る機能と方策の守り, 人が決めることが出る
