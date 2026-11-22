@@ -16,14 +16,18 @@ async function write(page: Page, title: string, text: string) {
   await expect(page.getByText(`「${title}」を保存しました`)).toBeVisible()
 }
 
-/** 学習のプロジェクトを書き出して対話を閉じ, 書き出した場所を返す (直すところが無いとき) */
-async function exportProject(page: Page, name: string): Promise<string> {
+/**
+ * 学習のプロジェクトを書き出し, 対話の知らせに文があるかを確かめて閉じ, 書き出した場所を返す
+ * (直すところが無いとき)
+ */
+async function exportProject(page: Page, name: string, texts: string[] = []): Promise<string> {
   const dir = `${process.cwd()}/e2e/.work/${name}`
   await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('書き出すディレクトリ (無ければ作る)').fill(dir)
   await dialog.getByRole('button', { name: '書き出す' }).click()
   await expect(dialog.getByRole('status')).toContainText('train.py')
+  for (const text of texts) await expect(dialog.getByRole('status')).toContainText(text)
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   return dir
@@ -583,7 +587,11 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   expect(file).toContain('env_id: Hopper-v5')
 
   // 書き出した骨組みは, config の env.id にその登録名を書き, 自作の環境の雛形は書かない
-  const named = await exportProject(page, 'policy-named')
+  const named = await exportProject(page, 'policy-named', [
+    'Gymnasium の Hopper-v5 (config の env.id)',
+    'config の guards に',
+    'policy/ に守りと一緒に',
+  ])
   expect(readFileSync(`${named}/configs/default/train.yaml`, 'utf8')).toContain('id: "Hopper-v5"')
   expect(existsSync(`${named}/env.py`)).toBe(false)
 
@@ -597,7 +605,7 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   await expect(card).toContainText('骨組みには自作の環境の雛形 (env.py) を書き出す')
 
   // 書き出した骨組みは, env.id が null で, 自作の環境の雛形 env.py を持つ
-  const own = await exportProject(page, 'policy-own')
+  const own = await exportProject(page, 'policy-own', ['自作の環境の雛形 env.py (ProjectEnv)'])
   expect(readFileSync(`${own}/configs/default/train.yaml`, 'utf8')).toMatch(/^ {2}id: null$/m)
   expect(readFileSync(`${own}/env.py`, 'utf8')).toContain('class ProjectEnv')
 
