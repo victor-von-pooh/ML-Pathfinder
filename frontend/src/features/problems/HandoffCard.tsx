@@ -124,7 +124,7 @@ function PolicyRow({ problem }: { problem: Problem }) {
 
 /**
  * 方策を学ぶ環境 (方策で, 環境の登録名の問いが要るときだけ). 登録名を答えていれば
- * Gymnasium のその環境, 答えていなければ自作の環境の雛形を骨組みに書き出すことを出す
+ * Gymnasium のその環境, 答えていなければ自作の環境の雛形 (env.py) を骨組みに書き出すことを出す
  */
 function EnvRow({ problem }: { problem: Problem }) {
   const policy = problem.handoff?.policy
@@ -137,15 +137,16 @@ function EnvRow({ problem }: { problem: Problem }) {
       <dd className="flex flex-col gap-1">
         {policy.env_id ? (
           <span>
-            Gymnasium の <Code>{policy.env_id}</Code> (骨組みは登録名で環境を作ります)
+            Gymnasium の <Code>{policy.env_id}</Code> (骨組みは config の env.id に書き,
+            登録名で環境を作ります)
           </span>
         ) : (
           <>
             <span>自作の環境 (環境の登録名は答えていません)</span>
             <span className="text-xs text-ink-2">
-              骨組みには自作の環境の雛形を書き出すので, 中身 (実機とのつなぎ, 自作のシミュレータ)
-              は自分で書きます. Gymnasium に登録された環境なら, 5 の「Gymnasium の環境の登録名は
-              (あれば)」に答えると, その環境で学びます.
+              骨組みには自作の環境の雛形 (env.py) を書き出すので, 中身 (実機とのつなぎ,
+              自作のシミュレータ) は自分で書きます. Gymnasium に登録された環境なら, 5 の「Gymnasium
+              の環境の登録名は (あれば)」に答えると, その環境で学びます.
             </span>
           </>
         )}

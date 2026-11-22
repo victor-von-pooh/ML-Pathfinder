@@ -16,6 +16,19 @@ async function write(page: Page, title: string, text: string) {
   await expect(page.getByText(`「${title}」を保存しました`)).toBeVisible()
 }
 
+/** 学習のプロジェクトを書き出して対話を閉じ, 書き出した場所を返す (直すところが無いとき) */
+async function exportProject(page: Page, name: string): Promise<string> {
+  const dir = `${process.cwd()}/e2e/.work/${name}`
+  await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('書き出すディレクトリ (無ければ作る)').fill(dir)
+  await dialog.getByRole('button', { name: '書き出す' }).click()
+  await expect(dialog.getByRole('status')).toContainText('train.py')
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  return dir
+}
+
 /** 5 の節の頭で, 表の列を予測すると答える (目的の列やタスクの問いが出る) */
 async function answerColumnPart(page: Page) {
   await choose(page, '機械学習は何を受け持ちますか', /^予測する/)
@@ -527,7 +540,7 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
     ['what', '試しの出力'],
     ['item', '1 件'],
     ['baseline', '今のやり方'],
-    ['evaluation.metric', 'qini'],
+    ['evaluation.metric', 'loss'],
     ['evaluation.link', '良くなると損が減る'],
     ['policy.action_limits', '各関節の速さは毎秒 0.5 rad まで'],
     ['policy.stop', '腕の先が台の上 0 から 0.3 m を出たら'],
@@ -569,6 +582,11 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   const file = await (await page.request.get(`/api/problems/${id}/download`)).text()
   expect(file).toContain('env_id: Hopper-v5')
 
+  // 書き出した骨組みは, config の env.id にその登録名を書き, 自作の環境の雛形は書かない
+  const named = await exportProject(page, 'policy-named')
+  expect(readFileSync(`${named}/configs/default/train.yaml`, 'utf8')).toContain('id: "Hopper-v5"')
+  expect(existsSync(`${named}/env.py`)).toBe(false)
+
   // 空に戻すと, 骨組みに自作の環境の雛形を書き出すことを案内する
   await page
     .getByRole('navigation', { name: '問いの節' })
@@ -576,7 +594,12 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
     .click()
   await write(page, 'Gymnasium の環境の登録名は (あれば)', '')
   await expect(card).toContainText('自作の環境 (環境の登録名は答えていません)')
-  await expect(card).toContainText('骨組みには自作の環境の雛形を書き出す')
+  await expect(card).toContainText('骨組みには自作の環境の雛形 (env.py) を書き出す')
+
+  // 書き出した骨組みは, env.id が null で, 自作の環境の雛形 env.py を持つ
+  const own = await exportProject(page, 'policy-own')
+  expect(readFileSync(`${own}/configs/default/train.yaml`, 'utf8')).toMatch(/^ {2}id: null$/m)
+  expect(readFileSync(`${own}/env.py`, 'utf8')).toContain('class ProjectEnv')
 
   // 集め方を今ある記録にすると, カードと環境の登録名の問いは消える
   await choose(page, '行動の結果のデータは, どう集めますか', /^今ある記録から/)

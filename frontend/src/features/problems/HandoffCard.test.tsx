@@ -205,12 +205,15 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText('方策を学ぶ環境 (学習, 評価)')).toBeInTheDocument()
     expect(screen.getByText('CartPole-v1')).toBeInTheDocument()
+    expect(screen.getByText(/config の env\.id に書き/)).toBeInTheDocument()
     expect(screen.queryByText(/自作の環境の雛形/)).not.toBeInTheDocument()
 
     // 答えていなければ, 自作の環境の雛形を書き出すことと答え方を添える
     rerender(<HandoffCard problem={problemWith(handoff(null), [envQuestion(null)])} />)
     expect(screen.getByText(/自作の環境 \(環境の登録名は答えていません\)/)).toBeInTheDocument()
-    expect(screen.getByText(/骨組みには自作の環境の雛形を書き出す/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/骨組みには自作の環境の雛形 \(env\.py\) を書き出す/),
+    ).toBeInTheDocument()
 
     // 今ある記録から学ぶ (問いが要らない) ときは出さない
     rerender(<HandoffCard problem={problemWith(handoff(null), [envQuestion(null, false)])} />)
