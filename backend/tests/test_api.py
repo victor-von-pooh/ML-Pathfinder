@@ -178,6 +178,8 @@ def test_example_handoff_and_project(
                        json={"example": examples[0]}).json()
     assert view["ready"] is True
     assert view["handoff"]["training"]["monitor"] == "valid/mae"
+    # 列の予測には合う雛形が無い
+    assert view["handoff"]["model"]["example"] is None
     assert view["progress"]["answered"] == view["progress"]["required"]
     assert view["summary"]
 
@@ -691,6 +693,10 @@ def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
     }
     assert handoff["data"]["target"] is None
     assert handoff["training"]["monitor"] == "valid/chamfer"
+    assert handoff["training"]["mode"] == "min"
+    # 一から学習する点群の予測は, 受け持ちに合う雛形の名前を渡す
+    assert handoff["model"]["example"] == "point_cloud_predictor"
+    assert handoff["model"]["example"] in ml_quest.MODEL_EXAMPLES.values()
     # データ無しでも点群の骨組みは書き出せる (README で書き出しを案内)
     assert view["exportable"] is True and view["export_error"] is None
     written = client.post(f"{url}/project",

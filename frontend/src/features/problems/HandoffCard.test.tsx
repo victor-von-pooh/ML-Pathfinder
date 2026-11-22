@@ -69,7 +69,13 @@ const POINT_CLOUD: Handoff = {
     drop: [],
     source: null,
   },
-  model: { task: null, outputs: null, role: 'predict', target_kind: 'point_cloud' },
+  model: {
+    task: null,
+    outputs: null,
+    role: 'predict',
+    target_kind: 'point_cloud',
+    example: 'point_cloud_predictor',
+  },
   training: {
     metric: 'chamfer',
     monitor: 'valid/chamfer',
@@ -120,7 +126,30 @@ describe('HandoffCard', () => {
     expect(screen.getByText('今の計算')).toBeInTheDocument()
     expect(screen.getByText('処理の設定: 既定の設定')).toBeInTheDocument()
     expect(screen.getByText('valid/chamfer')).toBeInTheDocument()
+    expect(screen.getByText(/監視の向き/)).toHaveTextContent('監視の向き min (小さいほど良い)')
     expect(screen.queryByText(/分割は/)).not.toBeInTheDocument()
+  })
+
+  it('モデルの作成の雛形の名前を見出しと出し, 無ければ理由を言葉で出す', () => {
+    const { rerender } = render(<HandoffCard problem={problemWith(POINT_CLOUD, [])} />)
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
+      'モデルの作成の雛形 (ML-ModelControl の同梱の例の名前) point_cloud_predictor',
+    )
+
+    // 一から学習するが合う例が無い受け持ち
+    const none: Handoff = { ...POINT_CLOUD, model: { ...POINT_CLOUD.model, example: null } }
+    rerender(<HandoffCard problem={problemWith(none, [])} />)
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
+      '受け持ちに合う雛形はありません',
+    )
+    expect(screen.queryByText('point_cloud_predictor')).not.toBeInTheDocument()
+
+    // 一から学習しない (既製の重みから学習する) 受け持ち
+    const tuned: Handoff = { ...none, part: { ...none.part, method: 'finetune' } }
+    rerender(<HandoffCard problem={problemWith(tuned, [])} />)
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
+      '一から学習しないので, 合う雛形はありません',
+    )
   })
 
   it('ファイルの組の受け持ちで渡す分割とグループを件数で出す', () => {
@@ -150,7 +179,13 @@ describe('HandoffCard', () => {
       ...POINT_CLOUD,
       part: { ...POINT_CLOUD.part, target_kind: 'column', target_process: null },
       data: { ...POINT_CLOUD.data, target: 'sales', task: 'regression', split: 'random' },
-      model: { task: 'regression', outputs: 1, role: 'predict', target_kind: 'column' },
+      model: {
+        task: 'regression',
+        outputs: 1,
+        role: 'predict',
+        target_kind: 'column',
+        example: null,
+      },
       training: { ...POINT_CLOUD.training, metric: 'wape', monitor: 'valid/wape' },
     }
     const questions = [
@@ -162,6 +197,10 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/回帰, 分割は/)).toBeInTheDocument()
     expect(screen.getByText(/その他の指標です/)).toBeInTheDocument()
     expect(screen.queryByText(/受け持ち:/)).not.toBeInTheDocument()
+    // 列の予測は合う雛形が無い (一から学習)
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
+      '受け持ちに合う雛形はありません',
+    )
   })
 
   it('既製のモデルは学習の欄を出さず, 推論に出どころとモデルと重みと hash を出す', () => {
@@ -195,6 +234,7 @@ describe('HandoffCard', () => {
     expect(screen.queryByText(/学習 \(ML-Found/)).not.toBeInTheDocument()
     expect(screen.queryByText(/監視する指標/)).not.toBeInTheDocument()
     expect(screen.getByText(/学習しません/)).toBeInTheDocument()
+    expect(screen.queryByText(/モデルの作成の雛形/)).not.toBeInTheDocument()
     expect(screen.getByText('torchvision')).toBeInTheDocument()
     expect(screen.getByText('resnet18')).toBeInTheDocument()
     expect(screen.getByText('IMAGENET1K_V1')).toBeInTheDocument()
@@ -345,7 +385,13 @@ describe('HandoffCard', () => {
             split,
             group_column: group,
           },
-          model: { task: 'classification', outputs: 2, role: 'predict', target_kind: 'column' },
+          model: {
+            task: 'classification',
+            outputs: 2,
+            role: 'predict',
+            target_kind: 'column',
+            example: null,
+          },
         },
         questions,
       )
