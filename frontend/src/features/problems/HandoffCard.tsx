@@ -101,8 +101,8 @@ function ReadyRow({ problem }: { problem: Problem }) {
         ))}
         {!ready.sha256 && (
           <span className="text-xs text-ink-2">
-            hash を決めていないと重みを固定しません. 一式を作ると求めた hash が出るので,
-            問題の設定に書くと次から固定できます
+            hash (重みのファイルの指紋) を決めていないので, 重みの版を固定していません.
+            一式を作ると求めた hash が出るので, 問題の設定に書くと次から固定できます
           </span>
         )}
       </dd>
@@ -334,7 +334,7 @@ function PartHandoff({
           </dt>
           <dd>
             {handoff.inference.ready
-              ? '既製のモデルをそのまま使うので, 作りません'
+              ? 'モデルは作りません (既製のモデルを使うため)'
               : '受け持ちと出力の形から選ぶ (出力の大きさは, 列の予測だけで渡します)'}
           </dd>
         </div>

@@ -143,9 +143,10 @@ describe('ProjectDialog', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'predict' }
     renderDialog({
       ...problemWith([]),
-      questions: [{ ...KIND, value: 'image' }, method, OWNER],
+      questions: [{ ...KIND, value: 'image' }, role, method, OWNER],
     })
     expect(screen.getByText(/学習はしません/)).toBeInTheDocument()
     expect(screen.getByText(/モデルと重みの名前から/)).toBeInTheDocument()
@@ -156,6 +157,23 @@ describe('ProjectDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /書き出す/ }))
     expect(await screen.findByText(/bundle\.py を動かす/)).toBeInTheDocument()
     expect(screen.getByText(/ready\.sha256/)).toBeInTheDocument()
+  })
+
+  it('既製のモデルの答えが残っても, 予測するでなければ既製の案内にしない', () => {
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'generate' }
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
+    const base = problemWith([])
+    // 受け持ちが予測するでない (作り方の答えは残るだけ)
+    const { unmount } = renderDialog({ ...base, questions: [KIND, role, method, OWNER] })
+    expect(screen.queryByText(/学習はしません/)).toBeNull()
+    unmount()
+    // 作り方の問いが無効 (applies が偽)
+    const predict: Question = { ...role, value: 'predict' }
+    renderDialog({
+      ...base,
+      questions: [KIND, predict, { ...method, applies: false }, OWNER],
+    })
+    expect(screen.queryByText(/学習はしません/)).toBeNull()
   })
 
   it('方策は, 環境と守りと学習の次にすることを出し, 損得と制約の注意を出さない', async () => {

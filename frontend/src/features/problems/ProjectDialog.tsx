@@ -27,7 +27,14 @@ function answerOf(problem: Problem, id: string): string | null {
  */
 function skeletonType(problem: Problem): 'column' | 'items' | 'generate' | 'policy' | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
-  if (answerOf(problem, 'ml.parts.0.method') === 'pretrained') return 'ready'
+  // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
+  const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
+  if (
+    answerOf(problem, 'ml.parts.0.role') === 'predict' &&
+    method?.applies &&
+    method.value === 'pretrained'
+  )
+    return 'ready'
   if (
     answerOf(problem, 'ml.parts.0.role') === 'effect' &&
     autonomous?.applies &&

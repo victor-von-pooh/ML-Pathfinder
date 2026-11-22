@@ -199,7 +199,7 @@ describe('HandoffCard', () => {
     expect(screen.getByText('resnet18')).toBeInTheDocument()
     expect(screen.getByText('IMAGENET1K_V1')).toBeInTheDocument()
     expect(screen.getByText('ab12cd')).toBeInTheDocument()
-    expect(screen.queryByText(/hash を決めていないと/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/重みの版を固定していません/)).not.toBeInTheDocument()
   })
 
   it('既製のモデルで hash が無ければ固定しないことを添える', () => {
@@ -220,7 +220,7 @@ describe('HandoffCard', () => {
     }
     render(<HandoffCard problem={problemWith(handoff, [])} />)
     expect(screen.getByText('決めていません')).toBeInTheDocument()
-    expect(screen.getByText(/hash を決めていないと/)).toBeInTheDocument()
+    expect(screen.getByText(/重みの版を固定していません/)).toBeInTheDocument()
   })
 
   it('方策の守りと, 人が決めることと実機は道具の外であることを出す', () => {

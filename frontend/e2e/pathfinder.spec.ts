@@ -669,7 +669,8 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
     '観測と行動の空間に合わせた',
     'policy/ に守りと一緒に',
     '守りを当てたまま環境で',
-    'この場所を問題の設定に記録しました',
+    'この場所を問題の設定に記録しました. モデルの定義は',
+    '(後ろの段階のアプリはこの記録から場所を読みます)',
   ])
   expect(readFileSync(`${named}/configs/default/train.yaml`, 'utf8')).toContain('id: "Hopper-v5"')
   expect(existsSync(`${named}/env.py`)).toBe(false)
@@ -829,6 +830,7 @@ test('既製のモデルの見本は, 学習の欄を出さず, 推論の一式�
   await expect(page.getByRole('heading', { name: '写真の仕分け (既製のモデル)' })).toBeVisible()
   await expect(page.getByText('監視する指標')).toHaveCount(0)
   await expect(page.getByText('既製のモデルをそのまま使います')).toBeVisible()
+  await expect(page.getByText(/モデルは作りません/)).toBeVisible()
   await expect(page.getByText('resnet18', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
