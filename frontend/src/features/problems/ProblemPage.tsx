@@ -26,12 +26,21 @@ function withPeriod(text: string): string {
   return text.endsWith('.') ? text : `${text}.`
 }
 
+/**
+ * 確かめの場所の問い. 手元のデータの項目そのもの (data) と元の場所 (data.origin) の確かめは,
+ * それを直す欄の 5 の「手元のデータは」(data.source) の問い
+ */
+function findingQuestion(problem: Problem, id: string) {
+  const target = id === 'data' || id === 'data.origin' ? 'data.source' : id
+  return problem.questions.find((q) => q.id === target)
+}
+
 /** 節ごとの直すところ (error) の数 */
 function errorsBySection(problem: Problem): Record<number, number> {
   const counts: Record<number, number> = {}
   for (const finding of problem.findings) {
     if (finding.level !== 'error') continue
-    const section = problem.questions.find((q) => q.id === finding.id)?.section
+    const section = findingQuestion(problem, finding.id)?.section
     if (section !== undefined) counts[section] = (counts[section] ?? 0) + 1
   }
   return counts
@@ -156,7 +165,7 @@ function FindingsCard({
       ) : (
         <ul aria-label="確かめ" className="flex flex-col gap-2">
           {findings.map((finding) => {
-            const target = problem.questions.find((q) => q.id === finding.id)
+            const target = findingQuestion(problem, finding.id)
             return (
               <li
                 key={`${finding.id}:${finding.message}`}
@@ -304,7 +313,14 @@ export function ProblemPage() {
     ? columnValue.filter((v): v is string => typeof v === 'string')
     : []
   const title = problem.progress.sections.find((s) => s.number === section)?.title ?? ''
-  const visible = problem.questions.filter((q) => q.applies)
+  // 手元のデータの項目の形の誤り (手で書いたファイル) があれば, 機械学習を使うと決める前でも
+  // 手元のデータの欄を出す (外すか入れ直す道を残すため)
+  const dataBroken = problem.findings.some(
+    (f) => f.level === 'error' && findingQuestion(problem, f.id)?.id === 'data.source',
+  )
+  const visible = problem.questions.filter(
+    (q) => q.applies || (q.id === 'data.source' && dataBroken),
+  )
   const here = visible.filter((q) => q.section === section)
   // 保存中と誤りは, その問いだけに出す
   const savingId = answer.isPending ? answer.variables?.question : undefined
@@ -474,7 +490,8 @@ export function ProblemPage() {
                 question={question}
                 columns={columnNames}
                 findings={joinFindings(problem.findings, insight.data?.findings ?? []).filter(
-                  (f) => f.id === question.id,
+                  // 手元のデータの項目そのものと元の場所の誤りも, 手元のデータの欄に出す
+                  (f) => findingQuestion(problem, f.id)?.id === question.id,
                 )}
                 saving={
                   savingId === question.id ||

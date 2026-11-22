@@ -56,6 +56,46 @@ describe('QuestionField', () => {
     expect(screen.getByRole('textbox').tagName).toBe('TEXTAREA')
   })
 
+  it('手元のデータの場所が誤っている間も, 欄に誤りを出して外せる', () => {
+    const onDetach = vi.fn()
+    vi.stubGlobal('confirm', () => true)
+    const source: Question = {
+      id: 'data.source',
+      section: 5,
+      kind: 'source',
+      title: '手元のデータは',
+      help: '',
+      required: false,
+      choices: [],
+      value: 123,
+      answered: true,
+      applies: true,
+    }
+    const props = { columns: [], saving: false, error: null, onAnswer: vi.fn(), onDetach }
+    const broken = { level: 'error' as const, id: 'data.source', message: '場所の形の誤り' }
+    const { rerender } = render(
+      <QuestionField question={source} findings={[broken]} onAttach={vi.fn()} {...props} />,
+    )
+    expect(screen.getByText(/場所が誤っています/)).toBeInTheDocument()
+    expect(screen.getByText(/場所の形の誤り/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'データを入れ直す' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'データを外す' }))
+    expect(onDetach).toHaveBeenCalled()
+
+    // 誤りが無く入れていなければ, 外す道は出さない
+    rerender(
+      <QuestionField
+        question={{ ...source, value: null, answered: false }}
+        findings={[]}
+        onAttach={vi.fn()}
+        {...props}
+      />,
+    )
+    expect(screen.getByText('入れていません')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'データを外す' })).not.toBeInTheDocument()
+    vi.unstubAllGlobals()
+  })
+
   it('任意のはいかいいえの問いは, 答えた後に外せる (答えていなければ出さない)', () => {
     const onAnswer = vi.fn()
     const gpu: Question = {
