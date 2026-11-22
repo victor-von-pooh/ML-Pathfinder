@@ -173,10 +173,19 @@ describe('ProjectDialog', () => {
       questions: [role, autonomous, env('CartPole-v1'), OWNER],
     })
     expect(screen.getByText(/環境の登録名か env から/)).toBeInTheDocument()
+    expect(screen.getByText(/環境と守りを整えて方策を学習します/)).toHaveTextContent(
+      'model.py, 登録名が無ければ自作の環境の env.py',
+    )
+    expect(screen.getByText(/を上書きする/)).toHaveTextContent('train.py, model.py, env.py)')
     expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
     await write()
     expect(screen.getByText(/Gymnasium の CartPole-v1 \(config の env\.id\)/)).toBeInTheDocument()
     expect(screen.getByText(/config の guards に/)).toBeInTheDocument()
+    // 方策の骨組みはデータセットとモデルの定義の置き場を持たない (空の場所を出さない)
+    expect(screen.getByText(/この場所を問題の設定に記録しました/)).toHaveTextContent(
+      'この場所を問題の設定に記録しました (後ろの段階のアプリ',
+    )
+    expect(screen.queryByText(/データセットは/)).toBeNull()
     expect(screen.getByText(/policy\/ に守りと一緒に/)).toHaveTextContent(
       'README.md の最後の一覧を直すまで問題の設定はつながない',
     )
