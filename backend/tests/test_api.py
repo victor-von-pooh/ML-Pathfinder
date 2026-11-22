@@ -166,6 +166,13 @@ def test_example_handoff_and_project(
     assert [item["value"] for item in info["splits"]] == [
         item["value"] for item in ml_quest.SPLITS
     ]
+    # グループを使う分割の目印も ML-Quest のまま
+    assert {item["value"] for item in info["splits"]
+            if item["grouped"]} == {"group", "group_time",
+                                    "stratified_group"}
+    assert [item["grouped"] for item in info["splits"]] == [
+        item["grouped"] for item in ml_quest.SPLITS
+    ]
     assert "none" in [item["value"] for item in info["splits"]]
     view = client.post("/api/problems",
                        json={"example": examples[0]}).json()

@@ -14,6 +14,13 @@ function shortLabel(choices: Choice[], value: string): string {
   return choices.find((choice) => choice.value === value)?.label.split(' (')[0] ?? value
 }
 
+/** 相手をまとめる列の役目 (分割の grouped から. 分からなければ null) */
+function groupRole(splits: Choice[], split: string | null): string | null {
+  const grouped = splits.find((choice) => choice.value === split)?.grouped
+  if (grouped === undefined) return null
+  return grouped ? '同じ値を同じ分割に' : '分割をまたぐ重なりを確かめる'
+}
+
 /** 受け持ちの問いの答えの短い名前 (答えが無ければ null) */
 function partLabel(problem: Problem, key: string, value: string | null): string | null {
   return value === null ? null : shortLabel(choicesOf(problem, `${PART}.${key}`), value)
@@ -339,6 +346,7 @@ export function HandoffCard({
     (choice) => choice.value === decision?.type,
   )
   const fields = type?.fields ?? []
+  const role = groupRole(splits, data.split)
   return (
     <Card title="後ろの段階に渡す値">
       <dl className="flex flex-col gap-3 text-sm">
@@ -352,8 +360,8 @@ export function HandoffCard({
             </span>
             {data.group_column && (
               <span>
-                相手をまとめる列 <Code>{data.group_column}</Code> (
-                {data.split === 'group' ? '同じ値を同じ分割に' : '分割をまたぐ重なりを確かめる'})
+                相手をまとめる列 <Code>{data.group_column}</Code>
+                {role && ` (${role})`}
               </span>
             )}
             {data.time_column && (

@@ -607,7 +607,7 @@ def broken_item(problem_id: str, error: Exception) -> dict[str, Any]:
 def get_info() -> dict[str, Any]:
     """
     問いの節, 見本の名前, 問題の設定の形の版, 受け渡しの分割の名前を返す
-    関数
+    関数 (分割の名前にはグループを使うかを添える)
 
     Parameters
     ----------
@@ -617,7 +617,7 @@ def get_info() -> dict[str, Any]:
     ----------
     info: dict[str, Any]
         sections, examples, format_version, splits (受け渡しの分割の値と
-        説明. ML-Quest の SPLITS)
+        説明とグループを使うか. ML-Quest の SPLITS)
     """
     # 画面が固定で持たずに済むもの
     info = {
@@ -625,7 +625,8 @@ def get_info() -> dict[str, Any]:
         "sections": [{"number": number, "title": title}
                      for number, title in ml_quest.SECTIONS.items()],
         "examples": list(ml_quest.EXAMPLES),
-        "splits": [{"value": item["value"], "label": item["label"]}
+        "splits": [{"value": item["value"], "label": item["label"],
+                    "grouped": item["grouped"]}
                    for item in ml_quest.SPLITS],
     }
 
