@@ -566,7 +566,9 @@ test('版 1 のファイルを開くと版 2 に移して描き, 保存すると
   expect(readFileSync(file, 'utf-8')).toContain('format_version: 2')
 })
 
-test('方策をシミュレータで学ぶと, 要る機能の準備のカードと方策の守りが出る', async ({ page }) => {
+test('方策をシミュレータで学ぶと, 準備のカードと方策の守りが出て, 最良を選ぶ指標に報酬が出る', async ({
+  page,
+}) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByRole('button', { name: '総菜の作る量' }).click()
   await expect(page.getByRole('heading', { name: '総菜の作る量' })).toBeVisible()
@@ -674,6 +676,27 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   ])
   expect(readFileSync(`${named}/configs/default/train.yaml`, 'utf8')).toContain('id: "Hopper-v5"')
   expect(existsSync(`${named}/env.py`)).toBe(false)
+  // 方策で損失を選んだ設定もそのまま開いて書き出せ, 監視は valid/loss を小さく
+  const lossConfig = readFileSync(`${named}/configs/default/train.yaml`, 'utf8')
+  expect(lossConfig).toMatch(/^ {2}monitor: valid\/loss$/m)
+  expect(lossConfig).toMatch(/^ {2}mode: min$/m)
+
+  // 方策の最良を選ぶ指標は報酬が先頭に出て, 選ぶと監視が valid/reward を大きく
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^8\b/ })
+    .click()
+  const metric = page.getByRole('radiogroup', {
+    name: '最も良いモデルを何で選びますか',
+    exact: true,
+  })
+  await expect(metric.getByRole('radio').first()).toHaveAttribute('value', 'reward')
+  await choose(page, '最も良いモデルを何で選びますか', /^評価のエピソードの報酬の和の平均 \(/)
+  await expect(page.getByText('食い違いや足りない答えはありません.')).toBeVisible()
+  const reward = await exportProject(page, 'policy-reward')
+  const rewardConfig = readFileSync(`${reward}/configs/default/train.yaml`, 'utf8')
+  expect(rewardConfig).toMatch(/^ {2}monitor: valid\/reward$/m)
+  expect(rewardConfig).toMatch(/^ {2}mode: max$/m)
 
   // 空に戻すと, 骨組みに自作の環境の雛形を書き出すことを案内する
   await page
@@ -709,6 +732,17 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
     page.getByRole('textbox', { name: 'Gymnasium の環境の登録名は (あれば)', exact: true }),
   ).toHaveCount(0)
   await expect(card).not.toContainText('方策を学ぶ環境')
+
+  // 方策でないと答えると報酬は選択肢から外れ, 選んである報酬は合わないと出る
+  await choose(page, '機械学習が, 続けて自分で行動を選びますか (方策)', 'いいえ')
+  await page
+    .getByRole('navigation', { name: '問いの節' })
+    .getByRole('button', { name: /^8\b/ })
+    .click()
+  await expect(metric.getByLabel(/^評価のエピソードの報酬の和の平均/)).toHaveCount(0)
+  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText(
+    /報酬の和の平均.*合いません/,
+  )
 })
 
 test('作るで画像と答えると, 画像の生成の骨組みを書き出し, 次にすることが生成の手順になる', async ({
