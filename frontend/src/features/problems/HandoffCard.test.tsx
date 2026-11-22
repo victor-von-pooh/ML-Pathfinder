@@ -17,6 +17,7 @@ function choice(id: string, value: unknown, choices: [string, string][]): Questi
     value,
     answered: value !== null,
     applies: true,
+    multiline: false,
   }
 }
 

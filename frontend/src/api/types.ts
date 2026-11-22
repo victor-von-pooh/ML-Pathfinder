@@ -78,6 +78,8 @@ export interface Question {
   value: unknown
   answered: boolean
   applies: boolean
+  /** 複数行の欄で答えるか (ML-Quest の問いの欄の形. 文の問いだけ真になりうる) */
+  multiline: boolean
 }
 
 /** 確かめの 1 件 */
