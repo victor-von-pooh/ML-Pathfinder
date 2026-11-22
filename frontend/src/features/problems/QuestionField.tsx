@@ -437,27 +437,32 @@ function SourceInput({
   question,
   saving,
   overview,
+  broken,
   onAttach,
   onDetach,
 }: InputState & {
   overview: Insight['overview'] | undefined
+  /** 場所か手元のデータの項目に誤りがあるか (手で書いた数や並びなど. 誤りの文は欄の下に出る) */
+  broken: boolean
   onAttach?: (path: string) => void
   onDetach?: () => void
 }) {
   const [picking, setPicking] = useState(false)
   const value = typeof question.value === 'string' ? question.value : ''
+  // 場所が文字でない間も外せるように (入れ直す以外の道)
+  const detachable = !!value || broken
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <span id={`q-${question.id}`} tabIndex={-1} className="font-mono text-sm break-all">
-          {value || '入れていません'}
+          {value || (broken ? '場所が誤っています (下の確かめ)' : '入れていません')}
         </span>
         {onAttach && (
           <Button icon={Database} disabled={saving} onClick={() => setPicking(true)}>
-            {value ? 'データを入れ直す' : 'データを入れる'}
+            {detachable ? 'データを入れ直す' : 'データを入れる'}
           </Button>
         )}
-        {value && onDetach && (
+        {detachable && onDetach && (
           <Button
             variant="ghost"
             disabled={saving}
@@ -751,7 +756,15 @@ export function QuestionField({
   else if (question.kind === 'columns' || question.kind === 'list')
     input = <ListInput key={key} {...state} onReadColumns={onReadColumns} />
   else if (question.kind === 'source')
-    input = <SourceInput {...state} overview={overview} onAttach={onAttach} onDetach={onDetach} />
+    input = (
+      <SourceInput
+        {...state}
+        overview={overview}
+        broken={findings.some((f) => f.level === 'error')}
+        onAttach={onAttach}
+        onDetach={onDetach}
+      />
+    )
   else if (question.kind === 'baseline')
     input = <BaselineInput key={key} {...state} columns={columns} />
   else if (question.kind === 'levers') input = <LeversInput key={key} {...state} />
