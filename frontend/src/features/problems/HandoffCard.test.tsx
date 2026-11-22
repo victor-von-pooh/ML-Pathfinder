@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { Handoff, Problem, Question } from '../../api/types'
+import type { Choice, Handoff, Problem, Question } from '../../api/types'
 import { HandoffCard } from './HandoffCard'
 
 /** 選択肢の問い (受け渡しの名前を引くためだけ) */
@@ -81,6 +81,29 @@ const POINT_CLOUD: Handoff = {
   requires: [],
   policy: null,
 }
+
+/**
+ * 受け渡しの分割の名前 (/api/info の splits の形). ML-Quest の SPLITS の手の写し.
+ * /api/info の値が ML-Quest の SPLITS と同じかは backend の test_api.py が突き合わせる.
+ * この写しは突き合わせないので, ML-Quest の SPLITS が変わったら手で合わせる
+ */
+const SPLITS: Choice[] = [
+  { value: 'time', label: '時刻の順 (後ろの期間を検証用とテスト用に)', grouped: false },
+  { value: 'group', label: '相手ごと (同じ相手は同じ分割に)', grouped: true },
+  { value: 'random', label: '無作為', grouped: false },
+  { value: 'stratified', label: '層別 (クラスの割合をそろえて無作為に)', grouped: false },
+  {
+    value: 'group_time',
+    label: '相手ごとと時刻の順 (後から現れた相手を検証用とテスト用に)',
+    grouped: true,
+  },
+  {
+    value: 'stratified_group',
+    label: '相手ごとの層別 (同じ相手は同じ分割に, クラスの割合をそろえて. 分類だけ)',
+    grouped: true,
+  },
+  { value: 'none', label: '分けない (全て学習用)', grouped: false },
+]
 
 describe('HandoffCard', () => {
   it('列の予測でなければ, 受け持ちと正解の出どころの処理を出す', () => {
@@ -248,5 +271,64 @@ describe('HandoffCard', () => {
     expect(screen.getByText('/work/p')).toBeInTheDocument()
     expect(screen.getByText('/work/p/data/clouds')).toBeInTheDocument()
     expect(screen.queryByText(/モデルの定義の置き場/)).not.toBeInTheDocument()
+  })
+  it('相手をまとめる列の役目を, 分割の名前でなく grouped で出す', () => {
+    const questions = [choice('ml.parts.0.task', 'classification', [['classification', '分類']])]
+    const column = (split: string, group: string | null): Problem =>
+      problemWith(
+        {
+          ...POINT_CLOUD,
+          part: { ...POINT_CLOUD.part, target_kind: 'column', target_process: null },
+          data: {
+            ...POINT_CLOUD.data,
+            target: 'churn',
+            task: 'classification',
+            split,
+            group_column: group,
+          },
+          model: { task: 'classification', outputs: 2, role: 'predict', target_kind: 'column' },
+        },
+        questions,
+      )
+    // グループを使う分割は同じ値を同じ分割に, 他は重なりの確かめ
+    expect(SPLITS.filter((split) => split.grouped).map((split) => split.value)).toEqual([
+      'group',
+      'group_time',
+      'stratified_group',
+    ])
+    for (const split of SPLITS) {
+      const { unmount } = render(
+        <HandoffCard problem={column(split.value, 'customer')} splits={SPLITS} />,
+      )
+      expect(screen.getByText(/相手をまとめる列/)).toHaveTextContent(
+        split.grouped ? '(同じ値を同じ分割に)' : '(分割をまたぐ重なりを確かめる)',
+      )
+      unmount()
+    }
+    // 名前でなく目印で決める (画面の知らない名前でも目印に従う)
+    const added = [...SPLITS, { value: 'new_group', label: '新しい分け方', grouped: true }]
+    const { unmount } = render(
+      <HandoffCard problem={column('new_group', 'customer')} splits={added} />,
+    )
+    expect(screen.getByText(/相手をまとめる列/)).toHaveTextContent('(同じ値を同じ分割に)')
+    unmount()
+    // 列の無い分割では出さない
+    for (const split of SPLITS) {
+      const { unmount: off } = render(
+        <HandoffCard problem={column(split.value, null)} splits={SPLITS} />,
+      )
+      expect(screen.queryByText(/相手をまとめる列/)).not.toBeInTheDocument()
+      off()
+    }
+    // grouped が分からない間 (分割の名前を読む前, 目印の無い古い値) は役目を出さない
+    for (const splits of [[], [{ value: 'group', label: '相手ごと' }]]) {
+      const { unmount: off } = render(
+        <HandoffCard problem={column('group', 'customer')} splits={splits} />,
+      )
+      const row = screen.getByText(/相手をまとめる列/)
+      expect(row).not.toHaveTextContent('同じ値を同じ分割に')
+      expect(row).not.toHaveTextContent('重なりを確かめる')
+      off()
+    }
   })
 })

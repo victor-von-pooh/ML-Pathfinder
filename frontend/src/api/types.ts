@@ -37,6 +37,8 @@ export type QuestionKind =
 export interface Choice {
   value: string
   label: string
+  /** 相手をまとめる列の同じ値を同じ分割に入れるか (受け渡しの分割の名前だけ. ML-Quest の SPLITS の grouped) */
+  grouped?: boolean
   /** 意思決定の型の欄 (意思決定の問いの選択肢だけ) */
   fields?: DecisionField[]
 }
