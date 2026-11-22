@@ -226,7 +226,7 @@ def test_example_handoff_and_project(
 
     # 機械学習を使わない見本は出口 (受け渡せない)
     exit_view = client.post("/api/problems",
-                            json={"example": examples[2]}).json()
+                            json={"example": examples[3]}).json()
     assert exit_view["finished"] is True and exit_view["handoff"] is None
     refused = client.post(f"/api/problems/{exit_view['id']}/project",
                           json={"path": str(tmp_path / "x")})

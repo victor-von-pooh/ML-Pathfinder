@@ -105,7 +105,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
       }
     },
   })
-  // 書き出した後の, データセットとモデルの定義の置き場 (方策の骨組みはどちらも持たない)
+  // 書き出した後の, データセットとモデルの定義の置き場 (方策の骨組みはモデルの定義だけを持つ)
   const project = write.data?.project
   const entries: [string, string | null | undefined][] = [
     ['データセット', project?.dataset],
