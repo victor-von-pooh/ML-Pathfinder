@@ -170,7 +170,7 @@ function ProjectRow({ problem }: { problem: Problem }) {
   )
 }
 
-/** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループを渡す) */
+/** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループ, 画像の生成は分割を渡す) */
 function PartHandoff({ problem }: { problem: Problem }) {
   const handoff = problem.handoff
   if (!handoff) return null
@@ -237,7 +237,7 @@ function PartHandoff({ problem }: { problem: Problem }) {
             )}
             <span className="text-xs text-ink-2">
               目的の列と使う列は列の予測だけで渡します. ファイルの組 (領域, 点群) は,
-              データの分析で書き戻した分割とグループを渡します
+              データの分析で書き戻した分割とグループを, 画像の生成は分割を渡します
             </span>
           </dd>
         </div>
