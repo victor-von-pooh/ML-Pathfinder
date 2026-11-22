@@ -51,7 +51,8 @@ function Names({ names }: { names: string[] }) {
 /** 学習の段階に渡す, 監視する指標と向き (その他の指標は記録の頼み) */
 function TrainingRow({ problem }: { problem: Problem }) {
   const training = problem.handoff?.training
-  if (!training) return null
+  // 既製のモデルをそのまま使うと学習しない (監視する指標が無い)
+  if (!training || training.monitor === null) return null
   const other =
     problem.questions.find((q) => q.id === `${PART}.evaluation.metric`)?.value === 'other'
   return (
@@ -67,6 +68,41 @@ function TrainingRow({ problem }: { problem: Problem }) {
           <span className="text-xs text-ink-2">
             その他の指標です. 学習で検証用の分割の <Code>{training.monitor}</Code>{' '}
             を記録するようにしてください
+          </span>
+        )}
+      </dd>
+    </div>
+  )
+}
+
+/** 既製のモデルをそのまま使う予測の推論の欄 (出どころ, モデル, 重み, hash) */
+function ReadyRow({ problem }: { problem: Problem }) {
+  const ready = problem.handoff?.inference.ready
+  if (!ready) return null
+  const library = ready.library
+    ? shortLabel(choicesOf(problem, `${PART}.ready.library`), ready.library)
+    : null
+  const rows: [string, string | null][] = [
+    ['出どころ', library],
+    ['モデル', ready.model],
+    ['重み', ready.weights],
+    ['重みの hash', ready.sha256],
+  ]
+  return (
+    <div>
+      <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+      <dd className="flex flex-col gap-1">
+        <span>既製のモデルをそのまま使います (学習しません)</span>
+        {rows.map(([name, value]) => (
+          <span key={name} className="flex flex-wrap items-center gap-1">
+            {name}
+            {value ? <Code>{value}</Code> : <span className="text-ink-3">決めていません</span>}
+          </span>
+        ))}
+        {!ready.sha256 && (
+          <span className="text-xs text-ink-2">
+            hash を決めていないと重みを固定しません. 一式を作ると求めた hash が出るので,
+            問題の設定に書くと次から固定できます
           </span>
         )}
       </dd>
@@ -296,17 +332,25 @@ function PartHandoff({
           <dt className="mb-1 text-xs font-medium text-ink-2">
             モデルの作成 (ML-CreateArchitecture)
           </dt>
-          <dd>受け持ちと出力の形から選ぶ (出力の大きさは, 列の予測だけで渡します)</dd>
+          <dd>
+            {handoff.inference.ready
+              ? '既製のモデルをそのまま使うので, 作りません'
+              : '受け持ちと出力の形から選ぶ (出力の大きさは, 列の予測だけで渡します)'}
+          </dd>
         </div>
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
         <EnvRow problem={problem} onJump={onJump} />
         <PolicyRow problem={problem} />
         <ProjectRow problem={problem} />
-        <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
-          <dd>意思決定の材料は作りません (列の予測だけ)</dd>
-        </div>
+        {handoff.inference.ready ? (
+          <ReadyRow problem={problem} />
+        ) : (
+          <div>
+            <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
+            <dd>意思決定の材料は作りません (列の予測だけ)</dd>
+          </div>
+        )}
       </dl>
     </Card>
   )

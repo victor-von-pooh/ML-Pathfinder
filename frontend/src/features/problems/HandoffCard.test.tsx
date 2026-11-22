@@ -77,7 +77,7 @@ const POINT_CLOUD: Handoff = {
     role: 'predict',
     target_kind: 'point_cloud',
   },
-  inference: { decision: null, conclusion: {}, horizon: null },
+  inference: { decision: null, conclusion: {}, horizon: null, ready: null },
   requires: [],
   policy: null,
 }
@@ -162,6 +162,65 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/回帰, 分割は/)).toBeInTheDocument()
     expect(screen.getByText(/その他の指標です/)).toBeInTheDocument()
     expect(screen.queryByText(/受け持ち:/)).not.toBeInTheDocument()
+  })
+
+  it('既製のモデルは学習の欄を出さず, 推論に出どころとモデルと重みと hash を出す', () => {
+    const handoff: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        target_kind: 'column',
+        target_process: null,
+        method: 'pretrained',
+      },
+      training: { metric: null, monitor: null, mode: null, role: 'predict', target_kind: 'column' },
+      inference: {
+        decision: null,
+        conclusion: {},
+        horizon: null,
+        ready: {
+          library: 'torchvision',
+          model: 'resnet18',
+          weights: 'IMAGENET1K_V1',
+          sha256: 'ab12cd',
+        },
+      },
+    }
+    const questions = [
+      choice('ml.parts.0.ready.library', 'torchvision', [
+        ['torchvision', 'torchvision (画像の分類の学習済みの重み)'],
+      ]),
+    ]
+    render(<HandoffCard problem={problemWith(handoff, questions)} />)
+    expect(screen.queryByText(/学習 \(ML-Found/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/監視する指標/)).not.toBeInTheDocument()
+    expect(screen.getByText(/学習しません/)).toBeInTheDocument()
+    expect(screen.getByText('torchvision')).toBeInTheDocument()
+    expect(screen.getByText('resnet18')).toBeInTheDocument()
+    expect(screen.getByText('IMAGENET1K_V1')).toBeInTheDocument()
+    expect(screen.getByText('ab12cd')).toBeInTheDocument()
+    expect(screen.queryByText(/hash を決めていないと/)).not.toBeInTheDocument()
+  })
+
+  it('既製のモデルで hash が無ければ固定しないことを添える', () => {
+    const handoff: Handoff = {
+      ...POINT_CLOUD,
+      training: { metric: null, monitor: null, mode: null, role: 'predict', target_kind: null },
+      inference: {
+        decision: null,
+        conclusion: {},
+        horizon: null,
+        ready: {
+          library: 'torchvision',
+          model: 'resnet18',
+          weights: 'IMAGENET1K_V1',
+          sha256: null,
+        },
+      },
+    }
+    render(<HandoffCard problem={problemWith(handoff, [])} />)
+    expect(screen.getByText('決めていません')).toBeInTheDocument()
+    expect(screen.getByText(/hash を決めていないと/)).toBeInTheDocument()
   })
 
   it('方策の守りと, 人が決めることと実機は道具の外であることを出す', () => {

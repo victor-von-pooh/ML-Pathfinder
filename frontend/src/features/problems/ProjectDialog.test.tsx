@@ -137,6 +137,27 @@ describe('ProjectDialog', () => {
     expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
   })
 
+  it('既製のモデルは, 一式づくりの次にすることを出し, 学習の言葉を出さない', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['bundle.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
+    renderDialog({
+      ...problemWith([]),
+      questions: [{ ...KIND, value: 'image' }, method, OWNER],
+    })
+    expect(screen.getByText(/学習はしません/)).toBeInTheDocument()
+    expect(screen.getByText(/モデルと重みの名前から/)).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /bundle\.py/ })).toBeInTheDocument()
+    expect(screen.queryByText(/train\.py/)).toBeNull()
+
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), { target: { value: '/x' } })
+    fireEvent.click(screen.getByRole('button', { name: /書き出す/ }))
+    expect(await screen.findByText(/bundle\.py を動かす/)).toBeInTheDocument()
+    expect(screen.getByText(/ready\.sha256/)).toBeInTheDocument()
+  })
+
   it('方策は, 環境と守りと学習の次にすることを出し, 損得と制約の注意を出さない', async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
