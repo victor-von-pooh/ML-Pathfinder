@@ -590,7 +590,10 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   const named = await exportProject(page, 'policy-named', [
     'Gymnasium の Hopper-v5 (config の env.id)',
     'config の guards に',
+    '観測と行動の空間に合わせた',
     'policy/ に守りと一緒に',
+    '守りを当てたまま環境で',
+    'この場所を問題の設定に記録しました (後ろの段階のアプリ',
   ])
   expect(readFileSync(`${named}/configs/default/train.yaml`, 'utf8')).toContain('id: "Hopper-v5"')
   expect(existsSync(`${named}/env.py`)).toBe(false)
@@ -657,7 +660,8 @@ test('作るで画像と答えると, 画像の生成の骨組みを書き出し
   const status = dialog.getByRole('status')
   await expect(status).toContainText('train.py')
   await expect(status).toContainText('目的の列の無いレシピ')
-  await expect(status).toContainText('件数と種で画像を作る')
+  await expect(status).toContainText('件数と種で画像を作る推論の一式')
+  await expect(status).toContainText('データセットは')
   await expect(status).not.toContainText('意思決定')
   const readme = readFileSync(`${process.cwd()}/e2e/.work/generate/README.md`, 'utf8')
   expect(readme).toContain('条件の無い拡散のモデルを学ぶ')

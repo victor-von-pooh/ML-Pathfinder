@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, FolderOutput } from 'lucide-react'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 
 import { api, ApiError } from '../../api/client'
 import type { Finding, Problem } from '../../api/types'
@@ -101,12 +101,22 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
       }
     },
   })
+  // 書き出した後の, データセットとモデルの定義の置き場 (方策の骨組みはどちらも持たない)
+  const project = write.data?.project
+  const entries: [string, string | null | undefined][] = [
+    ['データセット', project?.dataset],
+    ['モデルの定義', project?.model_spec],
+  ]
+  const places = entries.filter((entry): entry is [string, string] => !!entry[1])
   return (
     <Dialog title="学習のプロジェクトを書き出す" onClose={onClose}>
       <p className="mb-3 text-xs text-ink-2">
-        ML-Found のプロジェクトの骨組み (config, train.py, README, problem.yaml の写し)
-        を書き出します. 書き出した README の「次にすること」の順に,
-        データセットとモデルの定義を置いて学習します.
+        ML-Found のプロジェクトの骨組み (config, train.py, README, problem.yaml の写し
+        {type === 'policy' ? ', 方策のモデルの model.py, 登録名が無ければ自作の環境の env.py' : ''})
+        を書き出します. 書き出した README の「次にすること」の順に,{' '}
+        {type === 'policy'
+          ? '環境と守りを整えて方策を学習します.'
+          : 'データセットとモデルの定義を置いて学習します.'}
       </p>
       <div className="flex flex-col gap-3">
         <PathField
@@ -142,7 +152,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               write.reset()
             }}
           />
-          既にあるファイル (problem.yaml, README.md, configs, train.py) を上書きする
+          既にあるファイル (problem.yaml, README.md, configs, train.py
+          {type === 'policy' ? ', model.py, env.py' : ', 入れたデータの写しの data/'}) を上書きする
         </label>
         {errors.length > 0 && !write.data && (
           <section
@@ -200,19 +211,20 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               ))}
             </ul>
             <p className="mb-2 text-xs text-ink-2">
-              この場所を問題の設定に記録しました. データセットは{' '}
-              <span className="font-mono [overflow-wrap:anywhere]">
-                {write.data.project.dataset}
-              </span>
-              {write.data.project.model_spec && (
+              この場所を問題の設定に記録しました
+              {places.length > 0 && (
                 <>
-                  , モデルの定義は{' '}
-                  <span className="font-mono [overflow-wrap:anywhere]">
-                    {write.data.project.model_spec}
-                  </span>
+                  .{' '}
+                  {places.map(([label, place], index) => (
+                    <Fragment key={label}>
+                      {index > 0 && ', '}
+                      {label}は <span className="font-mono [overflow-wrap:anywhere]">{place}</span>
+                    </Fragment>
+                  ))}{' '}
+                  に置きます
                 </>
               )}{' '}
-              に置きます (後ろの段階のアプリはこの記録から場所を読みます)
+              (後ろの段階のアプリはこの記録から場所を読みます)
             </p>
             <p className="mb-1 font-medium">次にすること (書き出した README.md にも同じ手順)</p>
             {type === 'policy' ? (
@@ -224,7 +236,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 </li>
                 <li>
                   守り: config の guards に, 問題の設定の守り (行動の上限と止める条件の文)
-                  を観測と行動の 空間に合わせた数で書く. 範囲と方策を使ってよいかは決める人が決める
+                  を観測と行動の空間に合わせた数で書く. 範囲と方策を使ってよいかは決める人が決める
                 </li>
                 <li>
                   ML-Found (か ML-Dashboard) で train.py を動かして学習する (方策のモデルは model.py
@@ -232,7 +244,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 </li>
                 <li>
                   学習の後に, 実験の中の policy/ に守りと一緒に方策の一式を書き出し,
-                  守りを当てたまま 環境で動かした結果を evaluations/ に書く. 実機での実行は道具の外
+                  守りを当てたまま環境で動かした結果を evaluations/ に書く. 実機での実行は道具の外
                   {write.variables?.accept &&
                     '. README.md の最後の一覧を直すまで問題の設定はつながない'}
                 </li>
@@ -253,8 +265,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   作った画像の見本 (samples/) で見る
                 </li>
                 <li>
-                  定義を置いて学習すると, train.py が実験の中の inference/ に件数と種で画像を作る
-                  推論の一式を作るので, ML-Provide に登録する (仮のモデルでは作らない)
+                  定義を置いて学習すると, train.py が実験の中の inference/
+                  に件数と種で画像を作る推論の一式を作るので, ML-Provide に登録する
+                  (仮のモデルでは作らない)
                   {write.variables?.accept &&
                     '. inference/ は登録できるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
                 </li>
