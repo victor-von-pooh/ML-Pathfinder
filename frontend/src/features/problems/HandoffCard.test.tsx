@@ -82,7 +82,11 @@ const POINT_CLOUD: Handoff = {
   policy: null,
 }
 
-/** 受け渡しの分割の名前 (/api/info の splits. ML-Quest の SPLITS の値のまま) */
+/**
+ * 受け渡しの分割の名前 (/api/info の splits の形). ML-Quest の SPLITS の手の写し.
+ * /api/info の値が ML-Quest の SPLITS と同じかは backend の test_api.py が突き合わせる.
+ * この写しは突き合わせないので, ML-Quest の SPLITS が変わったら手で合わせる
+ */
 const SPLITS: Choice[] = [
   { value: 'time', label: '時刻の順 (後ろの期間を検証用とテスト用に)', grouped: false },
   { value: 'group', label: '相手ごと (同じ相手は同じ分割に)', grouped: true },
