@@ -193,11 +193,11 @@ export interface Handoff {
     /** 書き出したプロジェクトのモデルの定義の置き場 (絶対パス. 書き出していなければ null) */
     project_model_spec?: string | null
   }
-  /** metric は最良を選ぶ指標 (その他なら書いた名前) */
+  /** metric は最良を選ぶ指標 (その他なら書いた名前). 既製のモデルをそのまま使う (学習しない) なら 3 つとも null */
   training: {
-    metric: string
-    monitor: string
-    mode: string
+    metric: string | null
+    monitor: string | null
+    mode: string | null
     role: string | null
     target_kind: string | null
   }
@@ -205,6 +205,8 @@ export interface Handoff {
     decision: Decision | null
     conclusion: Record<string, unknown>
     horizon: number | null
+    /** 既製のモデルをそのまま使うときの一式づくりの値 (使わなければ null) */
+    ready: ReadyModel | null
   }
   /** 要る機能の名前 (ML-Quest の FEATURES) */
   requires: string[]
@@ -212,6 +214,14 @@ export interface Handoff {
   policy: Policy | null
   /** 書き出したプロジェクト (書き出していなければ path は null) */
   project?: { path: string | null }
+}
+
+/** 既製のモデルの出どころと名前 (sha256 は決めていなければ null) */
+export interface ReadyModel {
+  library: string | null
+  model: string | null
+  weights: string | null
+  sha256: string | null
 }
 
 /** 書き出した学習のプロジェクトの記録 (ML-Quest の record_project. どれも絶対パス) */

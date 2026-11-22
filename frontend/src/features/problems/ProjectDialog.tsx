@@ -21,11 +21,20 @@ function answerOf(problem: Problem, id: string): string | null {
 }
 
 /**
- * 骨組みの型 (説明の文の出し分けだけ). 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
+ * 骨組みの型 (説明の文の出し分けだけ). 既製 (予測するで作り方が既製のモデルをそのまま使う.
+ * 学習せず, 推論の一式だけを作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
  * (領域と点群), 画像の生成 (作るで正解の種類が画像), 他は列の予測
  */
-function skeletonType(problem: Problem): 'column' | 'items' | 'generate' | 'policy' {
+function skeletonType(problem: Problem): 'column' | 'items' | 'generate' | 'policy' | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
+  // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
+  const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
+  if (
+    answerOf(problem, 'ml.parts.0.role') === 'predict' &&
+    method?.applies &&
+    method.value === 'pretrained'
+  )
+    return 'ready'
   if (
     answerOf(problem, 'ml.parts.0.role') === 'effect' &&
     autonomous?.applies &&
@@ -44,6 +53,8 @@ const DEFAULT_NAMES = {
   generate: '正解の種類と受け持ち',
   // 英字の後は空けて読む
   policy: '環境の登録名か env ',
+  // 一式の名前は, 省略するとモデルと重みの名前から
+  ready: 'モデルと重みの名前',
 } as const
 
 /** 損得と制約 (action.decision) に直すところが残るか (残れば推論の一式に意思決定の既定値を付けない) */
@@ -101,7 +112,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
       }
     },
   })
-  // 書き出した後の, データセットとモデルの定義の置き場 (方策の骨組みはどちらも持たない)
+  // 書き出した後の, データセットとモデルの定義の置き場 (方策の骨組みはモデルの定義だけを持つ)
   const project = write.data?.project
   const entries: [string, string | null | undefined][] = [
     ['データセット', project?.dataset],
@@ -111,12 +122,24 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   return (
     <Dialog title="学習のプロジェクトを書き出す" onClose={onClose}>
       <p className="mb-3 text-xs text-ink-2">
-        ML-Found のプロジェクトの骨組み (config, train.py, README, problem.yaml の写し
-        {type === 'policy' ? ', 方策のモデルの model.py, 登録名が無ければ自作の環境の env.py' : ''})
-        を書き出します. 書き出した README の「次にすること」の順に,{' '}
-        {type === 'policy'
-          ? '環境と守りを整えて方策を学習します.'
-          : 'データセットとモデルの定義を置いて学習します.'}
+        {type === 'ready' ? (
+          <>
+            既製のモデルの推論の一式を作る骨組み (config の bundle.yaml, bundle.py, README,
+            problem.yaml の写し) を書き出します. 学習はしません. 書き出した README
+            の「次にすること」の順に, 推論の一式を作って登録します.
+          </>
+        ) : (
+          <>
+            ML-Found のプロジェクトの骨組み (config, train.py, README, problem.yaml の写し
+            {type === 'policy'
+              ? ', 方策のモデルの model.py, 登録名が無ければ自作の環境の env.py'
+              : ''}
+            ) を書き出します. 書き出した README の「次にすること」の順に,{' '}
+            {type === 'policy'
+              ? '環境と守りを整えて方策を学習します.'
+              : 'データセットとモデルの定義を置いて学習します.'}
+          </>
+        )}
       </p>
       <div className="flex flex-col gap-3">
         <PathField
@@ -152,7 +175,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               write.reset()
             }}
           />
-          既にあるファイル (problem.yaml, README.md, configs, train.py
+          既にあるファイル (problem.yaml, README.md, configs,{' '}
+          {type === 'ready' ? 'bundle.py' : 'train.py'}
           {type === 'policy' ? ', model.py, env.py' : ''}, 入れたデータの写しの data/) を上書きする
         </label>
         {errors.length > 0 && !write.data && (
@@ -227,7 +251,27 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               (後ろの段階のアプリはこの記録から場所を読みます)
             </p>
             <p className="mb-1 font-medium">次にすること (書き出した README.md にも同じ手順)</p>
-            {type === 'policy' ? (
+            {type === 'ready' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  一式を作る環境に ML-Inference と, torchvision の重みを読む ML-ModelControl
+                  (ml-modelcontrol[torchvision]) を入れ, データの分析, モデルの作成, 学習は通らずに
+                  bundle.py を動かす. config (configs/default/bundle.yaml) の ready の値で,
+                  outputs/inference に推論の一式を作る (重みは一式に写さず,
+                  使うときに出どころから読む)
+                </li>
+                <li>
+                  hash を決めていなければ, 作るときに求めた hash が出るので, config の ready.sha256
+                  と問題の設定に書くと次から固定できる
+                </li>
+                <li>
+                  ML-Provide に一式を登録し, 画像を渡して種類の名前と確信の度合いを返す.
+                  当たり具合は, 比べる正解が無いので確かめ方で別に確かめる
+                  {write.variables?.accept &&
+                    '. 一式は作れるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
+              </ol>
+            ) : type === 'policy' ? (
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   {envId

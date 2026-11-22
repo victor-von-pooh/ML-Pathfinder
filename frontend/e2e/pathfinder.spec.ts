@@ -669,7 +669,8 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
     '観測と行動の空間に合わせた',
     'policy/ に守りと一緒に',
     '守りを当てたまま環境で',
-    'この場所を問題の設定に記録しました (後ろの段階のアプリ',
+    'この場所を問題の設定に記録しました. モデルの定義は',
+    '(後ろの段階のアプリはこの記録から場所を読みます)',
   ])
   expect(readFileSync(`${named}/configs/default/train.yaml`, 'utf8')).toContain('id: "Hopper-v5"')
   expect(existsSync(`${named}/env.py`)).toBe(false)
@@ -820,4 +821,24 @@ test('データの場所が文字でないファイルは, 確かめに形の誤
   await page.reload()
   await expect(item).toHaveCount(0)
   await expect(list).toContainText('何に困っていますか')
+})
+
+// 既製のモデルをそのまま使う見本は, 学習の欄が無く, 推論に出どころを出し, 学習しない骨組みを書き出す
+test('既製のモデルの見本は, 学習の欄を出さず, 推論の一式の骨組みを書き出す', async ({ page }) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '写真の仕分け (既製のモデル)' }).click()
+  await expect(page.getByRole('heading', { name: '写真の仕分け (既製のモデル)' })).toBeVisible()
+  await expect(page.getByText('監視する指標')).toHaveCount(0)
+  await expect(page.getByText('既製のモデルをそのまま使います')).toBeVisible()
+  await expect(page.getByText(/モデルは作りません/)).toBeVisible()
+  await expect(page.getByText('resnet18', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog
+    .getByLabel('書き出すディレクトリ (無ければ作る)')
+    .fill(`${process.cwd()}/e2e/.work/ready-project`)
+  await dialog.getByRole('button', { name: '書き出す' }).click()
+  await expect(dialog.getByRole('status')).toContainText('bundle.py')
+  await expect(dialog.getByRole('status')).toContainText('outputs/inference')
 })
