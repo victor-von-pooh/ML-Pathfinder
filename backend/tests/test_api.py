@@ -160,8 +160,13 @@ def test_example_handoff_and_project(
     ----------
     None
     """
-    # 見本の名前は info から
-    examples = client.get("/api/info").json()["examples"]
+    # 見本の名前と受け渡しの分割の名前 (分けないも) は info から
+    info = client.get("/api/info").json()
+    examples = info["examples"]
+    assert [item["value"] for item in info["splits"]] == [
+        item["value"] for item in ml_quest.SPLITS
+    ]
+    assert "none" in [item["value"] for item in info["splits"]]
     view = client.post("/api/problems",
                        json={"example": examples[0]}).json()
     assert view["ready"] is True

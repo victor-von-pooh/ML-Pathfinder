@@ -158,4 +158,58 @@ describe('QuestionField', () => {
     rerender(<QuestionField question={{ ...gpu, value: null, answered: false }} {...props} />)
     expect(screen.queryByRole('button', { name: '答えを外す' })).not.toBeInTheDocument()
   })
+
+  it('今のやり方の書き方は問いの選択肢と欄で描き, 使えない保存した書き方は印を付けて残す', () => {
+    const onAnswer = vi.fn()
+    const periods = [{ key: 'periods', label: '期の数 k (1 以上の整数)', required: true }]
+    const baseline: Question = {
+      id: 'action.current',
+      section: 7,
+      kind: 'baseline',
+      title: '今のやり方をデータで書くと',
+      help: '',
+      required: false,
+      choices: [
+        { value: 'lag', label: 'k 期前と同じ', fields: periods },
+        {
+          value: 'column',
+          label: '今のやり方の値の列',
+          fields: [{ key: 'column', label: '今のやり方の値の列', required: true }],
+        },
+      ],
+      value: { type: 'lag', periods: 7 },
+      answered: true,
+      applies: true,
+      multiline: false,
+    }
+    const props = { columns: [], findings: [], saving: false, error: null, onAnswer }
+    const { rerender } = render(<QuestionField question={baseline} {...props} />)
+    const select = screen.getByRole('combobox')
+    expect(select).toHaveValue('lag')
+    // 期の数の欄の名前は ML-Quest の欄から. 変えると保存できる
+    const box = screen.getByLabelText('期の数 k (1 以上の整数)')
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+    fireEvent.change(box, { target: { value: '14' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(onAnswer).toHaveBeenCalledWith({ type: 'lag', periods: '14' })
+
+    // 選ぶと振り分けの型では lag は選択肢に無い. 保存した値は「(使えません)」で残す
+    rerender(
+      <QuestionField
+        question={{
+          ...baseline,
+          value: { type: 'lag', periods: 3 },
+          choices: baseline.choices.slice(1),
+        }}
+        {...props}
+      />,
+    )
+    expect(screen.getByRole('option', { name: 'lag (使えません)' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox')).toHaveValue('lag')
+    expect(screen.getByText(/今の意思決定の型では使えません/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'column' } })
+    expect(screen.getByLabelText('今のやり方の値の列')).toBeInTheDocument()
+  })
+
 })

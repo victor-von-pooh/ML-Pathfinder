@@ -113,8 +113,12 @@ describe('HandoffCard', () => {
         groups: { a: 'site_1', b: 'site_1', c: 'site_2' },
       },
     }
-    render(<HandoffCard problem={problemWith(handoff, questions)} />)
-    expect(screen.getByText('group')).toBeInTheDocument()
+    // 分割の名前は /api/info の splits の説明の括弧の前まで (読む前は値のまま)
+    const splits = [{ value: 'group', label: '相手ごと (同じ相手は同じ分割に)' }]
+    const { rerender } = render(<HandoffCard problem={problemWith(handoff, questions)} />)
+    expect(screen.getByText(/分割はgroup/)).toBeInTheDocument()
+    rerender(<HandoffCard problem={problemWith(handoff, questions)} splits={splits} />)
+    expect(screen.getByText(/分割は相手ごと/)).toBeInTheDocument()
     expect(screen.getByText(/グループ 2 種類, 3 件/)).toBeInTheDocument()
   })
 
