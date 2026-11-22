@@ -38,10 +38,6 @@ ATTACHING: Counter[str] = Counter()
 # 画面に返す誤りとする例外 (手元のファイルの誤りを含む)
 USER_ERRORS = (ValueError, OSError, ImportError, yaml.YAMLError)
 
-# 場所が文字列でない問題の設定 (手で書いたファイルの取り込みなど) の確かめ
-# の文 (ML-Quest の確かめはまだ場所の型を見ないので, 画面の側で)
-SOURCE_TYPE_MESSAGE = "データの場所は文字の場所 (パス) で書いてください"
-
 # 場所を調べられないとき (読む権限が無いなど) に残す記録
 LOGGER = logging.getLogger(__name__)
 
@@ -1217,10 +1213,9 @@ def insight_key(problem_id: str, problem: dict[str, Any]) -> str:
     """
     # ML-Quest が open_errors と make_project で覚えた結果を確かめる印と
     # 同じにする (食い違うと, 古い結果を返し続けるか毎回求め直すため).
-    # 場所が文字列でないか, 場所を調べる権限が無ければ答えの全てで
+    # 場所を調べる権限が無ければ答えの全てで
     try:
-        mark = (inspect_key(problem) if source_finding(problem) is None
-                else None)
+        mark = inspect_key(problem)
     except OSError:
         mark = None
     if mark is None:
@@ -1323,16 +1318,13 @@ def insight_of(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         if cached is not None:
             INSIGHTS.move_to_end(key)
             return cached
-    # 読めない場合も inspect_data が確かめの error にして返す. 場所が
-    # 文字列でないか, 場所を調べる権限が無い (例外になる) 場合も error に
-    finding = source_finding(problem)
-    if finding is None:
-        try:
-            found = ml_quest.inspect_data(problem)
-        except OSError as error:
-            finding = unreadable(error)
-    if finding is not None:
-        found = {"overview": None, "suggestions": [], "findings": [finding]}
+    # 読めない場合と場所が文字でない場合も inspect_data が確かめの error
+    # にして返す. 場所を調べる権限が無い (例外になる) 場合も error に
+    try:
+        found = ml_quest.inspect_data(problem)
+    except OSError as error:
+        found = {"overview": None, "suggestions": [],
+                 "findings": [unreadable(error)]}
     insight: dict[str, Any] = found or {
         "overview": None, "suggestions": [], "findings": []
     }
@@ -1342,31 +1334,6 @@ def insight_of(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
             INSIGHTS.popitem(last=False)
 
     return insight
-
-
-def source_finding(problem: dict[str, Any]) -> Optional[dict[str, Any]]:
-    """
-    データの場所が文字列でなければ, 確かめの error を返す関数
-
-    Parameters
-    ----------
-    problem: dict[str, Any]
-        問題の設定
-
-    Returns
-    ----------
-    finding: Optional[dict[str, Any]]
-        level, id (data.source), message の確かめ (場所が無いか文字列なら
-        None)
-    """
-    # 場所が無いか文字列なら確かめは ML-Quest に任せる
-    source = ml_quest.get_value(problem, "data.source")
-    if source is None or isinstance(source, str):
-        return None
-    finding = {"level": "error", "id": "data.source",
-               "message": SOURCE_TYPE_MESSAGE}
-
-    return finding
 
 
 def unreadable(error: OSError) -> dict[str, Any]:
@@ -1415,17 +1382,13 @@ def open_errors_of(
     # 組めるなら問題の設定の確かめの error は全て組める直すところなので,
     # 場所を調べられないときはそれと読めないことを並べる (詳しい画面を
     # 開けるように)
-    finding = source_finding(problem)
-    if finding is None:
-        try:
-            errors: list[dict[str, Any]] = ml_quest.open_errors(
-                problem, inspected=inspected
-            )
-        except OSError as error:
-            finding = unreadable(error)
-    if finding is not None:
+    try:
+        errors: list[dict[str, Any]] = ml_quest.open_errors(
+            problem, inspected=inspected
+        )
+    except OSError as error:
         errors = [item for item in ml_quest.check(problem)
-                  if item["level"] == "error"] + [finding]
+                  if item["level"] == "error"] + [unreadable(error)]
 
     return errors
 
@@ -1477,9 +1440,6 @@ def write_project(
                      if ml_quest.project_error(problem) is None else None)
         try:
             refuse_open_errors(problem, inspected, body.accept_errors)
-            # 場所が文字列でなければ書き出さない (データを写せないため)
-            if source_finding(problem) is not None:
-                raise HTTPException(400, SOURCE_TYPE_MESSAGE)
             # 写しが置き場の元の問題の設定を指すように, 元の場所を渡す
             files = ml_quest.make_project(
                 problem, target, name=body.name, overwrite=body.overwrite,

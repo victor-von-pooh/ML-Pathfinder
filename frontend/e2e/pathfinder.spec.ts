@@ -681,7 +681,7 @@ test('作るで画像と答えると, 画像の生成の骨組みを書き出し
   expect(readme).toContain('条件の無い拡散のモデルを学ぶ')
 })
 
-test('データの場所が文字でないファイルは, 確かめに読めないことを出す', async ({ page }) => {
+test('データの場所が文字でないファイルは, 確かめに形の誤りを 1 件だけ出す', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('場所が数')
   await page.getByRole('button', { name: '作る', exact: true }).click()
@@ -692,7 +692,22 @@ test('データの場所が文字でないファイルは, 確かめに読めな
   const file = `${process.cwd()}/e2e/.work/home/problems/${id}/problem.yaml`
   writeFileSync(file, 'format_version: 2\nname: 場所が数\ndata: {source: 123, loader: csv}\n')
   await page.reload()
-  await expect(page.getByRole('list', { name: '確かめ', exact: true })).toContainText(
-    'データの場所は文字の場所 (パス) で書いてください',
+  // ML-Quest の確かめとデータの分析が同じ誤りを返しても, 1 件だけ出す (文は ML-Quest が
+  // 決めるので, API の確かめから引く)
+  const view = await (await page.request.get(`/api/problems/${id}`)).json()
+  const errors = (view.findings as { level: string; id: string; message: string }[]).filter(
+    (finding) => finding.id === 'data.source',
   )
+  expect(errors.map((finding) => finding.level)).toEqual(['error'])
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByRole('listitem').filter({ hasText: errors[0].message })).toHaveCount(1)
+
+  // 形の誤りのあいだは他の確かめをしないので, データを入れ直すと他の確かめが戻る
+  const csv = `${process.cwd()}/e2e/.work/sales.csv`
+  writeFileSync(csv, 'date,sales\n2024-01-01,1\n2024-01-02,2\n')
+  const attached = await page.request.post(`/api/problems/${id}/data`, { data: { path: csv } })
+  expect(attached.ok(), await attached.text()).toBe(true)
+  await page.reload()
+  await expect(list.getByRole('listitem').filter({ hasText: errors[0].message })).toHaveCount(0)
+  await expect(list).toContainText('何に困っていますか')
 })
