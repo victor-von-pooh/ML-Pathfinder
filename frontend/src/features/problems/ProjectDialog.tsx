@@ -21,14 +21,30 @@ function answerOf(problem: Problem, id: string): string | null {
 }
 
 /**
- * 骨組みの型 (説明の文の出し分けだけ). ファイルの組 (領域と点群), 画像の生成 (作るで正解の
- * 種類が画像), 他は列の予測
+ * 骨組みの型 (説明の文の出し分けだけ). 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
+ * (領域と点群), 画像の生成 (作るで正解の種類が画像), 他は列の予測
  */
-function skeletonType(problem: Problem): 'column' | 'items' | 'generate' {
+function skeletonType(problem: Problem): 'column' | 'items' | 'generate' | 'policy' {
+  const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
+  if (
+    answerOf(problem, 'ml.parts.0.role') === 'effect' &&
+    autonomous?.applies &&
+    autonomous.value === true
+  )
+    return 'policy'
   const kind = answerOf(problem, 'ml.parts.0.target.kind')
   if (answerOf(problem, 'ml.parts.0.role') === 'generate' && kind === 'image') return 'generate'
   return kind !== null && ITEMS_KINDS.includes(kind) ? 'items' : 'column'
 }
+
+/** 実験の名前を省略したときの元 (ML-Quest の experiment_name と同じ) */
+const DEFAULT_NAMES = {
+  column: '目的の列とタスク',
+  items: '正解の種類と受け持ち',
+  generate: '正解の種類と受け持ち',
+  // 英字の後は空けて読む
+  policy: '環境の登録名か env ',
+} as const
 
 /** 損得と制約 (action.decision) に直すところが残るか (残れば推論の一式に意思決定の既定値を付けない) */
 function decisionDropped(errors: Finding[]): boolean {
@@ -45,8 +61,10 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像の生成は, 列の予測と既定の名前と次にすることが違う
+  // 画像の領域と点群, 画像の生成, 方策は, 列の予測と既定の名前と次にすることが違う
   const type = skeletonType(problem)
+  // 方策の環境の登録名 (次にすることの環境の手順の出し分け)
+  const envId = answerOf(problem, 'ml.parts.0.env_id')?.trim() || null
   const [path, setPath] = useState('')
   const [name, setName] = useState('')
   const [overwrite, setOverwrite] = useState(false)
@@ -58,7 +76,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 問題の設定の確かめの直すところが残ると推論の段階に渡す値を作れない (入れたデータの確かめ
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
-  // ファイルの組と画像の生成の推論の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
+  // ファイルの組, 画像の生成, 方策の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
   const dropped = type === 'column' && decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
@@ -103,8 +121,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
         />
         <div>
           <label htmlFor="experiment-name" className="mb-1 block text-xs font-medium text-ink-2">
-            実験の名前 (任意. 省略すると
-            {type === 'column' ? '目的の列とタスク' : '正解の種類と受け持ち'}から)
+            実験の名前 (任意. 省略すると{DEFAULT_NAMES[type]}から)
           </label>
           <input
             id="experiment-name"
@@ -198,7 +215,29 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               に置きます (後ろの段階のアプリはこの記録から場所を読みます)
             </p>
             <p className="mb-1 font-medium">次にすること (書き出した README.md にも同じ手順)</p>
-            {type === 'generate' ? (
+            {type === 'policy' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  {envId
+                    ? `環境は Gymnasium の ${envId} (config の env.id). 学習する環境に ML-Found と Gymnasium を入れる`
+                    : '環境の登録名を答えていないので, 自作の環境の雛形 env.py (ProjectEnv) を課題の環境 (自作のシミュレータ, 実機とのつなぎ) に書き換える. 登録した環境なら config の env.id に名前を書く'}
+                </li>
+                <li>
+                  守り: config の guards に, 問題の設定の守り (行動の上限と止める条件の文)
+                  を観測と行動の 空間に合わせた数で書く. 範囲と方策を使ってよいかは決める人が決める
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かして学習する (方策のモデルは model.py
+                  の PolicyNet)
+                </li>
+                <li>
+                  学習の後に, 実験の中の policy/ に守りと一緒に方策の一式を書き出し,
+                  守りを当てたまま 環境で動かした結果を evaluations/ に書く. 実機での実行は道具の外
+                  {write.variables?.accept &&
+                    '. README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
+              </ol>
+            ) : type === 'generate' ? (
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   ML-Fathom で画像のディレクトリを読み, 目的の列の無いレシピで検証用の分割を作って

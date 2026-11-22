@@ -136,6 +136,59 @@ describe('ProjectDialog', () => {
     expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
   })
 
+  it('方策は, 環境と守りと学習の次にすることを出し, 損得と制約の注意を出さない', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'effect' }
+    const autonomous: Question = {
+      ...KIND,
+      id: 'ml.parts.0.autonomous',
+      kind: 'boolean',
+      value: true,
+    }
+    const env = (value: string | null): Question => ({
+      ...KIND,
+      id: 'ml.parts.0.env_id',
+      kind: 'text',
+      required: false,
+      value,
+    })
+    const problem = problemWith([
+      { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
+    ])
+    const write = async () => {
+      fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+        target: { value: '/x' },
+      })
+      fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
+      fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
+      await screen.findByRole('button', { name: '書き出しました' })
+    }
+
+    // 環境の登録名を答えていれば, その環境を使う
+    const { unmount } = renderDialog({
+      ...problem,
+      questions: [role, autonomous, env('CartPole-v1'), OWNER],
+    })
+    expect(screen.getByText(/環境の登録名か env から/)).toBeInTheDocument()
+    expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
+    await write()
+    expect(screen.getByText(/Gymnasium の CartPole-v1 \(config の env\.id\)/)).toBeInTheDocument()
+    expect(screen.getByText(/config の guards に/)).toBeInTheDocument()
+    expect(screen.getByText(/policy\/ に守りと一緒に/)).toHaveTextContent(
+      'README.md の最後の一覧を直すまで問題の設定はつながない',
+    )
+    expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
+    unmount()
+
+    // 答えていなければ, 自作の環境の雛形を書き換える
+    renderDialog({ ...problem, questions: [role, autonomous, env(null), OWNER] })
+    await write()
+    expect(screen.getByText(/自作の環境の雛形 env\.py \(ProjectEnv\)/)).toBeInTheDocument()
+  })
+
   it('入れたデータの確かめだけなら渡す値は作れると書き, 損得と制約が残れば既定値を付けないと添える', async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
