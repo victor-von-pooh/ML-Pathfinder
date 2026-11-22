@@ -511,6 +511,8 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   await expect(prepare.getByRole('listitem')).toHaveCount(2)
   await expect(prepare).toContainText('MuJoCo (物理のシミュレータ)')
   await expect(prepare).toContainText('このまま続けられます')
+  // 環境の登録名は任意. 画面で答えて保存する (MuJoCo の環境もここで名前を答える)
+  await write(page, 'Gymnasium の環境の登録名は (あれば)', 'Hopper-v5')
   // 準備のカードは何も止めない (問いに答え続けられる)
   await expect(page.getByRole('button', { name: '次の節' })).toBeEnabled()
 
@@ -559,13 +561,30 @@ test('方策をシミュレータで学ぶと, 要る機能の準備のカード
   await expect(card).toContainText('実機で動かすのは道具の外')
   await expect(card).toContainText('学習の段階に要る機能')
 
-  // 集め方を今ある記録にすると, カードは消える
+  // 答えた環境の登録名は受け渡しの方策と保存したファイルに入る (骨組みはそこから読む)
+  await expect(card).toContainText('方策を学ぶ環境 (学習, 評価)')
+  await expect(card).toContainText('Gymnasium の Hopper-v5')
+  const saved = await (await page.request.get(`/api/problems/${id}`)).json()
+  expect(saved.handoff.policy.env_id).toBe('Hopper-v5')
+  const file = await (await page.request.get(`/api/problems/${id}/download`)).text()
+  expect(file).toContain('env_id: Hopper-v5')
+
+  // 空に戻すと, 骨組みに自作の環境の雛形を書き出すことを案内する
   await page
     .getByRole('navigation', { name: '問いの節' })
     .getByRole('button', { name: /^5\b/ })
     .click()
+  await write(page, 'Gymnasium の環境の登録名は (あれば)', '')
+  await expect(card).toContainText('自作の環境 (環境の登録名は答えていません)')
+  await expect(card).toContainText('骨組みには自作の環境の雛形を書き出す')
+
+  // 集め方を今ある記録にすると, カードと環境の登録名の問いは消える
   await choose(page, '行動の結果のデータは, どう集めますか', /^今ある記録から/)
   await expect(prepare).toHaveCount(0)
+  await expect(
+    page.getByRole('textbox', { name: 'Gymnasium の環境の登録名は (あれば)', exact: true }),
+  ).toHaveCount(0)
+  await expect(card).not.toContainText('方策を学ぶ環境')
 })
 
 test('データの場所が文字でないファイルは, 確かめに読めないことを出す', async ({ page }) => {
