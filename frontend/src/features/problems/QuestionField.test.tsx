@@ -211,5 +211,4 @@ describe('QuestionField', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'column' } })
     expect(screen.getByLabelText('今のやり方の値の列')).toBeInTheDocument()
   })
-
 })
