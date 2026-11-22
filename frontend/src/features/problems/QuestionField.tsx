@@ -38,7 +38,10 @@ function TextInput({
   errorId,
   multiline,
 }: InputState & { multiline: boolean }) {
-  const saved = savedText(question.value)
+  // 1 行の欄は改行を出せない (input は改行を消して詰める) ので, 前の答えの改行は空白にして出す.
+  // 直さなければ保存しない (同じ値とみなす)
+  const text = savedText(question.value)
+  const saved = multiline ? text : text.replace(/[^\S\r\n]*\r?\n\s*/g, ' ')
   const [draft, setDraft] = useState(saved)
   const sent = useRef(saved)
   const commit = () => {

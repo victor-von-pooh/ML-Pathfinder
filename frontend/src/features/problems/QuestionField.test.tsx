@@ -102,6 +102,39 @@ describe('QuestionField', () => {
     vi.unstubAllGlobals()
   })
 
+  it('1 行の欄は, 前の答えの改行を空白にして出し, 直すと空白のまま保存する', () => {
+    const onAnswer = vi.fn()
+    const owner: Question = {
+      id: 'issue.owner',
+      section: 1,
+      kind: 'text',
+      title: '誰の課題ですか',
+      help: '',
+      required: true,
+      choices: [],
+      value: '店長\n副店長',
+      answered: true,
+      applies: true,
+      multiline: false,
+    }
+    const props = { columns: [], findings: [], saving: false, error: null, onAnswer }
+    const { rerender } = render(<QuestionField question={owner} {...props} />)
+    const box = screen.getByRole('textbox')
+    expect(box).toHaveValue('店長 副店長')
+    // 直さずに離れると保存しない
+    fireEvent.blur(box)
+    expect(onAnswer).not.toHaveBeenCalled()
+    fireEvent.change(box, { target: { value: '店長 副店長 と本部' } })
+    fireEvent.blur(box)
+    expect(onAnswer).toHaveBeenCalledWith('店長 副店長 と本部')
+
+    // 複数行の欄は改行のまま出す
+    rerender(
+      <QuestionField question={{ ...owner, id: 'issue.pain', multiline: true }} {...props} />,
+    )
+    expect(screen.getByRole('textbox')).toHaveValue('店長\n副店長')
+  })
+
   it('任意のはいかいいえの問いは, 答えた後に外せる (答えていなければ出さない)', () => {
     const onAnswer = vi.fn()
     const gpu: Question = {
