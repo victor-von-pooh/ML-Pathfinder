@@ -27,3 +27,6 @@ dist-ssr
 e2e/.work/
 test-results/
 playwright-report/
+
+# README の画面の例を撮るときの作り物のホーム
+e2e/.screens/
