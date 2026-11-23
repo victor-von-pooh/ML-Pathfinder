@@ -130,6 +130,52 @@ describe('HandoffCard', () => {
     expect(screen.queryByText(/分割は/)).not.toBeInTheDocument()
   })
 
+  it('表の生成は, 雛形 diffusion_denoiser と, 列ごとの分布の近さの監視と向きを出す', () => {
+    const table: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        role: 'generate',
+        unit: 'row',
+        output: 'table',
+        target_kind: 'table',
+        target_source: 'self',
+        target_process: null,
+      },
+      data: { ...POINT_CLOUD.data, split: 'random' },
+      model: {
+        ...POINT_CLOUD.model,
+        role: 'generate',
+        target_kind: 'table',
+        example: 'diffusion_denoiser',
+      },
+      training: {
+        metric: 'column_distance',
+        monitor: 'valid/column_distance',
+        mode: 'min',
+        role: 'generate',
+        target_kind: 'table',
+      },
+    }
+    const questions = [
+      choice('ml.parts.0.role', 'generate', [['generate', '作る (生成)']]),
+      choice('ml.parts.0.target.kind', 'table', [['table', '表']]),
+      choice('ml.parts.0.evaluation.metric', 'column_distance', [
+        ['loss', '検証用の分割での損失 (小さいほど良い)'],
+        ['column_distance', '作った表と本物の表の列ごとの分布の近さ (小さいほど良い)'],
+      ]),
+    ]
+    render(<HandoffCard problem={problemWith(table, questions)} splits={SPLITS} />)
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
+      'モデルの作成の雛形: diffusion_denoiser (モデルの作成の画面で開ける例)',
+    )
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent(
+      '監視する指標 valid/column_distance (作った表と本物の表の列ごとの分布の近さ)',
+    )
+    expect(screen.getByText(/監視の向き/)).toHaveTextContent('監視の向き min (小さいほど良い)')
+    expect(screen.getByText(/画像と表の生成は分割を渡します/)).toBeInTheDocument()
+  })
+
   it('モデルの作成の雛形の名前を見出しと出し, 無ければ理由を言葉で出す', () => {
     const { rerender } = render(<HandoffCard problem={problemWith(POINT_CLOUD, [])} />)
     expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(

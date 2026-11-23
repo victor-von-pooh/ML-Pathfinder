@@ -23,9 +23,11 @@ function answerOf(problem: Problem, id: string): string | null {
 /**
  * 骨組みの型 (説明の文の出し分けだけ). 既製 (予測するで作り方が既製のモデルをそのまま使う.
  * 学習せず, 推論の一式だけを作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
- * (領域と点群), 画像の生成 (作るで正解の種類が画像), 他は列の予測
+ * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 他は列の予測
  */
-function skeletonType(problem: Problem): 'column' | 'items' | 'generate' | 'policy' | 'ready' {
+function skeletonType(
+  problem: Problem,
+): 'column' | 'items' | 'generate' | 'table' | 'policy' | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
   // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
   const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
@@ -42,7 +44,10 @@ function skeletonType(problem: Problem): 'column' | 'items' | 'generate' | 'poli
   )
     return 'policy'
   const kind = answerOf(problem, 'ml.parts.0.target.kind')
-  if (answerOf(problem, 'ml.parts.0.role') === 'generate' && kind === 'image') return 'generate'
+  if (answerOf(problem, 'ml.parts.0.role') === 'generate') {
+    if (kind === 'image') return 'generate'
+    if (kind === 'table') return 'table'
+  }
   return kind !== null && ITEMS_KINDS.includes(kind) ? 'items' : 'column'
 }
 
@@ -51,6 +56,7 @@ const DEFAULT_NAMES = {
   column: '目的の列とタスク',
   items: '正解の種類と受け持ち',
   generate: '正解の種類と受け持ち',
+  table: '正解の種類と受け持ち',
   // 英字の後は空けて読む
   policy: '環境の登録名か env ',
   // 一式の名前は, 省略するとモデルと重みの名前から
@@ -72,7 +78,7 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像の生成, 方策は, 列の予測と既定の名前と次にすることが違う
+  // 画像の領域と点群, 画像と表の生成, 方策は, 列の予測と既定の名前と次にすることが違う
   const type = skeletonType(problem)
   // 方策の環境の登録名 (次にすることの環境の手順の出し分け)
   const envId = answerOf(problem, 'ml.parts.0.env_id')?.trim() || null
@@ -87,7 +93,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 問題の設定の確かめの直すところが残ると推論の段階に渡す値を作れない (入れたデータの確かめ
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
-  // ファイルの組, 画像の生成, 方策の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
+  // ファイルの組, 画像と表の生成, 方策の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
   const dropped = type === 'column' && decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
@@ -311,6 +317,30 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 <li>
                   定義を置いて学習すると, train.py が実験の中の inference/
                   に件数と種で画像を作る推論の一式を作るので, ML-Provide に登録する
+                  (仮のモデルでは作らない)
+                  {write.variables?.accept &&
+                    '. inference/ は登録できるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
+              </ol>
+            ) : type === 'table' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  ML-Fathom で表を読み, 目的の列の無いレシピで検証用の分割を作って outputs/dataset
+                  に書き出す. 書き出した列を全て作るので, ID のような列と作らない列は落とし,
+                  欠損は埋めるか行を落とす (表を入れていれば data/ に写してある)
+                </li>
+                <li>
+                  ML-CreateArchitecture で組んだ定義 (入力は雑音を加えた行と時刻, 出力は加えた雑音.
+                  同梱の例 diffusion_denoiser の幅を合わせて使える) を models/model.yaml に保存する.
+                  定義が無いうちは仮のモデルで学習する
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かして学習する. 列ごとの分布の近さ
+                  (小さいほど良い) と, 作った表の見本 (samples/) で見る
+                </li>
+                <li>
+                  定義を置いて学習すると, train.py が実験の中の inference/
+                  に行の数と種で表を作る推論の一式を作るので, ML-Provide に登録する
                   (仮のモデルでは作らない)
                   {write.variables?.accept &&
                     '. inference/ は登録できるが, README.md の最後の一覧を直すまで問題の設定はつながない'}

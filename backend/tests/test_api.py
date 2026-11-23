@@ -740,6 +740,88 @@ def test_other_roles_and_metric(client: TestClient, tmp_path: Path) -> None:
     assert view["exportable"] is False and "その他" in view["export_error"]
 
 
+def test_table_generate(client: TestClient, tmp_path: Path) -> None:
+    """
+    作るで正解の種類を表にし, 表を入れると, 列ごとの分布の近さを選べ,
+    確かめに食い違いが無く, 表の生成の骨組みを書き出せることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題から受け持ちを作るで表に答え直す
+    part = ml_quest.PART
+    view = client.post("/api/problems",
+                       json={"example": "総菜の作る量"}).json()
+    url = f"/api/problems/{view['id']}"
+    for key, value in [("role", "generate"), ("unit", "row"),
+                       ("output", "table"), ("target.source", "self"),
+                       ("target.kind", "table"), ("method", "scratch"),
+                       ("what", "顧客の表に似た行"), ("item", "顧客の 1 行"),
+                       ("baseline", "手で作る"),
+                       ("evaluation.metric", "column_distance"),
+                       ("evaluation.link", "近いほど元の表の代わりに使える")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # 指標の選択肢に列ごとの分布の近さが, 言葉と向きの付いた名前で出る
+    view = client.get(url).json()
+    metric = next(q for q in view["questions"]
+                  if q["id"] == f"{part}.evaluation.metric")
+    labels = {c["value"]: c["label"] for c in metric["choices"]}
+    assert "column_distance" in labels and "fid" not in labels
+    assert "列ごとの分布の近さ" in labels["column_distance"]
+    assert "小さいほど良い" in labels["column_distance"]
+
+    # 数と種類の列の表を入れても, 確かめに直すところが無い
+    frame = pd.DataFrame({"age": [float(20 + i % 30) for i in range(60)],
+                          "city": ["a", "b", "c"] * 20})
+    frame.to_csv(tmp_path / "customers.csv", index=False)
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "customers.csv")}).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [] and view["open_errors"] == [], errors
+    assert view["ready"] is True, view["handoff_error"]
+
+    # 受け渡しは雛形 diffusion_denoiser と, 分布の近さを小さく見る監視
+    handoff = view["handoff"]
+    assert handoff["model"]["example"] == "diffusion_denoiser"
+    assert handoff["model"]["example"] in ml_quest.MODEL_EXAMPLES.values()
+    assert handoff["training"]["monitor"] == "valid/column_distance"
+    assert handoff["training"]["mode"] == "min"
+    assert handoff["data"]["split"] == "random"
+    assert handoff["data"]["target"] is None
+
+    # 表の生成の骨組みを書き出し, 入れた表を data/ に写す
+    assert view["exportable"] is True and view["export_error"] is None
+    target = tmp_path / "table"
+    written = client.post(f"{url}/project", json={"path": str(target)})
+    assert written.status_code == 200, written.json()
+    assert {"train.py", "README.md", "configs/default/train.yaml",
+            "data/customers.csv"} <= set(written.json()["files"])
+    config = yaml.safe_load((target / "configs" / "default" / "train.yaml")
+                            .read_text(encoding="utf-8"))
+    assert config["trainer"]["monitor"] == "valid/column_distance"
+    assert config["trainer"]["mode"] == "min"
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "元の表に似た行を作る" in readme
+
+    # 表でないデータ (文の行) を入れると書き出せない (文は project_error)
+    (tmp_path / "lines.txt").write_text("一\n二\n", encoding="utf-8")
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "lines.txt")}).json()
+    assert view["exportable"] is False
+    assert "表のデータで学びます" in view["export_error"]
+
+
 def test_items_dataset(client: TestClient, tmp_path: Path) -> None:
     """
     ML-EDA の版 2 のデータセットのディレクトリを入れ, 知らせと骨組みの
