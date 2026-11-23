@@ -298,6 +298,55 @@ test('今のやり方をデータで書くと, 損と指標の今の値の候補
   await expect(page.getByRole('group', { name: /今のやり方の損をデータで求めた値/ })).toBeVisible()
 })
 
+test('値を決める手伝いで損得の幅を書くと, 振れ幅の大きい順に結論の表が出る', async ({ page }) => {
+  // 総菜の見本と同じ列の 40 日 × 1 店 × 1 品 (曜日で決まる売れた数)
+  const rows = ['date,store,item,sales,temperature_forecast,promo,customers']
+  for (let day = 0; day < 40; day++) {
+    const date = new Date(Date.UTC(2025, 0, 1 + day))
+    const sales = 10 + date.getUTCDay() * 3
+    rows.push(`${date.toISOString().slice(0, 10)},east,a,${sales},15,0,${sales * 3}`)
+  }
+  const file = `${process.cwd()}/e2e/.work/sensitivity.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('パス').fill(file)
+  await dialog.getByRole('button', { name: '移動' }).click()
+  await dialog.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(page.getByText('40 行, 7 列')).toBeVisible()
+  await nav.getByRole('button', { name: /^7\b/ }).click()
+  await page.getByLabel('今のやり方をデータで書くと').selectOption('lag')
+  await page.getByLabel(/期の数 k/).fill('1')
+  await page.getByRole('button', { name: '保存' }).last().click()
+  await expect(page.getByText(/今のやり方の損は, 39 日で/).first()).toBeVisible({ timeout: 20_000 })
+
+  // 開くと幅の欄が出る (今ある量と量の刻みは結論を変えないので出さない)
+  await page.getByRole('button', { name: '値を決める手伝い' }).click()
+  await expect(page.getByLabel('今ある量の下')).toHaveCount(0)
+  await page.getByLabel('1 単位足りないときの損の下').fill('100')
+  await page.getByLabel('1 単位足りないときの損の上').fill('300')
+  await page.getByLabel('1 単位余ったときの損の下').fill('150')
+  await page.getByLabel('1 単位余ったときの損の上').fill('151')
+  await page.getByRole('button', { name: '求める' }).click()
+  const sections = page.getByRole('region', { name: /の幅$/ })
+  await expect(sections).toHaveCount(2, { timeout: 20_000 })
+  await expect(sections.first()).toHaveAccessibleName('足りないときの損の幅')
+  await expect(sections.first()).toContainText('決め手')
+  await expect(sections.first()).toContainText('今のやり方の損 (30 日あたり)')
+  await expect(sections.first()).toContainText('置く分位点の水準は 0.40 から 0.67')
+  await expect(page.getByRole('list', { name: '知らせ' })).toContainText('予測')
+
+  // 幅の誤りは, ML-Quest の文を画面の誤りに出す
+  await page.getByLabel('1 単位余ったときの損の上').fill('100')
+  await page.getByRole('button', { name: '求める' }).click()
+  await expect(page.getByRole('alert')).toContainText('over_cost の幅は, 下を上以下にしてください')
+})
+
 test('問題の設定のファイルが他で変わると, 読み直して変わった問いの入力に出す', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('他で変わる')
