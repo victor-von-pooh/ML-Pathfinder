@@ -52,8 +52,22 @@ const RESULT: Sensitivity = {
       field: 'false_alarm_cost',
       label: '空振りの損',
       points: [
-        { value: 10, rule: null, limit: 20, loss: { current: 500 }, best: 'current' },
-        { value: 90, rule: null, limit: 20, loss: { current: 1300 }, best: 'none' },
+        {
+          value: 10,
+          rule: null,
+          limit: 20,
+          loss: { current: 500 },
+          best: 'current',
+          best_label: '今のやり方',
+        },
+        {
+          value: 90,
+          rule: null,
+          limit: 20,
+          loss: { current: 1300 },
+          best: 'none',
+          best_label: 'どれも回さない',
+        },
       ],
       swing: { rule: null, loss: 800 },
       sentence: '空振りの損を 10 から 90 に変えると',
@@ -67,12 +81,7 @@ function renderPanel(question: Question = DECISION) {
   const client = new QueryClient()
   return render(
     <QueryClientProvider client={client}>
-      <SensitivityPanel
-        problemId="0123456789ab"
-        question={question}
-        fields={FIELDS}
-        plans={{ current: '今のやり方', none: 'どれも回さない', all: '全てを回す' }}
-      />
+      <SensitivityPanel problemId="0123456789ab" question={question} fields={FIELDS} />
     </QueryClientProvider>,
   )
 }
@@ -120,7 +129,10 @@ describe('SensitivityPanel', () => {
 
   it('幅の書き損じは送らず, サーバーの誤りの文は画面の誤りに出す', async () => {
     const fetchMock = vi.fn(async () =>
-      Response.json({ detail: 'capacity の幅は, 下を上以下にしてください' }, { status: 400 }),
+      Response.json(
+        { detail: '回せる件数の上限 (capacity) の幅は, 下を上以下にしてください' },
+        { status: 400 },
+      ),
     )
     vi.stubGlobal('fetch', fetchMock)
     renderPanel()
@@ -136,7 +148,7 @@ describe('SensitivityPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '求める' }))
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'capacity の幅は, 下を上以下にしてください',
+        '回せる件数の上限 (capacity) の幅は, 下を上以下にしてください',
       ),
     )
   })

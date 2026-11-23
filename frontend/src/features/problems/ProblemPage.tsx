@@ -518,7 +518,6 @@ export function ProblemPage() {
                   problemId={id}
                   question={question}
                   fields={info.data?.sensitivity_fields}
-                  plans={info.data?.sensitivity_plans}
                 />
               )}
             </div>

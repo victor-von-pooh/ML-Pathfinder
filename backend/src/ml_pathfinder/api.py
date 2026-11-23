@@ -14,7 +14,6 @@ import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 from ml_quest import COPY_NAME, inspect_key
-from ml_quest.sensitivity import PLAN_NAMES
 from pydantic import BaseModel, Field
 
 from ml_pathfinder.store import ID_PATTERN, READ_ERRORS, Store
@@ -625,7 +624,9 @@ def get_info() -> dict[str, Any]:
     ----------
     info: dict[str, Any]
         sections, examples, format_version, splits (受け渡しの分割の値と
-        説明とグループを使うか. ML-Quest の SPLITS)
+        説明とグループを使うか. ML-Quest の SPLITS), sensitivity_fields
+        (意思決定の型ごとの, 幅を渡せる損得と制約の項目. ML-Quest の
+        SENSITIVITY_FIELDS)
     """
     # 画面が固定で持たずに済むもの
     info = {
@@ -638,7 +639,6 @@ def get_info() -> dict[str, Any]:
                    for item in ml_quest.SPLITS],
         "sensitivity_fields": {kind: list(fields) for kind, fields
                                in ml_quest.SENSITIVITY_FIELDS.items()},
-        "sensitivity_plans": dict(PLAN_NAMES),
     }
 
     return info

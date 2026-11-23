@@ -49,12 +49,10 @@ function FieldTable({
   result,
   field,
   lead,
-  plans,
 }: {
   result: Sensitivity
   field: SensitivityField
   lead: boolean
-  plans: Record<string, string>
 }) {
   const withLimit = result.type !== 'quantity'
   const withActs = result.type === 'select'
@@ -102,7 +100,7 @@ function FieldTable({
                   </td>
                 )}
                 {withLoss && <td className="pr-4 tabular-nums">{lossText(lossOf(point))}</td>}
-                {withBest && <td>{point.best ? (plans[point.best] ?? point.best) : '—'}</td>}
+                {withBest && <td>{point.best_label ?? point.best ?? '—'}</td>}
               </tr>
             ))}
           </tbody>
@@ -113,13 +111,7 @@ function FieldTable({
 }
 
 /** 求めた結論の変わり方 (今の値, 知らせ, 決め手の順の項目) */
-function SensitivityResult({
-  result,
-  plans,
-}: {
-  result: Sensitivity
-  plans: Record<string, string>
-}) {
+function SensitivityResult({ result }: { result: Sensitivity }) {
   const fields = bySwing(result)
   const top = fields[0]
   const leads = top && ((top.swing.loss ?? 0) > 0 || (top.swing.rule ?? 0) > 0)
@@ -145,7 +137,6 @@ function SensitivityResult({
           result={result}
           field={field}
           lead={!!leads && field === top && fields.length > 1}
-          plans={plans}
         />
       ))}
     </div>
@@ -161,14 +152,11 @@ export function SensitivityPanel({
   problemId,
   question,
   fields,
-  plans = {},
 }: {
   problemId: string
   question: Question
   /** 意思決定の型ごとの, 幅を渡せる項目 (/api/info の sensitivity_fields) */
   fields: Record<string, string[]> | undefined
-  /** 振り分けのやり方の名前 (/api/info の sensitivity_plans. 読むまでは値のまま) */
-  plans?: Record<string, string>
 }) {
   const id = useId()
   const [open, setOpen] = useState(false)
@@ -325,7 +313,7 @@ export function SensitivityPanel({
               保存した値が変わりました. もう一度求めてください.
             </p>
           )}
-          {run.data && !stale && <SensitivityResult result={run.data} plans={plans} />}
+          {run.data && !stale && <SensitivityResult result={run.data} />}
         </div>
       )}
     </div>

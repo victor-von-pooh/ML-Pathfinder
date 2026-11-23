@@ -344,7 +344,9 @@ test('値を決める手伝いで損得の幅を書くと, 振れ幅の大きい
   // 幅の誤りは, ML-Quest の文を画面の誤りに出す
   await page.getByLabel('1 単位余ったときの損の上').fill('100')
   await page.getByRole('button', { name: '求める' }).click()
-  await expect(page.getByRole('alert')).toContainText('over_cost の幅は, 下を上以下にしてください')
+  await expect(page.getByRole('alert')).toContainText(
+    '余ったときの損 (over_cost) の幅は, 下を上以下にしてください',
+  )
 })
 
 test('問題の設定のファイルが他で変わると, 読み直して変わった問いの入力に出す', async ({ page }) => {

@@ -1425,8 +1425,6 @@ def test_sensitivity(client: TestClient, tmp_path: Path) -> None:
     fields = client.get("/api/info").json()["sensitivity_fields"]
     assert fields == {kind: list(names) for kind, names
                       in ml_quest.SENSITIVITY_FIELDS.items()}
-    plans = client.get("/api/info").json()["sensitivity_plans"]
-    assert plans["none"] == "どれも回さない"
 
     # 量を決める見本に, データと今のやり方 (前の週の同じ曜日) を入れる
     view = client.post("/api/problems",
@@ -1462,14 +1460,18 @@ def test_sensitivity(client: TestClient, tmp_path: Path) -> None:
     wrong = client.post(f"{url}/sensitivity",
                         json={"ranges": {"budget": [1, 2]}})
     assert wrong.status_code == 400
-    assert "budget には幅を渡せません" in wrong.json()["detail"]
+    assert "件数の上限 (budget) には幅を渡せません" in wrong.json()["detail"]
     flipped = client.post(f"{url}/sensitivity",
                           json={"ranges": {"under_cost": [300, 100]}})
-    assert "下を上以下に" in flipped.json()["detail"]
-    few = client.post(f"{url}/sensitivity", json={
-        "ranges": {"under_cost": [100, 300]}, "points": 1
-    })
-    assert few.status_code == 400
+    assert flipped.json()["detail"] == (
+        "足りないときの損 (under_cost) の幅は, 下を上以下にしてください"
+    )
+    for points in (1, 22):
+        few = client.post(f"{url}/sensitivity", json={
+            "ranges": {"under_cost": [100, 300]}, "points": points
+        })
+        assert few.status_code == 400
+        assert "2 から 21" in few.json()["detail"]
     assert client.post(f"{url}/sensitivity",
                        json={"ranges": {}}).status_code == 400
 

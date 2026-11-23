@@ -294,8 +294,6 @@ export interface Info {
   splits: Choice[]
   /** 意思決定の型ごとの, 幅を渡せる損得と制約の項目 (ML-Quest の SENSITIVITY_FIELDS) */
   sensitivity_fields: Record<string, string[]>
-  /** 振り分けのやり方の名前 (損得の値の幅の結果の best. ML-Quest の損得の値の幅) */
-  sensitivity_plans: Record<string, string>
 }
 
 /** 骨組みの書き出しの結果 */
@@ -349,8 +347,9 @@ export interface SensitivityOutcome {
   /** データの上のやり方ごとの損 (求めなければ無い) */
   loss?: Partial<Record<TriagePlan, number>>
   per_30_days?: Partial<Record<TriagePlan, number>> | null
-  /** 振り分けで損の最も小さいやり方 */
+  /** 振り分けで損の最も小さいやり方と, その名前 */
   best?: TriagePlan
+  best_label?: string
 }
 
 /** 1 つの項目を幅の中で変えた結論 */
