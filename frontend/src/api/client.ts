@@ -1,4 +1,12 @@
-import type { Info, Insight, Listing, Problem, ProblemItem, ProjectResult } from './types'
+import type {
+  Info,
+  Insight,
+  Listing,
+  Problem,
+  ProblemItem,
+  ProjectResult,
+  Sensitivity,
+} from './types'
 
 /** API がエラーを返したときの例外 */
 export class ApiError extends Error {
@@ -68,6 +76,8 @@ export const api = {
   insight: (id: string) => request<Insight>(`/api/problems/${id}/insight`),
   readColumns: (id: string, path: string) =>
     request<Problem>(`/api/problems/${id}/columns`, json('POST', { path })),
+  sensitivity: (id: string, ranges: Record<string, [number, number]>, points: number) =>
+    request<Sensitivity>(`/api/problems/${id}/sensitivity`, json('POST', { ranges, points })),
   writeProject: (
     id: string,
     body: { path: string; name?: string; overwrite?: boolean; accept_errors?: boolean },

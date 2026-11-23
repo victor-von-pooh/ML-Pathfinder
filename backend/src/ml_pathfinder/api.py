@@ -71,6 +71,13 @@ class PathRequest(BaseModel):
     path: str = Field(min_length=1)
 
 
+class SensitivityRequest(BaseModel):
+    # 形の確かめは ML-Quest に任せる (誤りの文を画面に出すため. 整数の幅
+    # を整数のまま渡すため)
+    ranges: Any = None
+    points: Any = 5
+
+
 class ProjectRequest(BaseModel):
     path: str = Field(min_length=1)
     name: Optional[str] = Field(default=None, max_length=MAX_NAME)
@@ -617,7 +624,9 @@ def get_info() -> dict[str, Any]:
     ----------
     info: dict[str, Any]
         sections, examples, format_version, splits (受け渡しの分割の値と
-        説明とグループを使うか. ML-Quest の SPLITS)
+        説明とグループを使うか. ML-Quest の SPLITS), sensitivity_fields
+        (意思決定の型ごとの, 幅を渡せる損得と制約の項目. ML-Quest の
+        SENSITIVITY_FIELDS)
     """
     # 画面が固定で持たずに済むもの
     info = {
@@ -628,6 +637,8 @@ def get_info() -> dict[str, Any]:
         "splits": [{"value": item["value"], "label": item["label"],
                     "grouped": item["grouped"]}
                    for item in ml_quest.SPLITS],
+        "sensitivity_fields": {kind: list(fields) for kind, fields
+                               in ml_quest.SENSITIVITY_FIELDS.items()},
     }
 
     return info
@@ -1396,6 +1407,48 @@ def open_errors_of(
                   if item["level"] == "error"] + [unreadable(error)]
 
     return errors
+
+
+@router.post("/problems/{problem_id}/sensitivity")
+def get_sensitivity(
+    request: Request, problem_id: str, body: SensitivityRequest
+) -> dict[str, Any]:
+    """
+    損得と制約の値を幅の中で 1 つずつ変えたときの結論を返す関数 (ML-Quest
+    の decision_sensitivity)
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    problem_id: str
+        識別子
+    body: SensitivityRequest
+        項目ごとの幅と, 幅の中で求める点の数
+
+    Returns
+    ----------
+    result: dict[str, Any]
+        type, rule, base, fields, data, notes (ML-Quest の
+        decision_sensitivity の結果)
+
+    Raises
+    ----------
+    HTTPException
+        意思決定しない問題の設定, 損得と制約に直すところがある, 幅を
+        渡せない項目, 幅の誤りは 400 (文は ML-Quest の誤りの文)
+    """
+    # データを読むので重い. 画面は値を決める手伝いを開いて求めるときだけ
+    # 呼ぶ
+    problem = load_or_404(get_store(request), problem_id)
+    try:
+        result: dict[str, Any] = ml_quest.decision_sensitivity(
+            problem, body.ranges, points=body.points
+        )
+    except USER_ERRORS as error:
+        raise user_error(error) from error
+
+    return result
 
 
 @router.post("/problems/{problem_id}/project")

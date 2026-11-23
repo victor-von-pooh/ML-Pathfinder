@@ -292,6 +292,8 @@ export interface Info {
   examples: string[]
   /** 受け渡しの分割の値と説明 (ML-Quest の SPLITS) */
   splits: Choice[]
+  /** 意思決定の型ごとの, 幅を渡せる損得と制約の項目 (ML-Quest の SENSITIVITY_FIELDS) */
+  sensitivity_fields: Record<string, string[]>
 }
 
 /** 骨組みの書き出しの結果 */
@@ -329,4 +331,45 @@ export interface Insight {
   findings: Finding[]
   /** 今のやり方の損か得 (書いていなければ null) */
   baseline?: { kind: string; total: number; per_30_days: number | null; sentence: string } | null
+}
+
+/** 振り分けのやり方 (今のやり方と, 予測の要らない素朴なやり方) */
+export type TriagePlan = 'current' | 'none' | 'all'
+
+/** 1 つの損得の値の組での結論 (ML-Quest の decision_sensitivity) */
+export interface SensitivityOutcome {
+  /** 決め方の値 (列で書いた値があれば null) */
+  rule: number | null
+  /** 対象を選ぶ型で, 得になる対象がありうるか (対象を選ぶ型だけ) */
+  acts?: boolean | null
+  /** 件数の上限 (量を決める型には無い. 上限が無ければ null) */
+  limit?: number | null
+  /** データの上のやり方ごとの損 (求めなければ無い) */
+  loss?: Partial<Record<TriagePlan, number>>
+  per_30_days?: Partial<Record<TriagePlan, number>> | null
+  /** 振り分けで損の最も小さいやり方と, その名前 */
+  best?: TriagePlan
+  best_label?: string
+}
+
+/** 1 つの項目を幅の中で変えた結論 */
+export interface SensitivityField {
+  field: string
+  label: string
+  points: (SensitivityOutcome & { value: number })[]
+  /** 決め方の値と今のやり方の損の振れ幅 (求めなければ null) */
+  swing: { rule: number | null; loss: number | null }
+  sentence: string
+}
+
+/** 損得の値の幅から求めた結論の変わり方 */
+export interface Sensitivity {
+  type: 'quantity' | 'select' | 'triage'
+  /** 決め方の値の名前 */
+  rule: string
+  base: SensitivityOutcome
+  fields: SensitivityField[]
+  /** 損を求めた行の数と日数 (求めなければ null) */
+  data: { rows: number; days: number | null } | null
+  notes: string[]
 }

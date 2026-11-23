@@ -1403,3 +1403,94 @@ def nested_attach(
     attached = original(problem, path, copy_to=copy_to)
 
     return attached
+
+
+def test_sensitivity(client: TestClient, tmp_path: Path) -> None:
+    """
+    損得の値の幅から結論の変わり方を返し, 誤りを 400 にすることを
+    確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 型ごとの幅を渡せる項目は info に
+    fields = client.get("/api/info").json()["sensitivity_fields"]
+    assert fields == {kind: list(names) for kind, names
+                      in ml_quest.SENSITIVITY_FIELDS.items()}
+
+    # 量を決める見本に, データと今のやり方 (前の週の同じ曜日) を入れる
+    view = client.post("/api/problems",
+                       json={"example": "総菜の作る量"}).json()
+    url = f"/api/problems/{view['id']}"
+    days = pd.date_range("2025-01-01", periods=60).strftime("%Y-%m-%d")
+    pd.DataFrame({
+        "date": days, "store": "a", "item": "x",
+        "sales": [float(50 + i % 7 * 10 + i % 3) for i in range(60)],
+        "temperature_forecast": 20.0, "promo": 0, "customers": 100,
+    }).to_csv(tmp_path / "sozai.csv", index=False)
+    client.post(f"{url}/data", json={"path": str(tmp_path / "sozai.csv")})
+    client.put(f"{url}/answers", json={
+        "id": "action.current", "value": {"type": "lag", "periods": 7}
+    })
+    found = client.post(f"{url}/sensitivity", json={
+        "ranges": {"under_cost": [100, 300], "over_cost": [100, 200]},
+        "points": 3,
+    })
+    assert found.status_code == 200
+    result = found.json()
+    assert result["type"] == "quantity"
+    assert result["data"]["rows"] > 0
+    under = result["fields"][0]
+    assert under["field"] == "under_cost"
+    assert [point["value"] for point in under["points"]] == [100, 200, 300]
+    assert under["points"][0]["rule"] == pytest.approx(100 / 250)
+    assert "current" in under["points"][0]["loss"]
+    assert under["swing"]["loss"] > 0 and under["sentence"]
+    assert any("予測" in note for note in result["notes"])
+
+    # 幅を渡せない項目, 幅の誤り, 点の数の誤りは画面の誤り (ML-Quest の文)
+    wrong = client.post(f"{url}/sensitivity",
+                        json={"ranges": {"budget": [1, 2]}})
+    assert wrong.status_code == 400
+    assert "件数の上限 (budget) には幅を渡せません" in wrong.json()["detail"]
+    flipped = client.post(f"{url}/sensitivity",
+                          json={"ranges": {"under_cost": [300, 100]}})
+    assert flipped.json()["detail"] == (
+        "足りないときの損 (under_cost) の幅は, 下を上以下にしてください"
+    )
+    for points in (1, 22):
+        few = client.post(f"{url}/sensitivity", json={
+            "ranges": {"under_cost": [100, 300]}, "points": points
+        })
+        assert few.status_code == 400
+        assert "2 から 21" in few.json()["detail"]
+    assert client.post(f"{url}/sensitivity",
+                       json={"ranges": {}}).status_code == 400
+
+    # 対象を選ぶ型は件数の上限と選ばなくなる値. 意思決定しなければ誤り
+    view = client.post("/api/problems",
+                       json={"example": "解約の引き止め"}).json()
+    url = f"/api/problems/{view['id']}"
+    result = client.post(f"{url}/sensitivity", json={
+        "ranges": {"cost": [1000, 6000], "budget": [100, 500]}, "points": 3
+    }).json()
+    cost, budget = result["fields"]
+    assert [point["acts"] for point in cost["points"]] == [True, True, False]
+    assert [point["limit"] for point in budget["points"]] == [100, 300, 500]
+    assert result["data"] is None
+    client.put(f"{url}/answers", json={"id": "action.decision",
+                                       "value": {"type": "none"}})
+    none = client.post(f"{url}/sensitivity",
+                       json={"ranges": {"cost": [1000, 6000]}})
+    assert none.status_code == 400
+    assert client.post("/api/problems/nothing/sensitivity", json={
+        "ranges": {"cost": [1, 2]}
+    }).status_code == 404

@@ -13,6 +13,7 @@ import { HandoffCard } from './HandoffCard'
 import { ProjectDialog } from './ProjectDialog'
 import { QuestionField } from './QuestionField'
 import { RequiresCard } from './RequiresCard'
+import { SensitivityPanel } from './SensitivityPanel'
 
 /** 確かめの重さの見た目 */
 const LEVEL_STYLE: Record<Finding['level'], string> = {
@@ -512,6 +513,13 @@ export function ProblemPage() {
                   question.id === 'information.columns' ? (path) => columns.mutate(path) : undefined
                 }
               />
+              {question.id === 'action.decision' && (
+                <SensitivityPanel
+                  problemId={id}
+                  question={question}
+                  fields={info.data?.sensitivity_fields}
+                />
+              )}
             </div>
           ))}
           <p role="status" aria-live="polite" className="mt-2 text-xs text-ink-3">
