@@ -53,14 +53,23 @@ function TrainingRow({ problem }: { problem: Problem }) {
   const training = problem.handoff?.training
   // 既製のモデルをそのまま使うと学習しない (監視する指標が無い)
   if (!training || training.monitor === null) return null
-  const other =
-    problem.questions.find((q) => q.id === `${PART}.evaluation.metric`)?.value === 'other'
+  const metric = problem.questions.find((q) => q.id === `${PART}.evaluation.metric`)
+  const other = metric?.value === 'other'
+  // 指標の名前を言葉でも添える (選択肢の説明の括弧の前まで. その他は書いた名前なので添えない).
+  // 同じ値 (loss など) でも受け持ちごとに説明が違うので, 今の答えに合う選択肢 (ML-Quest の
+  // choices_of が絞ったもの) から, 問いが要り, 答えが渡す指標と同じときだけ探す
+  const words =
+    other || !metric?.applies || metric.value !== training.metric
+      ? null
+      : (metric.choices.find((choice) => choice.value === training.metric)?.label.split(' (')[0] ??
+        null)
   return (
     <div>
       <dt className="mb-1 text-xs font-medium text-ink-2">学習 (ML-Found, ML-Dashboard)</dt>
       <dd className="flex flex-col gap-1">
         <span className="flex flex-wrap items-center gap-1">
           監視する指標 <Code>{training.monitor}</Code>
+          {words && ` (${words})`}
         </span>
         {training.mode !== null && (
           <span className="flex flex-wrap items-center gap-1">
@@ -279,7 +288,7 @@ function ProjectRow({ problem }: { problem: Problem }) {
   )
 }
 
-/** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループ, 画像の生成は分割を渡す) */
+/** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループ, 画像と表の生成は分割を渡す) */
 function PartHandoff({
   problem,
   splits,
@@ -354,7 +363,7 @@ function PartHandoff({
             )}
             <span className="text-xs text-ink-2">
               目的の列と使う列は列の予測だけで渡します. ファイルの組 (領域, 点群) は,
-              データの分析で書き戻した分割とグループを, 画像の生成は分割を渡します
+              データの分析で書き戻した分割とグループを, 画像と表の生成は分割を渡します
             </span>
           </dd>
         </div>

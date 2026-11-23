@@ -778,11 +778,11 @@ test('作るで画像と答えると, 画像の生成の骨組みを書き出し
   }
   await page.reload()
 
-  // 後ろの段階に渡す値は, 画像の生成では分割を渡すと書く
+  // 後ろの段階に渡す値は, 画像と表の生成では分割を渡すと書く
   const card = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
-  await expect(card).toContainText('画像の生成は分割を渡します')
+  await expect(card).toContainText('画像と表の生成は分割を渡します')
 
   await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
   const dialog = page.getByRole('dialog')
@@ -799,6 +799,124 @@ test('作るで画像と答えると, 画像の生成の骨組みを書き出し
   await expect(status).not.toContainText('意思決定')
   const readme = readFileSync(`${process.cwd()}/e2e/.work/generate/README.md`, 'utf8')
   expect(readme).toContain('条件の無い拡散のモデルを学ぶ')
+})
+
+test('作るで表と画面で答え, 表を入れると, 列ごとの分布の近さを選べて表の生成の骨組みを書き出す', async ({
+  page,
+}) => {
+  // 数の列と種類の列の表
+  const rows = ['age,income,city']
+  for (let index = 0; index < 60; index++)
+    rows.push(`${20 + (index % 40)},${300 + ((index * 7) % 50) * 10},${'abc'[index % 3]}`)
+  const file = `${process.cwd()}/e2e/.work/customers.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('似た表')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '似た表' })).toBeVisible()
+
+  // 受け持ちに依らない節 (1 から 4, 9, 10) は API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['issue.owner', '営業の係'],
+    ['issue.pain', '顧客の表を外に出せない'],
+    ['issue.current', '手で作った表で試す'],
+    ['issue.kpi.name', '試しの準備の日数'],
+    ['issue.kpi.unit', '日'],
+    ['issue.kpi.better', 'lower'],
+    ['decomposition', [{ cause: '本物の表を使えない', lever: '似た表を作る', ml: true }]],
+    ['action.who', '営業の係'],
+    ['action.when', '試しの前'],
+    ['action.what', '作った表で試す'],
+    ['ml.reason', '元の表に似た行を作りたい'],
+    ['verification.method', 'backtest'],
+    ['verification.backtest', '過去の表と比べる'],
+    ['verification.success', '準備の日数が半分'],
+    ['operation.review', '月に 1 回'],
+    ['operation.approver', '係の長'],
+    ['operation.stop', '似なくなったら'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: key, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 5 の節で, 作るで正解の種類を表と画面で答える
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await choose(page, '機械学習を使いますか', 'はい')
+  await choose(page, '機械学習は何を受け持ちますか', /^作る/)
+  await choose(page, '1 件の単位は', /^行/)
+  await choose(page, '出力の形は', /^表 \(合成のデータ\)/)
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^自分自身/)
+  await choose(page, 'どう作りますか (作り方)', /^一から学習/)
+  await choose(page, '正解 (出力) の種類は', /^表 \(合成のデータ\)/)
+  await write(page, '何を出させますか', '顧客の表に似た行')
+  await write(page, '1 件は何ですか', '顧客の 1 行')
+  await write(page, '機械学習を使わない比べる相手は', '手で作る')
+
+  // 手元のデータに表を選んで入れる
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const picker = page.getByRole('dialog')
+  await picker.getByLabel('パス').fill(file)
+  await picker.getByRole('button', { name: '移動' }).click()
+  await picker.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByText('60 行, 3 列')).toBeVisible({ timeout: 20_000 })
+
+  // 8 の節の指標の候補に列ごとの分布の近さが言葉と向きの付いた名前で出て, 画像の FID は出ない
+  await nav.getByRole('button', { name: /^8\b/ }).click()
+  const metric = page.getByRole('radiogroup', {
+    name: '最も良いモデルを何で選びますか',
+    exact: true,
+  })
+  await expect(metric.getByLabel(/列ごとの分布の近さ/)).toBeVisible()
+  await expect(metric).toContainText(/列ごとの分布の近さ.*小さいほど良い/)
+  await expect(metric.getByLabel(/FID/)).toHaveCount(0)
+  await choose(page, '最も良いモデルを何で選びますか', /列ごとの分布の近さ/)
+  await write(
+    page,
+    'その指標が良くなると, 課題の指標はどう良くなりますか',
+    '近いほど代わりに使える',
+  )
+
+  // 確かめに直すところ (食い違い) が無い
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByText('直す', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
+  await expect(page.locator('#export-reason')).toHaveCount(0)
+
+  // 後ろの段階に渡す値に, 表の生成の雛形と, 分布の近さを小さく見る監視が出る
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('正解の種類: 表')
+  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(
+    /モデルの作成の雛形:\s*diffusion_denoiser\s*\(モデルの作成の画面で開ける例\)/,
+  )
+  await expect(card.getByText(/監視する指標/)).toHaveText(
+    /監視する指標\s*valid\/column_distance\s*\(作った表と本物の表の列ごとの分布の近さ\)/,
+  )
+  await expect(card.getByText(/監視の向き/)).toHaveText(/監視の向き\s*min\s*\(小さいほど良い\)/)
+  await expect(card).toContainText('画像と表の生成は分割を渡します')
+
+  // 書き出すと, 表の生成の手順と, 入れた表の写しができる
+  const target = `${process.cwd()}/e2e/.work/table-project`
+  await exportProject(page, 'table-project', [
+    'ML-Fathom で表を読み',
+    'diffusion_denoiser',
+    '行の数と種で表を作る推論の一式',
+    'データセットは',
+  ])
+  for (const file of ['train.py', 'README.md', 'configs/default/train.yaml', 'data/customers.csv'])
+    expect(existsSync(`${target}/${file}`), file).toBe(true)
+  expect(readFileSync(`${target}/README.md`, 'utf8')).toContain('元の表に似た行を作る')
+  const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
+  expect(config).toContain('valid/column_distance')
 })
 
 test('データの場所が文字でないファイルは, 確かめに形の誤りを 1 件だけ出し, 欄から外せる', async ({

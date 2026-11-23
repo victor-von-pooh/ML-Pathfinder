@@ -137,6 +137,36 @@ describe('ProjectDialog', () => {
     expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
   })
 
+  it('作るで表は, 表の生成の次にすることを出し, 損得と制約の注意を出さない', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'generate' }
+    const problem = problemWith([
+      { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
+    ])
+    renderDialog({ ...problem, questions: [{ ...KIND, value: 'table' }, role, OWNER] })
+    expect(screen.getByText(/正解の種類と受け持ちから/)).toBeInTheDocument()
+    expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
+
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
+    fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
+    expect(await screen.findByText(/ML-Fathom で表を読み/)).toBeInTheDocument()
+    expect(screen.getByText(/diffusion_denoiser/)).toBeInTheDocument()
+    expect(screen.getByText(/列ごとの分布の近さ/)).toHaveTextContent('小さいほど良い')
+    expect(screen.getByText(/行の数と種で表を作る/)).toHaveTextContent(
+      'README.md の最後の一覧を直すまで問題の設定はつながない',
+    )
+    // 列の予測の手順と画像の生成の手順は出さない
+    expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
+    expect(screen.queryByText(/画像を作る/)).toBeNull()
+    expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
+  })
+
   it('既製のモデルは, 一式づくりの次にすることを出し, 学習の言葉を出さない', async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ path: '/x', files: ['bundle.py'], project: { path: '/x' } }),
