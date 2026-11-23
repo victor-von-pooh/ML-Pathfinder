@@ -330,8 +330,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   欠損は埋めるか行を落とす (表を入れていれば data/ に写してある)
                 </li>
                 <li>
-                  ML-CreateArchitecture で組んだ定義 (入力は雑音を加えた行と時刻, 出力は加えた雑音.
-                  同梱の例 diffusion_denoiser の幅を合わせて使える) を models/model.yaml に保存する.
+                  ML-CreateArchitecture で表の行を作るモデルを組み, models/model.yaml に保存する.
+                  モデルの作成の画面で開ける例 diffusion_denoiser を, 表の列の数と種類の値の数に
+                  合わせて使える (合わせる数は学習の記録 train.log の初めの行に出る).
                   定義が無いうちは仮のモデルで学習する
                 </li>
                 <li>

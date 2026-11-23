@@ -176,6 +176,37 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/画像と表の生成は分割を渡します/)).toBeInTheDocument()
   })
 
+  it('指標の説明は今の答えに合う選択肢から引き, 合わなければ添えない', () => {
+    const loss: Handoff = {
+      ...POINT_CLOUD,
+      training: { ...POINT_CLOUD.training, metric: 'loss', monitor: 'valid/loss' },
+    }
+    // 選択肢は ML-Quest が今の受け持ちに合うものに絞って返す (点群なら検証用の分割での損失)
+    const metric = choice('ml.parts.0.evaluation.metric', 'loss', [
+      ['loss', '検証用の分割での損失 (小さいほど良い)'],
+    ])
+    const { rerender } = render(<HandoffCard problem={problemWith(loss, [metric])} />)
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent(
+      '監視する指標 valid/loss (検証用の分割での損失)',
+    )
+    expect(screen.queryByText(/交差エントロピー|報酬/)).not.toBeInTheDocument()
+
+    // 問いが要らないときと, 答えが渡す指標と違うときは添えない (違う説明を出さない)
+    rerender(<HandoffCard problem={problemWith(loss, [{ ...metric, applies: false }])} />)
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent(/^監視する指標 valid\/loss$/)
+    rerender(
+      <HandoffCard
+        problem={problemWith(loss, [
+          choice('ml.parts.0.evaluation.metric', 'chamfer', [
+            ['chamfer', '点群の近さ (Chamfer 距離. 小さいほど良い)'],
+            ['loss', '検証用の分割での損失 (小さいほど良い)'],
+          ]),
+        ])}
+      />,
+    )
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent(/^監視する指標 valid\/loss$/)
+  })
+
   it('モデルの作成の雛形の名前を見出しと出し, 無ければ理由を言葉で出す', () => {
     const { rerender } = render(<HandoffCard problem={problemWith(POINT_CLOUD, [])} />)
     expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(

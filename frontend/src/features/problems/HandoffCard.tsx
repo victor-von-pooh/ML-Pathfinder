@@ -55,11 +55,14 @@ function TrainingRow({ problem }: { problem: Problem }) {
   if (!training || training.monitor === null) return null
   const metric = problem.questions.find((q) => q.id === `${PART}.evaluation.metric`)
   const other = metric?.value === 'other'
-  // 指標の名前を言葉でも添える (選択肢の説明の括弧の前まで. その他は書いた名前なので添えない)
-  const words = other
-    ? null
-    : (metric?.choices.find((choice) => choice.value === training.metric)?.label.split(' (')[0] ??
-      null)
+  // 指標の名前を言葉でも添える (選択肢の説明の括弧の前まで. その他は書いた名前なので添えない).
+  // 同じ値 (loss など) でも受け持ちごとに説明が違うので, 今の答えに合う選択肢 (ML-Quest の
+  // choices_of が絞ったもの) から, 問いが要り, 答えが渡す指標と同じときだけ探す
+  const words =
+    other || !metric?.applies || metric.value !== training.metric
+      ? null
+      : (metric.choices.find((choice) => choice.value === training.metric)?.label.split(' (')[0] ??
+        null)
   return (
     <div>
       <dt className="mb-1 text-xs font-medium text-ink-2">学習 (ML-Found, ML-Dashboard)</dt>
