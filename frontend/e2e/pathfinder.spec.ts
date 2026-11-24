@@ -833,7 +833,9 @@ test('作るで画像と答えると, 画像の生成の骨組みを書き出し
   const card = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
-  await expect(card).toContainText('画像と表の生成は分割を,')
+  await expect(card).toContainText(
+    /画像と表の生成は分割を, 並べるは分割と\s*反応の時刻の列を渡します/,
+  )
 
   await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
   const dialog = page.getByRole('dialog')
@@ -953,7 +955,9 @@ test('作るで表と画面で答え, 表を入れると, 列ごとの分布の�
     /監視する指標\s*valid\/column_distance\s*\(作った表と本物の表の列ごとの分布の近さ\)/,
   )
   await expect(card.getByText(/監視の向き/)).toHaveText(/監視の向き\s*min\s*\(小さいほど良い\)/)
-  await expect(card).toContainText('画像と表の生成は分割を,')
+  await expect(card).toContainText(
+    /画像と表の生成は分割を, 並べるは分割と\s*反応の時刻の列を渡します/,
+  )
 
   // 書き出すと, 表の生成の手順と, 入れた表の写しができる
   const target = `${process.cwd()}/e2e/.work/table-project`

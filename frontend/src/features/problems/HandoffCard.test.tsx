@@ -293,7 +293,7 @@ describe('HandoffCard', () => {
         ...POINT_CLOUD.inference,
         guard: {
           name: '品切れの割合',
-          unit: '割合 (0 から 1)',
+          unit: '割合. 0 から 1',
           better: 'lower',
           line: 0.05,
           measure: null,
@@ -312,7 +312,7 @@ describe('HandoffCard', () => {
     }
     const { rerender } = render(<HandoffCard problem={problemWith(column, [counted])} />)
     expect(screen.getByText(/守る指標:/)).toHaveTextContent(
-      '守る指標: 品切れの割合 (小さいほど良い). 守る線は 0.05 割合 (0 から 1)',
+      '守る指標: 品切れの割合 (小さいほど良い). 守る線は 0.05 (割合. 0 から 1)',
     )
     expect(screen.getByText(/たどり直しで数える量/)).toHaveTextContent(
       'たどり直しで数える量: 足りなかった行の割合',

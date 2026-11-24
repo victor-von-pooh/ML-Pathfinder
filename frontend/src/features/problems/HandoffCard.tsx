@@ -305,7 +305,7 @@ function GuardRow({ problem }: { problem: Problem }) {
       <span>
         守る指標: {guard.name}
         {better && ` (${better})`}
-        {guard.line !== null && `. 守る線は ${guard.line}${guard.unit ? ` ${guard.unit}` : ''}`}
+        {guard.line !== null && `. 守る線は ${guard.line}${guard.unit ? ` (${guard.unit})` : ''}`}
       </span>
       {counted ? (
         <span>たどり直しで数える量: {counted}</span>

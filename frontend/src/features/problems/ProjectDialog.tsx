@@ -360,14 +360,17 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
             ) : type === 'rank' ? (
               <ol className="list-decimal pl-5 text-xs">
                 <li>
-                  反応の表 (1 行が 1 つの反応. 利用者, 品物, 時刻の列) を config の data.dataset
-                  の場所に置く (表を入れていれば data/ に写してあり, そのまま読む)
+                  反応の表 (1 行が 1 つの反応. 利用者, 品物, 時刻の列)
+                  を学習の設定のデータの場所に置く (表を入れていれば data/ に写してあり,
+                  そのまま読む)
                 </li>
                 <li>
                   ML-CreateArchitecture で利用者と品物の点数を出すモデルを組み, models/model.yaml
                   に保存する. モデルの作成の画面で開ける例 two_tower_retrieval を,
-                  利用者と品物の数に 合わせて使える (合わせる数は学習の記録 train.log
-                  の初めの行に出る). 定義が無いうちは仮のモデルで学習する
+                  {
+                    '利用者と品物の数に合わせて使える (合わせる数は学習の記録 train.log の初めの行に出る). '
+                  }
+                  定義が無いうちは仮のモデルで学習する
                 </li>
                 <li>
                   ML-Found (か ML-Dashboard) で train.py を動かして学習する. 反応を時刻の順に分け,
