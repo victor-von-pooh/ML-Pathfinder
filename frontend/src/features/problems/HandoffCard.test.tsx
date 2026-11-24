@@ -258,7 +258,7 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText(/分割は時刻の順/)).toHaveTextContent('反応の時刻の列 ts の順')
     expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('two_tower_retrieval')
-    expect(screen.getByText(/推論の一式を作りません/)).toBeInTheDocument()
+    expect(screen.getByText(/推論に使う一式を実験の inference\/ に作ります/)).toBeInTheDocument()
 
     // 反応の強さの列を答えなければ, 全ての行を反応とみなすことを出す
     rerender(
@@ -274,7 +274,9 @@ describe('HandoffCard', () => {
     // 並べるでなければ並べ方を出さない
     rerender(<HandoffCard problem={problemWith(POINT_CLOUD, [])} splits={SPLITS} />)
     expect(screen.queryByText(/並べ方/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/推論の一式を作りません/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/推論に使う一式を実験の inference\/ に作ります/),
+    ).not.toBeInTheDocument()
   })
 
   it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {

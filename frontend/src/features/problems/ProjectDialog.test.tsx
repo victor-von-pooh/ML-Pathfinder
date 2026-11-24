@@ -190,7 +190,7 @@ describe('ProjectDialog', () => {
     expect(await screen.findByText(/反応の表 \(1 行が 1 つの反応/)).toBeInTheDocument()
     expect(screen.getByText(/two_tower_retrieval/)).toBeInTheDocument()
     expect(screen.getByText(/Recall@K と NDCG/)).toHaveTextContent('人気順と比べる')
-    expect(screen.getByText(/推論の一式は作らない/)).toHaveTextContent(
+    expect(screen.getByText(/推論に使う一式を実験の inference\/ に作る/)).toHaveTextContent(
       'README.md の最後の一覧を直すまで問題の設定はつながない',
     )
     // 列の予測の手順と, 他の型の inference/ の登録は出さない
