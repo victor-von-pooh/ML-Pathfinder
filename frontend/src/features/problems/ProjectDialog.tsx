@@ -23,11 +23,12 @@ function answerOf(problem: Problem, id: string): string | null {
 /**
  * 骨組みの型 (説明の文の出し分けだけ). 既製 (予測するで作り方が既製のモデルをそのまま使う.
  * 学習せず, 推論の一式だけを作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
- * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 他は列の予測
+ * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 並べる
+ * (並べるで既製のモデルをそのまま使わない), 他は列の予測
  */
 function skeletonType(
   problem: Problem,
-): 'column' | 'items' | 'generate' | 'table' | 'policy' | 'ready' {
+): 'column' | 'items' | 'generate' | 'table' | 'rank' | 'policy' | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
   // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
   const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
@@ -43,6 +44,12 @@ function skeletonType(
     autonomous.value === true
   )
     return 'policy'
+  // ML-Quest の is_rank_part と同じく, 並べるで, 作り方が既製のモデルをそのまま使うでないとき
+  if (
+    answerOf(problem, 'ml.parts.0.role') === 'rank' &&
+    !(method?.applies && method.value === 'pretrained')
+  )
+    return 'rank'
   const kind = answerOf(problem, 'ml.parts.0.target.kind')
   if (answerOf(problem, 'ml.parts.0.role') === 'generate') {
     if (kind === 'image') return 'generate'
@@ -57,6 +64,7 @@ const DEFAULT_NAMES = {
   items: '正解の種類と受け持ち',
   generate: '正解の種類と受け持ち',
   table: '正解の種類と受け持ち',
+  rank: '品物の列と受け持ち',
   // 英字の後は空けて読む
   policy: '環境の登録名か env ',
   // 一式の名前は, 省略するとモデルと重みの名前から
@@ -78,7 +86,7 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像と表の生成, 方策は, 列の予測と既定の名前と次にすることが違う
+  // 画像の領域と点群, 画像と表の生成, 並べる, 方策は, 列の予測と既定の名前と次にすることが違う
   const type = skeletonType(problem)
   // 方策の環境の登録名 (次にすることの環境の手順の出し分け)
   const envId = answerOf(problem, 'ml.parts.0.env_id')?.trim() || null
@@ -93,7 +101,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 問題の設定の確かめの直すところが残ると推論の段階に渡す値を作れない (入れたデータの確かめ
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
-  // ファイルの組, 画像と表の生成, 方策の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
+  // ファイルの組, 画像と表の生成, 並べる, 方策の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
   const dropped = type === 'column' && decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
@@ -143,7 +151,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
             ) を書き出します. 書き出した README の「次にすること」の順に,{' '}
             {type === 'policy'
               ? '環境と守りを整えて方策を学習します.'
-              : 'データセットとモデルの定義を置いて学習します.'}
+              : type === 'rank'
+                ? '反応の表とモデルの定義を置いて学習します.'
+                : 'データセットとモデルの定義を置いて学習します.'}
           </>
         )}
       </p>
@@ -345,6 +355,29 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   (仮のモデルでは作らない)
                   {write.variables?.accept &&
                     '. inference/ は登録できるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
+              </ol>
+            ) : type === 'rank' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  反応の表 (1 行が 1 つの反応. 利用者, 品物, 時刻の列) を config の data.dataset
+                  の場所に置く (表を入れていれば data/ に写してあり, そのまま読む)
+                </li>
+                <li>
+                  ML-CreateArchitecture で利用者と品物の点数を出すモデルを組み, models/model.yaml
+                  に保存する. モデルの作成の画面で開ける例 two_tower_retrieval を,
+                  利用者と品物の数に 合わせて使える (合わせる数は学習の記録 train.log
+                  の初めの行に出る). 定義が無いうちは仮のモデルで学習する
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かして学習する. 反応を時刻の順に分け,
+                  利用者ごとに上位 K 件を並べて Recall@K と NDCG (大きいほど良い) を数え,
+                  人気順と比べる
+                </li>
+                <li>
+                  推論の一式は作らない. 学習した重みと, 利用者と品物の番号の表が実験に残る
+                  {write.variables?.accept &&
+                    '. README.md の最後の一覧を直すまで問題の設定はつながない'}
                 </li>
               </ol>
             ) : type === 'items' ? (

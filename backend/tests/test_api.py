@@ -822,6 +822,177 @@ def test_table_generate(client: TestClient, tmp_path: Path) -> None:
     assert "表のデータで学びます" in view["export_error"]
 
 
+def test_rank(client: TestClient, tmp_path: Path) -> None:
+    """
+    並べるで反応の表の列と並べる件数の問いが出て, 反応の表を入れると
+    受け渡しに並べ方が渡り, 並べるの骨組みを書き出せることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題から受け持ちを並べるで答え直す
+    part = ml_quest.PART
+    view = client.post("/api/problems",
+                       json={"example": "総菜の作る量"}).json()
+    url = f"/api/problems/{view['id']}"
+    for key, value in [("role", "rank"), ("unit", "query"),
+                       ("output", "ranking"), ("target.source", "feedback"),
+                       ("method", "scratch"), ("what", "会員ごとに勧める品"),
+                       ("item", "会員ごとの品の並び"), ("baseline", "人気順"),
+                       ("evaluation.metric", "ndcg"),
+                       ("evaluation.link", "上位に買う品が来るほど売上が増える")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # 5 の節に列の問い 4 つと数の問いが ML-Quest の並びのまま出て, 列の
+    # 予測の問いは出ない. 答えるまでは書き出せない
+    view = client.get(url).json()
+    shown = [q for q in view["questions"] if q["applies"]]
+    ranks = [q for q in shown if q["id"].startswith(f"{part}.rank.")]
+    assert [(q["id"], q["kind"], q["required"], q["section"])
+            for q in ranks] == [
+        (f"{part}.rank.user", "column", True, 5),
+        (f"{part}.rank.item", "column", True, 5),
+        (f"{part}.rank.time", "column", True, 5),
+        (f"{part}.rank.reaction", "column", False, 5),
+        (f"{part}.rank.k", "number", True, 5),
+    ]
+    ids = [q["id"] for q in shown]
+    assert ids.index("information.columns") < ids.index(f"{part}.rank.user")
+    assert f"{part}.target.column" not in ids and f"{part}.task" not in ids
+    assert view["exportable"] is False and view["handoff"] is None
+
+    # 反応の表を入れると列が読め, 列と件数 (画面は文で送る) に答えられる
+    rows = [{"member": f"m{i % 7}", "item_id": f"i{i % 11}", "ts": i,
+             "qty": i % 3} for i in range(200)]
+    pd.DataFrame(rows).to_csv(tmp_path / "reactions.csv", index=False)
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "reactions.csv")}).json()
+    columns = next(q for q in view["questions"]
+                   if q["id"] == "information.columns")
+    assert columns["value"] == ["member", "item_id", "ts", "qty"]
+    for key, value in [("user", "member"), ("item", "member"), ("time", "ts"),
+                       ("reaction", "qty"), ("k", "10")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.rank.{key}",
+                                    "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # 同じ列を 2 つに答えると確かめに出る (文は ML-Quest のまま)
+    view = client.get(url).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert [f["id"] for f in errors] == [f"{part}.rank.item"], errors
+    view = client.put(f"{url}/answers", json={"id": f"{part}.rank.item",
+                                             "value": "item_id"}).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [] and view["ready"] is True, errors
+
+    # 受け渡しに並べ方 (件数は数), 時刻の順の分割, 2 塔の雛形, NDCG の監視
+    handoff = view["handoff"]
+    assert handoff["rank"] == {"user": "member", "item": "item_id",
+                               "time": "ts", "reaction": "qty", "k": 10}
+    assert handoff["data"]["split"] == "time"
+    assert handoff["data"]["time_column"] == "ts"
+    assert handoff["data"]["target"] is None
+    assert handoff["model"]["example"] == "two_tower_retrieval"
+    assert handoff["model"]["example"] in ml_quest.MODEL_EXAMPLES.values()
+    assert handoff["training"]["monitor"] == "valid/ndcg"
+    assert handoff["training"]["mode"] == "max"
+    assert any("上位 10 件" in line for line in view["summary"])
+
+    # 並べるの骨組みを書き出し, 入れた表を data/ に写して読む
+    assert view["exportable"] is True and view["export_error"] is None
+    target = tmp_path / "rank"
+    written = client.post(f"{url}/project", json={"path": str(target)})
+    assert written.status_code == 200, written.json()
+    assert {"train.py", "README.md", "configs/default/train.yaml",
+            "data/reactions.csv"} <= set(written.json()["files"])
+    config = yaml.safe_load((target / "configs" / "default" / "train.yaml")
+                            .read_text(encoding="utf-8"))
+    assert config["rank"]["k"] == 10
+    assert config["data"]["dataset"] == "data/reactions.csv"
+    assert config["experiment"]["name"] == "item_id_rank"
+
+    # 書き出せるかは ML-Quest の project_error のまま (表でないデータを
+    # 入れると, 答えた列が使えるデータの列から外れる)
+    (tmp_path / "lines.txt").write_text("一\n二\n", encoding="utf-8")
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "lines.txt")}).json()
+    problem = ml_quest.load_problem(tmp_path / "home" / "problems"
+                                    / view["id"] / "problem.yaml")
+    assert view["exportable"] is False
+    assert view["export_error"] == ml_quest.project_error(problem)
+    assert "使えるデータの列にありません" in view["export_error"]
+
+    # 既製のモデルをそのまま使うと列と件数の問いは要らなくなり, 渡さない
+    view = client.put(f"{url}/answers", json={"id": f"{part}.method",
+                                             "value": "pretrained"}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert not any(applies[f"{part}.rank.{key}"]
+                   for key in ("user", "item", "time", "reaction", "k"))
+    assert view["handoff"] is None or view["handoff"]["rank"] is None
+
+
+def test_guard_counted(client: TestClient) -> None:
+    """
+    守る指標の数える量の問いが 7 の節に意思決定の型で絞った選択肢で出て,
+    受け渡しの守る指標に counted として渡ることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+
+    Returns
+    ----------
+    None
+    """
+    # 選ぶ意思決定の見本は, 7 の節の ML-Quest の並びのまま問いが出る
+    view = client.post("/api/problems",
+                       json={"example": "解約の引き止め"}).json()
+    url = f"/api/problems/{view['id']}"
+    shown = [q for q in view["questions"] if q["applies"]]
+    seven = [q["id"] for q in shown if q["section"] == 7]
+    order = [q["id"] for q in ml_quest.questions(ml_quest.example_problem(
+        "解約の引き止め")) if q["applies"] and q["section"] == 7]
+    assert seven == order and "issue.guard.counted" in seven
+    counted = next(q for q in shown if q["id"] == "issue.guard.counted")
+    values = [choice["value"] for choice in counted["choices"]]
+    assert values == [*ml_quest.GUARD_COUNTS["select"], "none"]
+
+    # 量を選ぶと受け渡しに名前で渡り, 指さないと None
+    assert view["handoff"]["inference"]["guard"]["counted"] is None
+    view = client.put(f"{url}/answers",
+                      json={"id": "issue.guard.counted",
+                            "value": "selected"}).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [], errors
+    guard = view["handoff"]["inference"]["guard"]
+    assert guard["counted"] == "selected"
+
+    # 割合の量では, 守る線 (2 の節の 5 件) を 0 から 1 で書くよう出る
+    view = client.put(f"{url}/answers",
+                      json={"id": "issue.guard.counted",
+                            "value": "selected_hit_rate"}).json()
+    assert "issue.guard.line" in [f["id"] for f in view["findings"]
+                                  if f["level"] == "error"]
+
+    # 型に無い量は確かめに出る (文は ML-Quest のまま)
+    view = client.put(f"{url}/answers", json={"id": "issue.guard.counted",
+                                             "value": "shortage"}).json()
+    assert "issue.guard.counted" in [f["id"] for f in view["findings"]
+                                     if f["level"] == "error"]
+
+
 def test_items_dataset(client: TestClient, tmp_path: Path) -> None:
     """
     ML-EDA の版 2 のデータセットのディレクトリを入れ, 知らせと骨組みの

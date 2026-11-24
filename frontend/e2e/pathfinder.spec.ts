@@ -833,7 +833,7 @@ test('作るで画像と答えると, 画像の生成の骨組みを書き出し
   const card = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
-  await expect(card).toContainText('画像と表の生成は分割を渡します')
+  await expect(card).toContainText('画像と表の生成は分割を,')
 
   await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
   const dialog = page.getByRole('dialog')
@@ -953,7 +953,7 @@ test('作るで表と画面で答え, 表を入れると, 列ごとの分布の�
     /監視する指標\s*valid\/column_distance\s*\(作った表と本物の表の列ごとの分布の近さ\)/,
   )
   await expect(card.getByText(/監視の向き/)).toHaveText(/監視の向き\s*min\s*\(小さいほど良い\)/)
-  await expect(card).toContainText('画像と表の生成は分割を渡します')
+  await expect(card).toContainText('画像と表の生成は分割を,')
 
   // 書き出すと, 表の生成の手順と, 入れた表の写しができる
   const target = `${process.cwd()}/e2e/.work/table-project`
@@ -968,6 +968,153 @@ test('作るで表と画面で答え, 表を入れると, 列ごとの分布の�
   expect(readFileSync(`${target}/README.md`, 'utf8')).toContain('元の表に似た行を作る')
   const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
   expect(config).toContain('valid/column_distance')
+})
+
+test('並べると画面で答え, 反応の表を入れると, 列と件数を選べて並べるの骨組みを書き出す', async ({
+  page,
+}) => {
+  // 利用者, 品物, 時刻, 反応の強さの列の反応の表
+  const rows = ['member,item_id,ts,qty']
+  for (let index = 0; index < 200; index++)
+    rows.push(`m${index % 7},i${index % 11},${index},${index % 3}`)
+  const file = `${process.cwd()}/e2e/.work/reactions.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('勧める品')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '勧める品' })).toBeVisible()
+
+  // 受け持ちに依らない節 (1 から 4, 9, 10) は API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['issue.owner', '売り場の係'],
+    ['issue.pain', '会員に勧める品が合わない'],
+    ['issue.current', '人気順に並べる'],
+    ['issue.kpi.name', '勧めた品の売上'],
+    ['issue.kpi.unit', '円 / 月'],
+    ['issue.kpi.better', 'higher'],
+    ['decomposition', [{ cause: '好みが会員ごとに違う', lever: '会員ごとに並べる', ml: true }]],
+    ['action.who', '売り場の係'],
+    ['action.when', '毎朝'],
+    ['action.what', '会員ごとに勧める品を並べる'],
+    ['ml.reason', '会員ごとの好みを人気順では追えない'],
+    ['verification.method', 'backtest'],
+    ['verification.backtest', '過去の反応で確かめる'],
+    ['verification.success', '売上が 1 割増える'],
+    ['operation.review', '月に 1 回'],
+    ['operation.approver', '係の長'],
+    ['operation.stop', '売上が人気順より減ったら'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: key, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 5 の節で, 並べるで出力の形を順位と画面で答える
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await choose(page, '機械学習を使いますか', 'はい')
+  await choose(page, '機械学習は何を受け持ちますか', /^並べる/)
+  await choose(page, '1 件の単位は', /^要求と候補の組/)
+  await choose(page, '出力の形は', /^順位/)
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^行動の結果/)
+  await choose(page, 'どう作りますか (作り方)', /^一から学習/)
+  await write(page, '何を出させますか', '会員ごとに勧める品')
+  await write(page, '1 件は何ですか', '会員ごとの品の並び')
+  await write(page, '機械学習を使わない比べる相手は', '人気順')
+  // 列の予測の問いは出ない
+  await expect(page.getByText('目的の列は', { exact: true })).toHaveCount(0)
+
+  // 手元のデータに反応の表を選んで入れる
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const picker = page.getByRole('dialog')
+  await picker.getByLabel('パス').fill(file)
+  await picker.getByRole('button', { name: '移動' }).click()
+  await picker.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByText('200 行, 4 列')).toBeVisible({ timeout: 20_000 })
+
+  // 列の問い 4 つは入れた表の列から選び, 件数は数で書く
+  for (const [title, column] of [
+    ['利用者の列は', 'member'],
+    ['品物の列は', 'item_id'],
+    ['反応の時刻の列は', 'ts'],
+    ['反応の強さの列は (あれば)', 'qty'],
+  ]) {
+    await page.getByLabel(title, { exact: true }).selectOption(column)
+    await expect(page.getByText(`「${title}」を保存しました`)).toBeVisible()
+  }
+  await write(page, '利用者ごとに上位何件を並べますか (K)', '10')
+
+  // 8 の節で順位の良さを選ぶ
+  await nav.getByRole('button', { name: /^8\b/ }).click()
+  await choose(page, '最も良いモデルを何で選びますか', /^順位の良さ/)
+  await write(
+    page,
+    'その指標が良くなると, 課題の指標はどう良くなりますか',
+    '上位に買う品が来るほど売上が増える',
+  )
+
+  // 確かめに直すところが無く, 書き出せる
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByText('直す', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
+
+  // 後ろの段階に渡す値に, 並べる件数と列の役割, 時刻の順の分割, 2 塔の雛形が出る
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('受け持ち: 並べる')
+  await expect(card).toContainText('利用者ごとに上位 10 件を並べる')
+  await expect(card.getByText(/^利用者の列/)).toHaveText(
+    /利用者の列\s*member\s*\(利用者ごとに品物を並べる\)/,
+  )
+  await expect(card.getByText(/^反応の時刻の列/)).toHaveText(
+    /反応の時刻の列\s*ts\s*\(古い反応で学び, 新しい反応で確かめる\)/,
+  )
+  await expect(card.getByText(/分割は時刻の順/)).toBeVisible()
+  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/two_tower_retrieval/)
+  await expect(card.getByText(/監視する指標/)).toHaveText(
+    /監視する指標\s*valid\/ndcg\s*\(順位の良さ\)/,
+  )
+
+  // 書き出すと, 並べるの手順と, 入れた表の写しができる
+  const target = await exportProject(page, 'rank-project', [
+    '反応の表 (1 行が 1 つの反応',
+    'two_tower_retrieval',
+    'Recall@K と NDCG',
+  ])
+  for (const name of ['train.py', 'README.md', 'configs/default/train.yaml', 'data/reactions.csv'])
+    expect(existsSync(`${target}/${name}`), name).toBe(true)
+  const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
+  expect(config).toContain('valid/ndcg')
+  expect(config).toContain('item_id_rank')
+})
+
+test('守る指標の数える量は 7 の節に意思決定の型に合う選択肢で出て, 受け渡しに言葉で出る', async ({
+  page,
+}) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '解約の引き止め' }).click()
+  await expect(page.getByRole('heading', { name: '解約の引き止め' })).toBeVisible()
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^7\b/ }).click()
+  const title = '守る指標は, たどり直しで数えられる量のどれに当たりますか'
+  const group = page.getByRole('radiogroup', { name: title, exact: true })
+  // 選ぶ意思決定の量だけ (量を決める型の量は出ない)
+  await expect(group.getByLabel('選んだ件数', { exact: true })).toBeVisible()
+  await expect(group.getByLabel(/足りなかった/)).toHaveCount(0)
+  await choose(page, title, '選んだ件数')
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card.getByText(/たどり直しで数える量/)).toHaveText(
+    'たどり直しで数える量: 選んだ件数',
+  )
 })
 
 test('データの場所が文字でないファイルは, 確かめに形の誤りを 1 件だけ出し, 欄から外せる', async ({

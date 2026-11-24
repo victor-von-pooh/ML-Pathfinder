@@ -173,7 +173,7 @@ describe('HandoffCard', () => {
       '監視する指標 valid/column_distance (作った表と本物の表の列ごとの分布の近さ)',
     )
     expect(screen.getByText(/監視の向き/)).toHaveTextContent('監視の向き min (小さいほど良い)')
-    expect(screen.getByText(/画像と表の生成は分割を渡します/)).toBeInTheDocument()
+    expect(screen.getByText(/画像と表の生成は分割を,/)).toBeInTheDocument()
   })
 
   it('指標の説明は今の答えに合う選択肢から引き, 合わなければ添えない', () => {
@@ -205,6 +205,137 @@ describe('HandoffCard', () => {
       />,
     )
     expect(screen.getByText(/監視する指標/)).toHaveTextContent(/^監視する指標 valid\/loss$/)
+  })
+
+  it('並べるは, 並べる件数 K と反応の表の列の役割と, 時刻の順の分割を出す', () => {
+    const rank: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        role: 'rank',
+        unit: 'query',
+        output: 'ranking',
+        target_kind: null,
+        target_source: 'feedback',
+        target_process: null,
+      },
+      data: { ...POINT_CLOUD.data, split: 'time', time_column: 'ts' },
+      model: {
+        ...POINT_CLOUD.model,
+        role: 'rank',
+        target_kind: null,
+        example: 'two_tower_retrieval',
+      },
+      training: {
+        metric: 'ndcg',
+        monitor: 'valid/ndcg',
+        mode: 'max',
+        role: 'rank',
+        target_kind: null,
+      },
+      rank: { user: 'member', item: 'item_id', time: 'ts', reaction: 'qty', k: 10 },
+    }
+    const questions = [
+      choice('ml.parts.0.role', 'rank', [['rank', '並べる (多くの候補から要求に合うものを順に)']]),
+      choice('ml.parts.0.output', 'ranking', [['ranking', '順位']]),
+    ]
+    const { rerender } = render(
+      <HandoffCard problem={problemWith(rank, questions)} splits={SPLITS} />,
+    )
+    expect(screen.getByText('受け持ち: 並べる')).toBeInTheDocument()
+    expect(screen.getByText(/利用者ごとに上位 10 件を並べる/)).toHaveTextContent(
+      'Recall@K と NDCG もこの K で数える',
+    )
+    expect(screen.getByText(/利用者の列/)).toHaveTextContent(
+      '利用者の列 member (利用者ごとに品物を並べる)',
+    )
+    expect(screen.getByText(/^品物の列/)).toHaveTextContent('品物の列 item_id (並べる品物)')
+    expect(screen.getByText(/^反応の時刻の列/)).toHaveTextContent(
+      '反応の時刻の列 ts (古い反応で学び, 新しい反応で確かめる)',
+    )
+    expect(screen.getByText(/^反応の強さの列/)).toHaveTextContent(
+      '反応の強さの列 qty (0 より大きい行だけを反応とみなす)',
+    )
+    expect(screen.getByText(/分割は時刻の順/)).toHaveTextContent('反応の時刻の列 ts の順')
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('two_tower_retrieval')
+    expect(screen.getByText(/推論の一式を作りません/)).toBeInTheDocument()
+
+    // 反応の強さの列を答えなければ, 全ての行を反応とみなすことを出す
+    rerender(
+      <HandoffCard
+        problem={problemWith({ ...rank, rank: { ...rank.rank!, reaction: null } }, questions)}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^反応の強さの列/)).toHaveTextContent(
+      '反応の強さの列: 無し (全ての行を反応とみなす)',
+    )
+
+    // 並べるでなければ並べ方を出さない
+    rerender(<HandoffCard problem={problemWith(POINT_CLOUD, [])} splits={SPLITS} />)
+    expect(screen.queryByText(/並べ方/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/推論の一式を作りません/)).not.toBeInTheDocument()
+  })
+
+  it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {
+    const column: Handoff = {
+      ...POINT_CLOUD,
+      part: { ...POINT_CLOUD.part, target_kind: 'column', target_process: null },
+      data: { ...POINT_CLOUD.data, target: 'sales', task: 'regression', split: 'time' },
+      model: {
+        task: 'regression',
+        outputs: 1,
+        role: 'predict',
+        target_kind: 'column',
+        example: null,
+      },
+      inference: {
+        ...POINT_CLOUD.inference,
+        guard: {
+          name: '品切れの割合',
+          unit: '割合 (0 から 1)',
+          better: 'lower',
+          line: 0.05,
+          measure: null,
+          counted: 'shortage_rate',
+        },
+      },
+    }
+    // 選択肢は ML-Quest が今の意思決定の型に合うものに絞って返す
+    const counted = {
+      ...choice('issue.guard.counted', 'shortage_rate', [
+        ['shortage_rate', '足りなかった行の割合'],
+        ['shortage', '足りなかった量の合計 (目的の列の単位)'],
+        ['none', '指さない (過去のデータでは数えられない. 課題の場で数える)'],
+      ]),
+      section: 7,
+    }
+    const { rerender } = render(<HandoffCard problem={problemWith(column, [counted])} />)
+    expect(screen.getByText(/守る指標:/)).toHaveTextContent(
+      '守る指標: 品切れの割合 (小さいほど良い). 守る線は 0.05 割合 (0 から 1)',
+    )
+    expect(screen.getByText(/たどり直しで数える量/)).toHaveTextContent(
+      'たどり直しで数える量: 足りなかった行の割合',
+    )
+    expect(screen.queryByText(/shortage_rate/)).not.toBeInTheDocument()
+
+    // 指さないと答えれば, その言葉を出す
+    const none: Handoff = {
+      ...column,
+      inference: { ...column.inference, guard: { ...column.inference.guard!, counted: null } },
+    }
+    rerender(<HandoffCard problem={problemWith(none, [{ ...counted, value: 'none' }])} />)
+    expect(screen.getByText(/たどり直しで数える量/)).toHaveTextContent('課題の場で数える')
+
+    // 答えていなければ数える量の行を出さない. 守る指標が無ければ守る指標も出さない
+    rerender(<HandoffCard problem={problemWith(none, [{ ...counted, value: null }])} />)
+    expect(screen.queryByText(/たどり直しで数える量/)).not.toBeInTheDocument()
+    rerender(
+      <HandoffCard
+        problem={problemWith({ ...column, inference: { ...column.inference, guard: null } }, [])}
+      />,
+    )
+    expect(screen.queryByText(/守る指標:/)).not.toBeInTheDocument()
   })
 
   it('モデルの作成の雛形の名前を見出しと出し, 無ければ理由を言葉で出す', () => {
