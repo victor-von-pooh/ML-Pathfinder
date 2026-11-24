@@ -834,7 +834,7 @@ test('作るで画像と答えると, 画像の生成の骨組みを書き出し
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
   await expect(card).toContainText(
-    /画像と表の生成は分割を, 並べるは分割と\s*反応の時刻の列を渡します/,
+    /画像と表の生成とまとめるは分割を,\s*並べるは分割と反応の時刻の列を渡します/,
   )
 
   await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
@@ -956,7 +956,7 @@ test('作るで表と画面で答え, 表を入れると, 列ごとの分布の�
   )
   await expect(card.getByText(/監視の向き/)).toHaveText(/監視の向き\s*min\s*\(小さいほど良い\)/)
   await expect(card).toContainText(
-    /画像と表の生成は分割を, 並べるは分割と\s*反応の時刻の列を渡します/,
+    /画像と表の生成とまとめるは分割を,\s*並べるは分割と反応の時刻の列を渡します/,
   )
 
   // 書き出すと, 表の生成の手順と, 入れた表の写しができる
@@ -1097,6 +1097,145 @@ test('並べると画面で答え, 反応の表を入れると, 列と件数を�
   const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
   expect(config).toContain('valid/ndcg')
   expect(config).toContain('item_id_rank')
+})
+
+test('まとめると画面で答え, 表を入れると, 群の列と数と数え方を選べてまとめるの骨組みを書き出す', async ({
+  page,
+}) => {
+  // 使う額, 来た回数, 地域の違う 3 つの群の顧客の表
+  const rows = ['customer,spend,visits,region']
+  for (let index = 0; index < 240; index++)
+    rows.push(
+      `c${index},${(index % 3) * 100 + (index % 7)},${(index % 3) * 5 + (index % 2)},${['east', 'west', 'north'][index % 3]}`,
+    )
+  const file = `${process.cwd()}/e2e/.work/customers.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('顧客の群')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '顧客の群' })).toBeVisible()
+
+  // 受け持ちに依らない節 (1 から 4, 9, 10) は API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['issue.owner', '売り場の係'],
+    ['issue.pain', '顧客への案内が一律で響かない'],
+    ['issue.current', '使う額で 3 段に分けて案内する'],
+    ['issue.kpi.name', '案内からの売上'],
+    ['issue.kpi.unit', '円 / 月'],
+    ['issue.kpi.better', 'higher'],
+    ['decomposition', [{ cause: '顧客の使い方が違う', lever: '群ごとに案内を変える', ml: true }]],
+    ['action.who', '売り場の係'],
+    ['action.when', '月の初め'],
+    ['action.what', '群ごとに案内を変える'],
+    ['ml.reason', '使う額だけでは使い方の違いを分けられない'],
+    ['verification.method', 'backtest'],
+    ['verification.backtest', '過去の顧客の表で群の安定性を確かめる'],
+    ['verification.success', '群ごとの案内で売上が 1 割増える'],
+    ['operation.review', '月に 1 回'],
+    ['operation.approver', '係の長'],
+    ['operation.stop', '群が作り直すたびに大きく変わったら'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: key, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 5 の節で, まとめるで出力の形を群と画面で答える
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await choose(page, '機械学習を使いますか', 'はい')
+  await choose(page, '機械学習は何を受け持ちますか', /^まとめる/)
+  await choose(page, '1 件の単位は', /^行/)
+  await choose(page, '出力の形は', /^群/)
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^無い$/)
+  await choose(page, 'どう作りますか (作り方)', /^一から学習/)
+  await write(page, '何を出させますか', '顧客の群')
+  await write(page, '1 件は何ですか', '顧客ごとの 1 行')
+  await write(page, '機械学習を使わない比べる相手は', '使う額で 3 段に分ける')
+  // 列の予測の問いは出ない
+  await expect(page.getByText('目的の列は', { exact: true })).toHaveCount(0)
+
+  // 手元のデータに顧客の表を選んで入れる
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const picker = page.getByRole('dialog')
+  await picker.getByLabel('パス').fill(file)
+  await picker.getByRole('button', { name: '移動' }).click()
+  await picker.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByText('240 行, 4 列')).toBeVisible({ timeout: 20_000 })
+
+  // 群を作る列は入れた表の列から選び, 行を見分ける列, 群の数, 数え方を答える
+  const columns = page.getByRole('group', { name: '群を作るのに使う列は', exact: true })
+  for (const column of ['spend', 'visits', 'region']) {
+    // 答えは保存した値から描くので, 押した後に保存を待つ
+    await columns.getByLabel(column, { exact: true }).click()
+    await expect(columns.getByLabel(column, { exact: true })).toBeChecked()
+  }
+  await page.getByLabel('行を見分ける列は (あれば)', { exact: true }).selectOption('customer')
+  await expect(page.getByText('「行を見分ける列は (あれば)」を保存しました')).toBeVisible()
+  await write(page, 'いくつの群に分けますか', '3')
+  await choose(page, '群の安定性は, どう作り直して数えますか', /^標本を変えて作り直す/)
+
+  // 8 の節で群のまとまりを選ぶ
+  await nav.getByRole('button', { name: /^8\b/ }).click()
+  await choose(page, '最も良いモデルを何で選びますか', /^群のまとまり/)
+  await write(
+    page,
+    'その指標が良くなると, 課題の指標はどう良くなりますか',
+    '群がはっきり分かれるほど案内が合い, 売上が増える',
+  )
+
+  // まとめるでは守る指標の問いが出ない (2 の節にも, 7 の数える量にも)
+  await nav.getByRole('button', { name: /^2\b/ }).click()
+  await expect(page.getByText('何が変われば解けたと言えますか', { exact: true })).toBeVisible()
+  await expect(page.getByText(/引き換えに悪くしてはいけない数字/)).toHaveCount(0)
+  await nav.getByRole('button', { name: /^7\b/ }).click()
+  await expect(page.getByText(/たどり直しで数えられる量/)).toHaveCount(0)
+
+  // 確かめに直すところが無く, 書き出せる
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByText('直す', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
+
+  // 後ろの段階に渡す値に, 群の数と列, 数え方の言葉, 評価, 無作為の分割, 雛形が出る
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('受け持ち: まとめる')
+  await expect(card).toContainText('3 つの群に分ける')
+  await expect(card.getByText(/^群を作る列/)).toHaveText(/群を作る列\s*spend\s*visits\s*region/)
+  await expect(card.getByText(/^行を見分ける列/)).toHaveText(/行を見分ける列\s*customer/)
+  await expect(card.getByText(/群の安定性の数え方/)).toHaveText(
+    '群の安定性の数え方: 標本を変えて作り直す (行の 8 割を引き直す)',
+  )
+  await expect(card.getByText(/^評価は群の安定性/)).toContainText('群の要約')
+  await expect(card.getByText(/分割は無作為/)).toBeVisible()
+  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/contrastive_encoder/)
+  await expect(card.getByText(/監視する指標/)).toHaveText(
+    /監視する指標\s*valid\/silhouette\s*\(群のまとまり\)/,
+  )
+  await expect(card.getByText(/守る指標を問いません/)).toBeVisible()
+  await expect(card).not.toContainText(/守る指標:/)
+  // 数え方の値の名前は出さない
+  await expect(card).not.toContainText(/\bsample\b/)
+
+  // 書き出すと, まとめるの手順と, 入れた表の写しができる
+  const target = await exportProject(page, 'group-project', [
+    '群を作る表 (1 行が 1 つの対象',
+    'contrastive_encoder',
+    '群の要約',
+  ])
+  for (const name of ['train.py', 'README.md', 'configs/default/train.yaml', 'data/customers.csv'])
+    expect(existsSync(`${target}/${name}`), name).toBe(true)
+  const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
+  expect(config).toContain('valid/silhouette')
+  expect(config).toContain('group_3')
+  expect(config).toMatch(/stability: "?sample"?/)
 })
 
 test('守る指標の数える量は 7 の節に意思決定の型に合う選択肢で出て, 受け渡しに言葉で出る', async ({

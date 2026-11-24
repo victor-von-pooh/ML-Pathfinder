@@ -24,11 +24,12 @@ function answerOf(problem: Problem, id: string): string | null {
  * 骨組みの型 (説明の文の出し分けだけ). 既製 (予測するで作り方が既製のモデルをそのまま使う.
  * 学習せず, 推論の一式だけを作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
  * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 並べる
- * (並べるで既製のモデルをそのまま使わない), 他は列の予測
+ * (並べるで既製のモデルをそのまま使わない), まとめる (まとめるで既製のモデルをそのまま使わない),
+ * 他は列の予測
  */
 function skeletonType(
   problem: Problem,
-): 'column' | 'items' | 'generate' | 'table' | 'rank' | 'policy' | 'ready' {
+): 'column' | 'items' | 'generate' | 'table' | 'rank' | 'group' | 'policy' | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
   // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
   const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
@@ -50,6 +51,12 @@ function skeletonType(
     !(method?.applies && method.value === 'pretrained')
   )
     return 'rank'
+  // ML-Quest の is_group_part と同じく, まとめるで, 作り方が既製のモデルをそのまま使うでないとき
+  if (
+    answerOf(problem, 'ml.parts.0.role') === 'group' &&
+    !(method?.applies && method.value === 'pretrained')
+  )
+    return 'group'
   const kind = answerOf(problem, 'ml.parts.0.target.kind')
   if (answerOf(problem, 'ml.parts.0.role') === 'generate') {
     if (kind === 'image') return 'generate'
@@ -65,6 +72,7 @@ const DEFAULT_NAMES = {
   generate: '正解の種類と受け持ち',
   table: '正解の種類と受け持ち',
   rank: '品物の列と受け持ち',
+  group: '受け持ちと群の数',
   // 英字の後は空けて読む
   policy: '環境の登録名か env ',
   // 一式の名前は, 省略するとモデルと重みの名前から
@@ -86,7 +94,7 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像と表の生成, 並べる, 方策は, 列の予測と既定の名前と次にすることが違う
+  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 方策は, 列の予測と既定の名前と次にすることが違う
   const type = skeletonType(problem)
   // 方策の環境の登録名 (次にすることの環境の手順の出し分け)
   const envId = answerOf(problem, 'ml.parts.0.env_id')?.trim() || null
@@ -101,7 +109,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 問題の設定の確かめの直すところが残ると推論の段階に渡す値を作れない (入れたデータの確かめ
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
-  // ファイルの組, 画像と表の生成, 並べる, 方策の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
+  // ファイルの組, 画像と表の生成, 並べる, まとめる, 方策の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
   const dropped = type === 'column' && decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
@@ -153,7 +161,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               ? '環境と守りを整えて方策を学習します.'
               : type === 'rank'
                 ? '反応の表とモデルの定義を置いて学習します.'
-                : 'データセットとモデルの定義を置いて学習します.'}
+                : type === 'group'
+                  ? '群を作る表とモデルの定義を置いて学習します.'
+                  : 'データセットとモデルの定義を置いて学習します.'}
           </>
         )}
       </p>
@@ -380,6 +390,31 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 <li>
                   学習の後に, 推論に使う一式を実験の inference/ に作るので, ML-Provide の実験の
                   一覧から登録して推論する. 作れない定義のときは, その理由を train.log に書く
+                  {write.variables?.accept &&
+                    '. README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
+              </ol>
+            ) : type === 'group' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  群を作る表 (1 行が 1 つの対象. 顧客など) を学習の設定のデータの場所に置く
+                  (表を入れていれば data/ に写してあり, そのまま読む). 読むのは群を作る列と
+                  行を見分ける列だけ
+                </li>
+                <li>
+                  ML-CreateArchitecture で行の特徴から埋め込みを作るモデルを組み, models/model.yaml
+                  に保存する. モデルの作成の画面で開ける例 contrastive_encoder を,
+                  {'符号化した行の幅に合わせて使える (幅は学習の記録 train.log の初めの行に出る). '}
+                  定義が無いうちは仮のモデルで学習する
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かし, 群のまとまり (大きいほど良い)
+                  で最も良いモデルを選ぶ. 学習の後に群の安定性と群の要約を evaluations/ に書き,
+                  列をそのまま群に分けたものと比べる
+                </li>
+                <li>
+                  推論の一式は作らない. 実験に学習した重み, 行ごとの群の割り当て,
+                  列の符号化と群の中心が残り, その実験で新しい行を群に割り当てられる
                   {write.variables?.accept &&
                     '. README.md の最後の一覧を直すまで問題の設定はつながない'}
                 </li>
