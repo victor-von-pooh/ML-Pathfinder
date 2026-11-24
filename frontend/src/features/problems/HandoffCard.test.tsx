@@ -274,7 +274,9 @@ describe('HandoffCard', () => {
     // 並べるでなければ並べ方を出さない
     rerender(<HandoffCard problem={problemWith(POINT_CLOUD, [])} splits={SPLITS} />)
     expect(screen.queryByText(/並べ方/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/推論に使う一式を実験の inference\/ に作ります/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/推論に使う一式を実験の inference\/ に作ります/),
+    ).not.toBeInTheDocument()
   })
 
   it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {
