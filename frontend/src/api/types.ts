@@ -147,6 +147,18 @@ export interface Rank {
   k: number | null
 }
 
+/** まとめるの群を作る列, 群の数と安定性の数え方 (まとめるで学習するときだけ. ML-Quest の group_of) */
+export interface Group {
+  /** 群を作る列の名前の並び */
+  columns: string[]
+  /** 行を見分ける列 (答えていなければ null. 群を作るのには使わない) */
+  id: string | null
+  /** 群の数 */
+  k: number | null
+  /** 群の安定性の数え方 (問いの選択肢の値. 種を変えるか標本を変えて作り直す) */
+  stability: string | null
+}
+
 /** 推論の段階のたどり直しで数える守る指標 (列の予測で, 名前を答えたときだけ. ML-Quest の guard_of) */
 export interface Guard {
   name: string
@@ -243,6 +255,8 @@ export interface Handoff {
   policy: Policy | null
   /** 並べるの反応の表の列と件数 (並べるで学習しなければ null) */
   rank?: Rank | null
+  /** まとめるの群を作る列, 群の数と安定性の数え方 (まとめるで学習しなければ null) */
+  group?: Group | null
   /** 書き出したプロジェクト (書き出していなければ path は null) */
   project?: { path: string | null }
 }

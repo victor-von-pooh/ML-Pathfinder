@@ -173,7 +173,7 @@ describe('HandoffCard', () => {
       '監視する指標 valid/column_distance (作った表と本物の表の列ごとの分布の近さ)',
     )
     expect(screen.getByText(/監視の向き/)).toHaveTextContent('監視の向き min (小さいほど良い)')
-    expect(screen.getByText(/画像と表の生成は分割を,/)).toBeInTheDocument()
+    expect(screen.getByText(/画像と表の生成とまとめるは分割を,/)).toBeInTheDocument()
   })
 
   it('指標の説明は今の答えに合う選択肢から引き, 合わなければ添えない', () => {
@@ -277,6 +277,100 @@ describe('HandoffCard', () => {
     expect(
       screen.queryByText(/推論に使う一式を実験の inference\/ に作ります/),
     ).not.toBeInTheDocument()
+  })
+
+  it('まとめるは, 群の数, 群を作る列, 数え方の言葉と, 評価が群の安定性と群の要約であることを出す', () => {
+    const group: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        role: 'group',
+        unit: 'row',
+        output: 'cluster',
+        target_kind: null,
+        target_source: 'none',
+        target_process: null,
+      },
+      data: { ...POINT_CLOUD.data, split: 'random' },
+      model: {
+        ...POINT_CLOUD.model,
+        role: 'group',
+        target_kind: null,
+        example: 'contrastive_encoder',
+      },
+      training: {
+        metric: 'silhouette',
+        monitor: 'valid/silhouette',
+        mode: 'max',
+        role: 'group',
+        target_kind: null,
+      },
+      group: {
+        columns: ['spend', 'visits', 'region'],
+        id: 'customer',
+        k: 3,
+        stability: 'sample',
+      },
+    }
+    const stability = choice('ml.parts.0.group.stability', 'sample', [
+      ['seed', '種を変えて作り直す (同じ行で, 群の中心の初めの置き方を変える)'],
+      ['sample', '標本を変えて作り直す (行の 8 割を引き直す)'],
+    ])
+    const questions = [
+      choice('ml.parts.0.role', 'group', [
+        ['group', 'まとめる (正解の無いデータを, 人が分かるまとまりに)'],
+      ]),
+      choice('ml.parts.0.output', 'cluster', [['cluster', '群']]),
+      stability,
+      {
+        ...choice('ml.parts.0.evaluation.metric', 'silhouette', [
+          ['silhouette', '群のまとまり (シルエット係数. 大きいほど良い)'],
+        ]),
+        section: 8,
+      },
+    ]
+    const { rerender } = render(
+      <HandoffCard problem={problemWith(group, questions)} splits={SPLITS} />,
+    )
+    expect(screen.getByText('受け持ち: まとめる')).toBeInTheDocument()
+    expect(screen.getByText(/3 つの群に分ける/)).toHaveTextContent('群の数')
+    expect(screen.getByText(/^群を作る列/)).toHaveTextContent(/群を作る列\s*spendvisitsregion/)
+    expect(screen.getByText(/^行を見分ける列/)).toHaveTextContent(
+      '行を見分ける列 customer (群の割り当ての表に書く. 群を作るのには使わない)',
+    )
+    expect(screen.getByText(/群の安定性の数え方/)).toHaveTextContent(
+      '群の安定性の数え方: 標本を変えて作り直す (行の 8 割を引き直す)',
+    )
+    expect(screen.getByText(/^評価は群の安定性/)).toHaveTextContent('群の要約')
+    expect(screen.getByText(/分割は無作為/)).toBeInTheDocument()
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('contrastive_encoder')
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent(
+      '監視する指標 valid/silhouette (群のまとまり)',
+    )
+    expect(screen.getByText(/推論の一式は作りません/)).toHaveTextContent('群の中心')
+    expect(screen.getByText(/守る指標を問いません/)).toBeInTheDocument()
+    // 数え方の値の名前は出さない
+    expect(screen.queryByText(/\bsample\b/)).not.toBeInTheDocument()
+
+    // 行を見分ける列が無ければ行の番号, 数え方を答えていなければ答えていないと出す
+    rerender(
+      <HandoffCard
+        problem={problemWith({ ...group, group: { ...group.group!, id: null, stability: null } }, [
+          ...questions.filter((q) => q !== stability),
+          { ...stability, value: null },
+        ])}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^行を見分ける列/)).toHaveTextContent(
+      '無し (群の割り当ての表には行の番号を書く)',
+    )
+    expect(screen.getByText(/群の安定性の数え方/)).toHaveTextContent('まだ答えていません')
+
+    // まとめるでなければまとめ方を出さない
+    rerender(<HandoffCard problem={problemWith(POINT_CLOUD, [])} splits={SPLITS} />)
+    expect(screen.queryByText(/まとめ方/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/守る指標を問いません/)).not.toBeInTheDocument()
   })
 
   it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {

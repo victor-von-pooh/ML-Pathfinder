@@ -279,6 +279,57 @@ function RankRow({ problem }: { problem: Problem }) {
 }
 
 /**
+ * まとめ方 (まとめるで学習するときだけ). 群の数, 群を作る列, 行を見分ける列と, 群の安定性の
+ * 数え方を問いの言葉で出し, 評価が群の安定性と群の要約であることを添える (正解が無いので,
+ * 当たり具合でなく群のまとまりと作り直しての一致で見るため)
+ */
+function GroupRow({ problem }: { problem: Problem }) {
+  const group = problem.handoff?.group
+  if (!group) return null
+  // 数え方は今の答えに合う選択肢の言葉で出す (問いが要るときだけ. 引けなければ答えていない扱い)
+  const question = problem.questions.find((q) => q.id === `${PART}.group.stability`)
+  const stability =
+    question?.applies && group.stability
+      ? (question.choices.find((choice) => choice.value === group.stability)?.label ?? null)
+      : null
+  return (
+    <div>
+      <dt className="mb-1 text-xs font-medium text-ink-2">まとめ方 (データの分析, 学習, 評価)</dt>
+      <dd className="flex flex-col gap-1">
+        <span>
+          {group.k !== null
+            ? `${group.k} つの群に分ける (群の数. 学習の段階で群の数を変えた実験どうしで, 群のまとまりと安定性を比べられる)`
+            : '群の数はまだ答えていません'}
+        </span>
+        <span className="flex flex-wrap items-center gap-1">
+          群を作る列 <Names names={group.columns} /> (数の列は標準化し, 他の列は値ごとに 0 と 1
+          の列にして使う)
+        </span>
+        {group.id ? (
+          <span className="flex flex-wrap items-center gap-1">
+            行を見分ける列 <Code>{group.id}</Code> (群の割り当ての表に書く. 群を作るのには使わない)
+          </span>
+        ) : (
+          <span>
+            行を見分ける列:{' '}
+            <span className="text-ink-3">無し (群の割り当ての表には行の番号を書く)</span>
+          </span>
+        )}
+        <span>
+          群の安定性の数え方: {stability ?? <span className="text-ink-3">まだ答えていません</span>}
+        </span>
+        <span className="text-xs text-ink-2">
+          評価は群の安定性 (作り直した群と元の群の一致. 1 は同じ群, 0 は偶然と同じ) と群の要約
+          (群ごとの行の数, 割合, 安定性と, 群を作った列の平均か最も多い値) で見て,
+          列の特徴をそのまま群に分けたものと比べます. 正解が無いので, 当たり具合と今のやり方での値は
+          問いません
+        </span>
+      </dd>
+    </div>
+  )
+}
+
+/**
  * 推論の段階のたどり直しで数える守る指標 (列の予測で名前を答えたときだけ). 数える量は
  * 名前でなく選択肢の言葉 (説明) で出す (名前だけでは何を数えるか分からないため)
  */
@@ -366,7 +417,7 @@ function ProjectRow({ problem }: { problem: Problem }) {
 
 /**
  * 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループ, 画像と表の
- * 生成は分割, 並べるは分割と反応の時刻の列と並べ方を渡す)
+ * 生成は分割, 並べるは分割と反応の時刻の列と並べ方, まとめるは分割とまとめ方を渡す)
  */
 function PartHandoff({
   problem,
@@ -448,8 +499,8 @@ function PartHandoff({
             )}
             <span className="text-xs text-ink-2">
               目的の列と使う列は列の予測だけで渡します. ファイルの組 (領域, 点群) は,
-              データの分析で書き戻した分割とグループを, 画像と表の生成は分割を, 並べるは分割と
-              反応の時刻の列を渡します
+              データの分析で書き戻した分割とグループを, 画像と表の生成とまとめるは分割を,
+              並べるは分割と反応の時刻の列を渡します
             </span>
           </dd>
         </div>
@@ -469,6 +520,7 @@ function PartHandoff({
           </dd>
         </div>
         <RankRow problem={problem} />
+        <GroupRow problem={problem} />
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
         <EnvRow problem={problem} onJump={onJump} />
@@ -486,6 +538,18 @@ function PartHandoff({
                   学習の後に, 推論に使う一式を実験の inference/ に作ります. 作れない定義のときは,
                   その理由を train.log に書きます
                 </span>
+              )}
+              {handoff.group && (
+                <>
+                  <span>
+                    推論の一式は作りません. 学習した重み, 行ごとの群の割り当て,
+                    列の符号化と群の中心が 実験に残り, 新しい行もこれで群に割り当てられます
+                  </span>
+                  <span className="text-xs text-ink-2">
+                    まとめるでは守る指標を問いません (群は人が解釈して使い,
+                    使われたかは運用の後に見るため)
+                  </span>
+                </>
               )}
             </dd>
           </div>

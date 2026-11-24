@@ -206,6 +206,46 @@ describe('ProjectDialog', () => {
     expect(screen.queryByText(/品物の列と受け持ちから/)).toBeNull()
   })
 
+  it('まとめるは, まとめるの次にすることと群の数の実験の名前を出し, 損得と制約の注意を出さない', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'group' }
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'scratch' }
+    const problem = problemWith([
+      { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
+    ])
+    renderDialog({ ...problem, questions: [{ ...KIND, applies: false }, role, method, OWNER] })
+    expect(screen.getByText(/受け持ちと群の数から/)).toBeInTheDocument()
+    expect(screen.getByText(/群を作る表とモデルの定義を置いて学習します/)).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
+    fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
+    expect(await screen.findByText(/群を作る表 \(1 行が 1 つの対象/)).toBeInTheDocument()
+    expect(screen.getByText(/contrastive_encoder/)).toBeInTheDocument()
+    expect(screen.getByText(/群の安定性 \(作り直した群と元の群の一致\)/)).toHaveTextContent(
+      '群の要約',
+    )
+    expect(screen.getByText(/推論の一式は作らない/)).toHaveTextContent(
+      'README.md の最後の一覧を直すまで問題の設定はつながない',
+    )
+    // 列の予測の手順と, 他の型の inference/ の登録は出さない
+    expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
+    expect(screen.queryByText(/inference\/ は登録できる/)).toBeNull()
+    expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
+  })
+
+  it('まとめるで既製のモデルをそのまま使う答えは, まとめるの説明にしない', () => {
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'group' }
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
+    renderDialog({ ...problemWith([]), questions: [{ ...KIND, applies: false }, role, method] })
+    expect(screen.queryByText(/受け持ちと群の数から/)).toBeNull()
+  })
+
   it('既製のモデルは, 一式づくりの次にすることを出し, 学習の言葉を出さない', async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ path: '/x', files: ['bundle.py'], project: { path: '/x' } }),

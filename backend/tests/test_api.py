@@ -942,6 +942,149 @@ def test_rank(client: TestClient, tmp_path: Path) -> None:
     assert view["handoff"] is None or view["handoff"]["rank"] is None
 
 
+def test_group(client: TestClient, tmp_path: Path) -> None:
+    """
+    まとめるで群を作る列, 群の数, 安定性の数え方の問いが出て, 守る指標は
+    問わず, 表を入れると受け渡しに群が渡り, まとめるの骨組みを書き出せる
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題に守る指標を書くと, 予測するでは守る指標の問いが出る
+    part = ml_quest.PART
+    view = client.post("/api/problems",
+                       json={"example": "総菜の作る量"}).json()
+    url = f"/api/problems/{view['id']}"
+    view = client.put(f"{url}/answers", json={"id": "issue.guard.name",
+                                             "value": "品切れの割合"}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert applies["issue.guard.name"] and applies["issue.guard.line"]
+
+    # 受け持ちをまとめるで答え直す
+    for key, value in [("role", "group"), ("unit", "row"),
+                       ("output", "cluster"), ("target.source", "none"),
+                       ("method", "scratch"), ("what", "顧客の群"),
+                       ("item", "顧客ごとの 1 行"),
+                       ("baseline", "使う額で 3 段に分ける"),
+                       ("evaluation.metric", "silhouette"),
+                       ("evaluation.link", "群ごとに案内を変えると売上が増える")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # 5 の節に群の問い 4 つが ML-Quest の並びのまま出て, 列の予測の問い
+    # と守る指標の問い (2 の節と, 7 の数える量) は出ない
+    view = client.get(url).json()
+    shown = [q for q in view["questions"] if q["applies"]]
+    groups = [q for q in shown if q["id"].startswith(f"{part}.group.")]
+    assert [(q["id"], q["kind"], q["required"], q["section"])
+            for q in groups] == [
+        (f"{part}.group.columns", "columns", True, 5),
+        (f"{part}.group.id", "column", False, 5),
+        (f"{part}.group.k", "number", True, 5),
+        (f"{part}.group.stability", "choice", True, 5),
+    ]
+    stability = groups[3]
+    assert [c["value"] for c in stability["choices"]] == ["seed", "sample"]
+    ids = [q["id"] for q in shown]
+    assert ids.index("information.columns") < ids.index(
+        f"{part}.group.columns")
+    assert f"{part}.target.column" not in ids and f"{part}.task" not in ids
+    assert not [name for name in ids if name.startswith("issue.guard.")]
+    metric = next(q for q in shown
+                  if q["id"] == f"{part}.evaluation.metric")
+    assert "silhouette" in [c["value"] for c in metric["choices"]]
+    assert view["exportable"] is False
+
+    # 顧客の表を入れると列が読め, 列, 群の数 (画面は文で送る), 数え方に
+    # 答えられる
+    rows = [{"customer": f"c{i}", "spend": (i % 3) * 100 + i % 7,
+             "visits": (i % 3) * 5 + i % 2,
+             "region": ["east", "west", "north"][i % 3]}
+            for i in range(240)]
+    pd.DataFrame(rows).to_csv(tmp_path / "customers.csv", index=False)
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "customers.csv")}).json()
+    columns = next(q for q in view["questions"]
+                   if q["id"] == "information.columns")
+    assert columns["value"] == ["customer", "spend", "visits", "region"]
+    for key, value in [("columns", ["spend", "visits", "region", "customer"]),
+                       ("id", "customer"), ("k", "3"),
+                       ("stability", "sample")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.group.{key}",
+                                    "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # 行を見分ける列を群を作る列にも入れると確かめに出る (文は ML-Quest
+    # のまま)
+    view = client.get(url).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert [f["id"] for f in errors] == [f"{part}.group.id"], errors
+    view = client.put(f"{url}/answers",
+                      json={"id": f"{part}.group.columns",
+                            "value": ["spend", "visits", "region"]}).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [] and view["ready"] is True, errors
+
+    # 受け渡しに群 (群の数は数), 無作為の分割, 対照学習の雛形, シルエット
+    # 係数の監視. 守る指標と意思決定は渡さない
+    handoff = view["handoff"]
+    assert handoff["group"] == {"columns": ["spend", "visits", "region"],
+                                "id": "customer", "k": 3,
+                                "stability": "sample"}
+    assert handoff["rank"] is None
+    assert handoff["data"]["split"] == "random"
+    assert handoff["data"]["target"] is None
+    assert handoff["model"]["example"] == "contrastive_encoder"
+    assert handoff["model"]["example"] in ml_quest.MODEL_EXAMPLES.values()
+    assert handoff["training"]["monitor"] == "valid/silhouette"
+    assert handoff["training"]["mode"] == "max"
+    assert handoff["inference"]["guard"] is None
+    assert handoff["inference"]["decision"] is None
+    assert any("3 つの群" in line for line in view["summary"])
+
+    # まとめるの骨組みを書き出し, 入れた表を data/ に写して読む
+    assert view["exportable"] is True and view["export_error"] is None
+    target = tmp_path / "group"
+    written = client.post(f"{url}/project", json={"path": str(target)})
+    assert written.status_code == 200, written.json()
+    assert {"train.py", "README.md", "configs/default/train.yaml",
+            "data/customers.csv"} <= set(written.json()["files"])
+    config = yaml.safe_load((target / "configs" / "default" / "train.yaml")
+                            .read_text(encoding="utf-8"))
+    assert config["group"]["k"] == 3
+    assert config["group"]["stability"] == "sample"
+    assert config["data"]["dataset"] == "data/customers.csv"
+    assert config["experiment"]["name"] == "group_3"
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "group_stability.json" in readme
+    assert "group_summary.json" in readme
+
+    # 群の数が 2 より小さいと確かめに出る
+    view = client.put(f"{url}/answers", json={"id": f"{part}.group.k",
+                                             "value": "1"}).json()
+    assert f"{part}.group.k" in [f["id"] for f in view["findings"]
+                                 if f["level"] == "error"]
+
+    # 既製のモデルをそのまま使うと群の問いは要らなくなり, 渡さない
+    view = client.put(f"{url}/answers", json={"id": f"{part}.method",
+                                             "value": "pretrained"}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert not any(applies[f"{part}.group.{key}"]
+                   for key in ("columns", "id", "k", "stability"))
+    assert view["handoff"] is None or view["handoff"]["group"] is None
+
+
 def test_guard_counted(client: TestClient) -> None:
     """
     守る指標の数える量の問いが 7 の節に意思決定の型で絞った選択肢で出て,
