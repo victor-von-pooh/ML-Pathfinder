@@ -240,6 +240,82 @@ function EnvRow({ problem, onJump }: { problem: Problem; onJump?: (questionId: s
   )
 }
 
+/**
+ * 並べ方 (並べるで学習するときだけ). 利用者ごとに上位何件を並べるかと, 反応の表の列の役割を
+ * 問いの言葉で出す (列の名前だけでは, どの列を何に使うかが分からないため)
+ */
+function RankRow({ problem }: { problem: Problem }) {
+  const rank = problem.handoff?.rank
+  if (!rank) return null
+  const rows: [string, string | null, string][] = [
+    ['利用者の列', rank.user, '利用者ごとに品物を並べる'],
+    ['品物の列', rank.item, '並べる品物'],
+    ['反応の時刻の列', rank.time, '古い反応で学び, 新しい反応で確かめる'],
+    ['反応の強さの列', rank.reaction, '0 より大きい行だけを反応とみなす'],
+  ]
+  return (
+    <div>
+      <dt className="mb-1 text-xs font-medium text-ink-2">並べ方 (データの分析, 学習, 評価)</dt>
+      <dd className="flex flex-col gap-1">
+        <span>
+          {rank.k !== null
+            ? `利用者ごとに上位 ${rank.k} 件を並べる (並べる件数 K. Recall@K と NDCG もこの K で数える)`
+            : '並べる件数 (K) はまだ答えていません'}
+        </span>
+        {rows.map(([name, value, role]) =>
+          value ? (
+            <span key={name} className="flex flex-wrap items-center gap-1">
+              {name} <Code>{value}</Code> ({role})
+            </span>
+          ) : name === '反応の強さの列' ? (
+            <span key={name}>
+              {name}: <span className="text-ink-3">無し (全ての行を反応とみなす)</span>
+            </span>
+          ) : null,
+        )}
+      </dd>
+    </div>
+  )
+}
+
+/**
+ * 推論の段階のたどり直しで数える守る指標 (列の予測で名前を答えたときだけ). 数える量は
+ * 名前でなく選択肢の言葉 (説明) で出す (名前だけでは何を数えるか分からないため)
+ */
+function GuardRow({ problem }: { problem: Problem }) {
+  const guard = problem.handoff?.inference.guard
+  if (!guard) return null
+  const question = problem.questions.find((q) => q.id === 'issue.guard.counted')
+  // 今の意思決定の型に合う選択肢 (ML-Quest が絞ったもの) から, 問いが要るときだけ探す
+  const label = (value: string | null | undefined) =>
+    question?.applies && value
+      ? (question.choices.find((choice) => choice.value === value)?.label ?? null)
+      : null
+  const counted = guard.counted ? (label(guard.counted) ?? guard.counted) : null
+  // 指さないと答えたときは, その言葉 (課題の場で数える) を出す
+  const none = !guard.counted && question?.value === 'none' ? label('none') : null
+  const better =
+    guard.better === 'lower'
+      ? '小さいほど良い'
+      : guard.better === 'higher'
+        ? '大きいほど良い'
+        : null
+  return (
+    <span className="flex flex-col gap-1">
+      <span>
+        守る指標: {guard.name}
+        {better && ` (${better})`}
+        {guard.line !== null && `. 守る線は ${guard.line}${guard.unit ? ` (${guard.unit})` : ''}`}
+      </span>
+      {counted ? (
+        <span>たどり直しで数える量: {counted}</span>
+      ) : (
+        none && <span>たどり直しで数える量: {none}</span>
+      )}
+    </span>
+  )
+}
+
 /** 要る機能の名前 (ML-Quest の FEATURES の見出し. 入れ方は画面の上のカード) */
 function RequiresRow({ problem }: { problem: Problem }) {
   const names = problem.handoff?.requires ?? []
@@ -288,7 +364,10 @@ function ProjectRow({ problem }: { problem: Problem }) {
   )
 }
 
-/** 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループ, 画像と表の生成は分割を渡す) */
+/**
+ * 列の予測でない受け持ちの値 (目的の列と意思決定は渡さない. ファイルの組は分割とグループ, 画像と表の
+ * 生成は分割, 並べるは分割と反応の時刻の列と並べ方を渡す)
+ */
 function PartHandoff({
   problem,
   splits,
@@ -352,6 +431,12 @@ function PartHandoff({
             {data.split && (
               <span>
                 分割は{shortLabel(splits, data.split)}
+                {handoff.rank && data.time_column && (
+                  <>
+                    {' '}
+                    (反応の時刻の列 <Code>{data.time_column}</Code> の順)
+                  </>
+                )}
                 {data.groups && Object.keys(data.groups).length > 0 && (
                   <>
                     {' '}
@@ -363,7 +448,8 @@ function PartHandoff({
             )}
             <span className="text-xs text-ink-2">
               目的の列と使う列は列の予測だけで渡します. ファイルの組 (領域, 点群) は,
-              データの分析で書き戻した分割とグループを, 画像と表の生成は分割を渡します
+              データの分析で書き戻した分割とグループを, 画像と表の生成は分割を, 並べるは分割と
+              反応の時刻の列を渡します
             </span>
           </dd>
         </div>
@@ -382,6 +468,7 @@ function PartHandoff({
             )}
           </dd>
         </div>
+        <RankRow problem={problem} />
         <TrainingRow problem={problem} />
         <RequiresRow problem={problem} />
         <EnvRow problem={problem} onJump={onJump} />
@@ -392,7 +479,15 @@ function PartHandoff({
         ) : (
           <div>
             <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
-            <dd>意思決定の材料は作りません (列の予測だけ)</dd>
+            <dd className="flex flex-col gap-1">
+              <span>意思決定の材料は作りません (列の予測だけ)</span>
+              {handoff.rank && (
+                <span>
+                  並べるの骨組みは推論の一式を作りません (学習した重みと, 利用者と品物の番号の表が
+                  実験に残ります)
+                </span>
+              )}
+            </dd>
           </div>
         )}
       </dl>
@@ -530,6 +625,7 @@ export function HandoffCard({
             {inference.horizon !== null && inference.horizon !== undefined && (
               <span>{inference.horizon} 期先まで予測する</span>
             )}
+            <GuardRow problem={problem} />
           </dd>
         </div>
       </dl>

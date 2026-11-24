@@ -136,6 +136,31 @@ export interface Policy {
   env_id: string | null
 }
 
+/** 並べるの反応の表の列と並べる件数 (並べるで学習するときだけ. ML-Quest の rank_of) */
+export interface Rank {
+  user: string | null
+  item: string | null
+  time: string | null
+  /** 反応の強さの列 (答えていなければ null. 全ての行を反応とみなす) */
+  reaction: string | null
+  /** 利用者ごとに並べる件数 (Recall@K と NDCG の K) */
+  k: number | null
+}
+
+/** 推論の段階のたどり直しで数える守る指標 (列の予測で, 名前を答えたときだけ. ML-Quest の guard_of) */
+export interface Guard {
+  name: string
+  unit: string | null
+  /** lower (小さいほど良い) か higher */
+  better: string | null
+  /** 守る線 */
+  line: number | null
+  /** 測り方 (文) */
+  measure: string | null
+  /** たどり直しで数える量の名前 (ML-Inference の GUARD_COUNTS. 指さないか答えていなければ null) */
+  counted?: string | null
+}
+
 /** 要る機能の入れ方 (ML-Found の登録簿 describe_requirements から) */
 export interface FeatureInstall {
   /** pip で入るか, 公式の手順に従うか */
@@ -207,6 +232,8 @@ export interface Handoff {
     decision: Decision | null
     conclusion: Record<string, unknown>
     horizon: number | null
+    /** 守る指標 (列の予測でなければ null) */
+    guard?: Guard | null
     /** 既製のモデルをそのまま使うときの一式づくりの値 (使わなければ null) */
     ready: ReadyModel | null
   }
@@ -214,6 +241,8 @@ export interface Handoff {
   requires: string[]
   /** 方策の守り (方策でなければ null) */
   policy: Policy | null
+  /** 並べるの反応の表の列と件数 (並べるで学習しなければ null) */
+  rank?: Rank | null
   /** 書き出したプロジェクト (書き出していなければ path は null) */
   project?: { path: string | null }
 }
@@ -253,8 +282,8 @@ export interface Problem {
   ready: boolean
   /**
    * 学習のプロジェクトの骨組みを組めるか (機械学習を使い, 骨組みを組めない直すところが無く,
-   * 列の予測か, 予測するの画像の領域と点群で, 指標がその他でなく, 入れたデータセットが受け持ちに
-   * 合う. 決まりは ML-Quest の project_error. 受け渡せるかは条件にしない)
+   * ML-Quest が骨組みを書ける受け持ちと答え. 決まりは ML-Quest の project_error だけが持ち,
+   * 画面は写さない. 受け渡せるかは条件にしない)
    */
   exportable: boolean
   /** 骨組みを組めない理由 (ML-Quest の project_error の文) */
