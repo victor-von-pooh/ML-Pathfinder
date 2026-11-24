@@ -378,7 +378,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   人気順と比べる
                 </li>
                 <li>
-                  推論の一式は作らない. 学習した重みと, 利用者と品物の番号の表が実験に残る
+                  定義の出力に利用者の埋め込みと品物の埋め込みを持ち, 点数がその内積の定数倍なら,
+                  学習の後に実験の inference/ に推論の一式を作るので, ML-Provide に登録して
+                  推論する. 仮のモデルや合わない定義では作らず, 学習の記録 train.log に理由が出る
                   {write.variables?.accept &&
                     '. README.md の最後の一覧を直すまで問題の設定はつながない'}
                 </li>
