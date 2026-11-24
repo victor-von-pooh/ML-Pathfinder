@@ -227,9 +227,7 @@ describe('ProjectDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
     expect(await screen.findByText(/群を作る表 \(1 行が 1 つの対象/)).toBeInTheDocument()
     expect(screen.getByText(/contrastive_encoder/)).toBeInTheDocument()
-    expect(screen.getByText(/群の安定性 \(作り直した群と元の群の一致\)/)).toHaveTextContent(
-      '群の要約',
-    )
+    expect(screen.getByText(/群のまとまり \(大きいほど良い\)/)).toHaveTextContent('群の要約')
     expect(screen.getByText(/推論の一式は作らない/)).toHaveTextContent(
       'README.md の最後の一覧を直すまで問題の設定はつながない',
     )
