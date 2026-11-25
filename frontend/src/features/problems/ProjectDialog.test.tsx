@@ -258,7 +258,7 @@ describe('ProjectDialog', () => {
       target: { value: '/x' },
     })
     fireEvent.click(screen.getByRole('button', { name: '書き出す' }))
-    expect(await screen.findByText(/異常の検知の表を outputs\/dataset/)).toHaveTextContent(
+    expect(await screen.findByText(/異常の検知の表をデータセットの書き出し先/)).toHaveTextContent(
       '学習用は正常の行だけ',
     )
     expect(screen.getByText(/tabular_autoencoder/)).toBeInTheDocument()

@@ -474,7 +474,8 @@ function PartHandoff({
           <dd className="flex flex-col gap-1">
             {data.source ? (
               <span>
-                データ <Code>{data.source.source}</Code> (後ろの段階も同じ場所を同じ読み方で開く)
+                データ <Code>{data.source.source}</Code> (データの分析から推論までのアプリも,
+                写したこのファイルを同じ読み方で開く)
               </span>
             ) : (
               <span className="text-ink-3">データは入れていません</span>
@@ -626,7 +627,8 @@ function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[
             </span>
             {data.source ? (
               <span>
-                データ <Code>{data.source.source}</Code> (後ろの段階も同じ場所を同じ読み方で開く)
+                データ <Code>{data.source.source}</Code> (データの分析から推論までのアプリも,
+                写したこのファイルを同じ読み方で開く)
               </span>
             ) : (
               <span className="text-ink-3">データは入れていません</span>
@@ -786,7 +788,8 @@ export function HandoffCard({
             </span>
             {data.source && (
               <span>
-                データ <Code>{data.source.source}</Code> (後ろの段階も同じ場所を同じ読み方で開く)
+                データ <Code>{data.source.source}</Code> (データの分析から推論までのアプリも,
+                写したこのファイルを同じ読み方で開く)
               </span>
             )}
           </dd>

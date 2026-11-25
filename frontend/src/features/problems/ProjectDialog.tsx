@@ -97,7 +97,7 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 方策は, 列の予測と既定の名前と次にすることが違う
+  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 方策の, 列の予測と違う既定の名前と次にすること
   const type = skeletonType(problem)
   // 異常の検知の度合いの決め方と正解の出どころ (次にすることの出し分け. 距離は学習しない)
   const distance = answerOf(problem, 'ml.parts.0.anomaly.score') === 'distance'
@@ -432,10 +432,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
             ) : type === 'anomaly' ? (
               <ol className="list-decimal pl-5 text-xs">
                 <li>
-                  ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 異常の検知の表を
-                  outputs/dataset に書き出す. 学習用は正常の行だけで,
-                  異常の行は検証用とテスト用に入る. 欠けた値と 種類の列は前処理で無くす
-                  (表を入れていれば data/ に写してある)
+                  {
+                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 異常の検知の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 学習用は正常の行だけで, 異常の行は検証用とテスト用に入る. 欠けた値と種類の列は前処理で無くす (表を入れていれば data/ に写してある)'
+                  }
                 </li>
                 <li>
                   {distance
@@ -453,7 +452,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   {!distance && ' (仮のモデルでは作らない)'}. 推論の 1 回で,
                   度合いの高い順に人が確かめる件数の上限まで人の確認に回す
                   {write.variables?.accept &&
-                    '. inference/ は登録できるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
+                    '. 一式は ML-Provide に登録して使えるが, 書き出した README.md の最後に残した「直すところ」を問題の設定で直すまで, 一式に問題の設定 (件数の上限など) はつながらない'}
                 </li>
               </ol>
             ) : type === 'items' ? (

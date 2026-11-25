@@ -1361,7 +1361,7 @@ test('異常の検知と画面で答え, センサの表を入れると, 列と�
 
   // 書き出すと, 異常の検知の手順と, 入れた表の写しができる
   const target = await exportProject(page, 'anomaly-project', [
-    '異常の検知の表を outputs/dataset',
+    '異常の検知の表をデータセットの書き出し先',
     'tabular_autoencoder',
     '上位 K 件の適合率と PR-AUC',
     '異常の度合いの一式',
