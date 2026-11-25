@@ -237,6 +237,60 @@ describe('ProjectDialog', () => {
     expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
   })
 
+  it('異常の検知は, 正解の有る無しと度合いの決め方に合う次にすることと実験の名前を出す', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'predict' }
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'scratch' }
+    const kind: Question = { ...KIND, value: 'anomaly' }
+    const source: Question = { ...KIND, id: 'ml.parts.0.target.source', value: 'few' }
+    const score: Question = { ...KIND, id: 'ml.parts.0.anomaly.score', value: 'autoencoder' }
+    const problem = problemWith([])
+    const { unmount } = renderDialog({
+      ...problem,
+      questions: [kind, role, method, source, score, OWNER],
+    })
+    expect(screen.getByText(/受け持ちと度合いの決め方から/)).toBeInTheDocument()
+    expect(screen.getByText(/異常の検知の表とモデルの定義を置いて学習します/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '書き出す' }))
+    expect(await screen.findByText(/異常の検知の表を outputs\/dataset/)).toHaveTextContent(
+      '学習用は正常の行だけ',
+    )
+    expect(screen.getByText(/tabular_autoencoder/)).toBeInTheDocument()
+    expect(screen.getByText(/上位 K 件の適合率と PR-AUC/)).toBeInTheDocument()
+    expect(screen.getByText(/異常の度合いの一式/)).toHaveTextContent('仮のモデルでは作らない')
+    expect(screen.getByText(/異常の度合いの一式/)).toHaveTextContent('件数の上限まで人の確認')
+    expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
+    unmount()
+
+    // 正解が無く距離なら, 学習せず, 度合いの分布と上位の行の要約で見る
+    renderDialog({
+      ...problem,
+      questions: [
+        kind,
+        role,
+        method,
+        { ...source, value: 'none' },
+        { ...score, value: 'distance' },
+        OWNER,
+      ],
+    })
+    expect(screen.getByText(/度合いを数えます \(学習はしません\)/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '書き出す' }))
+    expect(await screen.findByText(/モデルの定義は要らない/)).toBeInTheDocument()
+    expect(screen.getByText(/度合いの分布と上位 K 行の要約/)).toBeInTheDocument()
+    expect(screen.queryByText(/tabular_autoencoder/)).toBeNull()
+    expect(screen.getByText(/異常の度合いの一式/)).not.toHaveTextContent('仮のモデル')
+  })
+
   it('まとめるで既製のモデルをそのまま使う答えは, まとめるの説明にしない', () => {
     const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'group' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }

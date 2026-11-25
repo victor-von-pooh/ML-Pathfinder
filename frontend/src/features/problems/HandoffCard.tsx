@@ -559,6 +559,155 @@ function PartHandoff({
   )
 }
 
+/**
+ * 異常の検知の値 (受け渡しの anomaly があるときだけ). 列の予測の欄と分け, 度合いの決め方, 件数の
+ * 上限と K, 正解の有る無しで変わる評価と, 件数の上限で回す振り分けを言葉で出す (度合いは確率で
+ * ないので, 列の予測の振り分けと回し方が違うため)
+ */
+function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[] }) {
+  const handoff = problem.handoff
+  const anomaly = handoff?.anomaly
+  if (!handoff || !anomaly) return null
+  const { data, model, inference } = handoff
+  // 度合いの決め方は今の答えに合う選択肢の言葉 (問いが要るときだけ. 引けなければ値のまま)
+  const question = problem.questions.find((q) => q.id === `${PART}.anomaly.score`)
+  const score =
+    question?.applies && anomaly.score
+      ? (question.choices.find((choice) => choice.value === anomaly.score)?.label.split(' (')[0] ??
+        anomaly.score)
+      : anomaly.score
+  const distance = anomaly.score === 'distance'
+  const labeled = anomaly.label !== null
+  const decision = inference.decision
+  const triage = choicesOf(problem, 'action.decision').find((choice) => choice.value === 'triage')
+  return (
+    <Card title="後ろの段階に渡す値">
+      <dl className="flex flex-col gap-3 text-sm">
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">機械学習の受け持ち</dt>
+          <dd className="flex flex-col gap-1">
+            <span>受け持ち: {partLabel(problem, 'role', handoff.part.role)}</span>
+            <span>正解の種類: {partLabel(problem, 'target.kind', handoff.part.target_kind)}</span>
+            <span>
+              正解の出どころ: {partLabel(problem, 'target.source', handoff.part.target_source)}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dd className="flex flex-col gap-1">
+            {labeled ? (
+              <span className="flex flex-wrap items-center gap-1">
+                異常の正解の列 <Code>{anomaly.label ?? ''}</Code> (正解の欠けた行は正常と見なす)
+              </span>
+            ) : (
+              <span>
+                異常の正解の列: <span className="text-ink-3">無し (全ての行を正常と見なす)</span>
+              </span>
+            )}
+            {anomaly.id ? (
+              <span className="flex flex-wrap items-center gap-1">
+                行の id の列 <Code>{anomaly.id}</Code> (人が確かめた結果の記録が 1 行を指す.
+                度合いには使わない)
+              </span>
+            ) : (
+              <span>
+                行の id の列: <span className="text-ink-3">無し (行の位置で指す)</span>
+              </span>
+            )}
+            {data.split && (
+              <span>分割は{shortLabel(splits, data.split)} (学習用は正常の行だけ)</span>
+            )}
+            <span className="flex flex-wrap items-center gap-1">
+              度合いに使う列 <Names names={anomaly.columns} />
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              除く列 <Names names={data.drop} />
+            </span>
+            {data.source ? (
+              <span>
+                データ <Code>{data.source.source}</Code> (後ろの段階も同じ場所を同じ読み方で開く)
+              </span>
+            ) : (
+              <span className="text-ink-3">データは入れていません</span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            異常の度合い (データの分析, 学習, 評価)
+          </dt>
+          <dd className="flex flex-col gap-1">
+            <span>
+              度合いの決め方: {score ?? <span className="text-ink-3">まだ答えていません</span>}{' '}
+              (大きいほど異常)
+            </span>
+            <span>
+              {anomaly.capacity !== null
+                ? `人が 1 回に確かめる件数の上限は ${anomaly.capacity} 件 (守る指標)`
+                : '人が 1 回に確かめる件数の上限はまだ答えていません'}
+              {anomaly.k !== null && `. 評価の上位 K 件の K は ${anomaly.k}`}
+            </span>
+            {distance && (
+              <span className="text-xs text-ink-2">
+                距離は学習用の正常の行の中心と散らばりを数えるだけで, 学習の繰り返しはありません
+              </span>
+            )}
+            <span className="text-xs text-ink-2">
+              {labeled
+                ? '評価は, 異常の行のある分割で上位 K 件の適合率と PR-AUC を数えます (異常の割合が小さいと, 上位 K 件の適合率は低く出ます)'
+                : '正解が無いので当たり具合は数えず, 評価は度合いの分布と上位 K 行の要約 (行の id, 度合い, 最も外れた列) で見ます'}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            モデルの作成 (ML-CreateArchitecture)
+          </dt>
+          <dd className="flex flex-col gap-1">
+            {distance ? (
+              'モデルは作りません (距離に基づく度合いは学習しないため)'
+            ) : (
+              <>
+                <ModelExample problem={problem} />
+                {model.outputs !== null && (
+                  <span>
+                    出力の大きさ {model.outputs} (度合いに使う列の数. 入力と同じ幅の再構成を出す)
+                  </span>
+                )}
+              </>
+            )}
+          </dd>
+        </div>
+        <TrainingRow problem={problem} />
+        <RequiresRow problem={problem} />
+        <ProjectRow problem={problem} />
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+          <dd className="flex flex-col gap-1">
+            {decision && (
+              <span className="flex flex-wrap items-center gap-1">
+                意思決定: {triage?.label.split(' (')[0] ?? decision.type}
+                {decision.capacity !== undefined && (
+                  <Code>{`件数の上限: ${String(decision.capacity)}`}</Code>
+                )}
+              </span>
+            )}
+            <span>
+              度合いの高い順に, 件数の上限まで人の確認に回します (確率としきい値でなく,
+              件数の上限で回す)
+            </span>
+            <span>
+              学習の後に, 異常の度合いの一式を実験の inference/ に作ります
+              {!distance && ' (仮のモデルでは作らない)'}
+            </span>
+          </dd>
+        </div>
+      </dl>
+    </Card>
+  )
+}
+
 /** 後ろの段階ごとに, 各段階の画面で選ぶ値 */
 export function HandoffCard({
   problem,
@@ -584,6 +733,8 @@ export function HandoffCard({
         </p>
       </Card>
     )
+  // 異常の検知は, タスクがあっても列の予測と別の欄
+  if (handoff.anomaly) return <AnomalyHandoff problem={problem} splits={splits} />
   // 列の予測でなければ, タスクが無い (受け持ちごとの表示)
   if (handoff.data.task === null)
     return <PartHandoff problem={problem} splits={splits} onJump={onJump} />
