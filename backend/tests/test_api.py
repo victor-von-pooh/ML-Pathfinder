@@ -228,7 +228,7 @@ def test_example_handoff_and_project(
 
     # 機械学習を使わない見本は出口 (受け渡せない)
     exit_view = client.post("/api/problems",
-                            json={"example": examples[3]}).json()
+                            json={"example": examples[-1]}).json()
     assert exit_view["finished"] is True and exit_view["handoff"] is None
     refused = client.post(f"/api/problems/{exit_view['id']}/project",
                           json={"path": str(tmp_path / "x")})
@@ -1076,13 +1076,135 @@ def test_group(client: TestClient, tmp_path: Path) -> None:
     assert f"{part}.group.k" in [f["id"] for f in view["findings"]
                                  if f["level"] == "error"]
 
-    # 既製のモデルをそのまま使うと群の問いは要らなくなり, 渡さない
+    # 既製のモデルをそのまま使う場合の, 要らなくなる群を作る列と行を
+    # 見分ける列 (群の数と安定性の数え方は残る) と, 渡らない受け渡しの群
     view = client.put(f"{url}/answers", json={"id": f"{part}.method",
                                              "value": "pretrained"}).json()
     applies = {q["id"]: q["applies"] for q in view["questions"]}
     assert not any(applies[f"{part}.group.{key}"]
-                   for key in ("columns", "id", "k", "stability"))
+                   for key in ("columns", "id"))
+    assert all(applies[f"{part}.group.{key}"] for key in ("k", "stability"))
     assert view["handoff"] is None or view["handoff"]["group"] is None
+
+
+def test_anomaly(client: TestClient, tmp_path: Path) -> None:
+    """
+    予測するで正解の種類が異常のときに, 異常の検知の列と度合いの決め方と
+    件数の上限の問いが出て, 表を入れると受け渡しに異常の検知の値と件数の
+    上限の振り分けが渡り, 異常の検知の骨組みを書き出せることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題の受け持ちの, 異常の検知での答え直し (正解は少し)
+    part = ml_quest.PART
+    view = client.post("/api/problems",
+                       json={"example": "解約の引き止め"}).json()
+    url = f"/api/problems/{view['id']}"
+    for key, value in [("role", "predict"), ("unit", "row"),
+                       ("output", "value"), ("target.source", "few"),
+                       ("method", "scratch"), ("target.kind", "anomaly"),
+                       ("what", "機械の異常の度合い"), ("item", "1 回の計測"),
+                       ("baseline", "決まった値を超えたら")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # ML-Quest の並びのままの 5 の節の異常の検知の問い 4 つと 7 の節の
+    # 件数の上限. 出ない列の予測の問いと損得の問い
+    view = client.get(url).json()
+    shown = [q for q in view["questions"] if q["applies"]]
+    anomaly = [(q["id"], q["kind"], q["required"], q["section"])
+               for q in shown if q["id"].startswith(f"{part}.anomaly.")]
+    assert anomaly == [
+        (f"{part}.anomaly.label", "column", True, 5),
+        (f"{part}.anomaly.id", "column", False, 5),
+        (f"{part}.anomaly.columns", "columns", True, 5),
+        (f"{part}.anomaly.score", "choice", True, 5),
+        (f"{part}.anomaly.capacity", "number", True, 7),
+    ]
+    ids = [q["id"] for q in shown]
+    assert f"{part}.target.column" not in ids and f"{part}.task" not in ids
+    assert "action.decision" not in ids
+
+    # センサの表の取り込みと, 列, 度合いの決め方, 件数の上限 (画面は文で
+    # 送る) と指標の答え
+    rows = [{"reading_id": f"r{i}", "temp": 20 + i % 5,
+             "vibration": 0.1 * (i % 7), "memo": "x",
+             "is_anomaly": 1 if i % 40 == 0 else None}
+            for i in range(200)]
+    pd.DataFrame(rows).to_csv(tmp_path / "sensors.csv", index=False)
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "sensors.csv")}).json()
+    for key, value in [("anomaly.label", "is_anomaly"),
+                       ("anomaly.id", "reading_id"),
+                       ("anomaly.columns", ["temp", "vibration"]),
+                       ("anomaly.score", "autoencoder"),
+                       ("anomaly.capacity", "5"),
+                       ("evaluation.metric", "average_precision"),
+                       ("evaluation.link", "上位に異常が多いほど見逃しが減る")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+    view = client.get(url).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [], errors
+    metric = next(q for q in view["questions"]
+                  if q["id"] == f"{part}.evaluation.metric")
+    assert {"average_precision", "precision_at_k", "loss"} <= {
+        c["value"] for c in metric["choices"]}
+
+    # 受け渡しの異常の検知の値と, 件数の上限だけの振り分け
+    handoff = view["handoff"]
+    assert handoff["anomaly"] == {
+        "score": "autoencoder", "label": "is_anomaly", "id": "reading_id",
+        "columns": ["temp", "vibration"], "capacity": 5, "k": 5,
+    }
+    assert handoff["data"]["task"] == "anomaly"
+    assert handoff["data"]["drop"] == ["memo"]
+    assert handoff["inference"]["decision"] == {"type": "triage",
+                                                "capacity": 5}
+    assert handoff["inference"]["guard"] is None
+    assert handoff["model"]["example"] == "tabular_autoencoder"
+    assert handoff["training"]["monitor"] == "valid/average_precision"
+
+    # 異常の検知の骨組みの書き出しと, data/ への入れた表の写し
+    assert view["exportable"] is True and view["export_error"] is None
+    target = tmp_path / "anomaly"
+    written = client.post(f"{url}/project", json={"path": str(target)})
+    assert written.status_code == 200, written.json()
+    assert {"train.py", "README.md", "configs/default/train.yaml",
+            "data/sensors.csv"} <= set(written.json()["files"])
+    config = yaml.safe_load((target / "configs" / "default" / "train.yaml")
+                            .read_text(encoding="utf-8"))
+    assert config["anomaly"]["capacity"] == 5
+    assert config["anomaly"]["score"] == "autoencoder"
+    assert config["experiment"]["name"] == "anomaly_autoencoder"
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "anomaly_scores.csv" in readme
+
+    # 正解が無く距離の場合の, 問わない正解の列と指標と, 渡らない学習の値
+    for key, value in [("target.source", "none"),
+                       ("anomaly.score", "distance")]:
+        view = client.put(f"{url}/answers",
+                          json={"id": f"{part}.{key}", "value": value}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert not applies[f"{part}.anomaly.label"]
+    assert not applies[f"{part}.evaluation.metric"]
+    handoff = view["handoff"]
+    assert handoff is not None, view["handoff_error"]
+    assert handoff["anomaly"]["label"] is None
+    assert handoff["training"]["monitor"] is None
+    assert handoff["model"]["example"] is None
+    assert view["exportable"] is True, view["export_error"]
 
 
 def test_guard_counted(client: TestClient) -> None:

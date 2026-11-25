@@ -1238,6 +1238,151 @@ test('まとめると画面で答え, 表を入れると, 群の列と数と数�
   expect(config).toMatch(/stability: "?sample"?/)
 })
 
+test('異常の検知と画面で答え, センサの表を入れると, 列と度合いと件数の上限を選べて異常の検知の骨組みを書き出す', async ({
+  page,
+}) => {
+  // 正常の行が多く, 異常の行にだけ印のあるセンサの表
+  const rows = ['reading_id,temp,vibration,is_anomaly']
+  for (let index = 0; index < 200; index++)
+    rows.push(`r${index},${20 + (index % 5)},${(index % 7) / 10},${index % 40 === 0 ? 1 : ''}`)
+  const file = `${process.cwd()}/e2e/.work/sensors.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('機械の異常')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '機械の異常' })).toBeVisible()
+
+  // 受け持ちに依らない節 (1 から 4, 9, 10) は API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['issue.owner', '保全の係'],
+    ['issue.pain', '機械の故障の兆しを見逃す'],
+    ['issue.current', '決まった値を超えたら点検する'],
+    ['issue.kpi.name', '見逃した故障'],
+    ['issue.kpi.unit', '件 / 月'],
+    ['issue.kpi.better', 'lower'],
+    [
+      'decomposition',
+      [{ cause: '兆しが値の組み合わせに出る', lever: '度合いの高い順に点検する', ml: true }],
+    ],
+    ['action.who', '保全の係'],
+    ['action.when', '毎朝'],
+    ['action.what', '点検する機械'],
+    ['ml.reason', '値の組み合わせの外れは決まりで書けない'],
+    ['verification.method', 'backtest'],
+    ['verification.backtest', '過去の記録で上位の行に故障が多いかを見る'],
+    ['verification.success', '見逃した故障が半分になる'],
+    ['operation.review', '月に 1 回'],
+    ['operation.approver', '保全の長'],
+    ['operation.stop', '上位の行に故障がほとんど無くなったら'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: key, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 5 の節で, 予測するで正解の種類を異常, 正解は少しと画面で答える
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await choose(page, '機械学習を使いますか', 'はい')
+  await choose(page, '機械学習は何を受け持ちますか', /^予測する/)
+  await choose(page, '1 件の単位は', /^行/)
+  await choose(page, '出力の形は', /^値$/)
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^少し/)
+  await choose(page, 'どう作りますか (作り方)', /^一から学習/)
+  await choose(page, '正解 (出力) の種類は', /^異常か正常か/)
+  await write(page, '何を出させますか', '機械の異常の度合い')
+  await write(page, '1 件は何ですか', '1 回の計測')
+  await write(page, '機械学習を使わない比べる相手は', '決まった値を超えたら点検する')
+  // 列の予測の問いは出ない
+  await expect(page.getByText('目的の列は', { exact: true })).toHaveCount(0)
+
+  // 手元のデータにセンサの表を選んで入れる
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const picker = page.getByRole('dialog')
+  await picker.getByLabel('パス').fill(file)
+  await picker.getByRole('button', { name: '移動' }).click()
+  await picker.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByText('200 行, 4 列')).toBeVisible({ timeout: 20_000 })
+
+  // 正解の列, 行の id の列, 度合いに使う列, 度合いの決め方を答える
+  await page.getByLabel('異常の正解の列は', { exact: true }).selectOption('is_anomaly')
+  await expect(page.getByText('「異常の正解の列は」を保存しました')).toBeVisible()
+  await page.getByLabel('行の id の列は (あれば)', { exact: true }).selectOption('reading_id')
+  await expect(page.getByText('「行の id の列は (あれば)」を保存しました')).toBeVisible()
+  const columns = page.getByRole('group', { name: '異常の度合いを出すのに使う列は', exact: true })
+  for (const column of ['temp', 'vibration']) {
+    await columns.getByLabel(column, { exact: true }).click()
+    await expect(columns.getByLabel(column, { exact: true })).toBeChecked()
+  }
+  await choose(page, '異常の度合いを, どう出しますか', /^正常の行だけで学ぶ自己符号化器/)
+
+  // 7 の節で人が確かめる件数の上限を答え, 損得の問いは出ない
+  await nav.getByRole('button', { name: /^7\b/ }).click()
+  await write(page, '人が 1 回に確かめられる件数の上限は (守る指標)', '5')
+  await expect(page.getByText('行動の損得と制約は', { exact: true })).toHaveCount(0)
+
+  // 8 の節で PR-AUC (度合いの順の異常の当たり) を選ぶ
+  await nav.getByRole('button', { name: /^8\b/ }).click()
+  await choose(page, '最も良いモデルを何で選びますか', /^度合いの順の異常の当たり/)
+  await write(
+    page,
+    'その指標が良くなると, 課題の指標はどう良くなりますか',
+    '上位に異常が多いほど見逃しが減る',
+  )
+
+  // 確かめに直すところが無く, 書き出せる
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByText('直す', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
+
+  // 後ろの段階に渡す値に, 列, 度合いの決め方の言葉, 件数の上限, 評価, 振り分けが出る
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('正解の種類: 異常か正常か')
+  await expect(card.getByText(/^異常の正解の列/)).toHaveText(/is_anomaly/)
+  await expect(card.getByText(/^度合いに使う列/)).toHaveText(/temp\s*vibration/)
+  await expect(card.getByText(/度合いの決め方:/)).toContainText('自己符号化器の再構成の誤差')
+  await expect(card.getByText(/件数の上限は 5 件/)).toContainText('K は 5')
+  await expect(card.getByText(/上位 K 件の適合率と PR-AUC/)).toBeVisible()
+  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_autoencoder/)
+  await expect(card.getByText(/監視する指標/)).toHaveText(
+    /valid\/average_precision\s*\(度合いの順の異常の当たり\)/,
+  )
+  await expect(card.getByText(/^意思決定:/)).toContainText('振り分ける')
+  await expect(card.getByText(/度合いの高い順に, 件数の上限まで/)).toBeVisible()
+  await expect(card).not.toContainText(/目的の列/)
+
+  // 書き出すと, 異常の検知の手順と, 入れた表の写しができる
+  const target = await exportProject(page, 'anomaly-project', [
+    '異常の検知の表をデータセットの書き出し先',
+    'tabular_autoencoder',
+    '上位 K 件の適合率と PR-AUC',
+    '異常の度合いの一式',
+  ])
+  for (const name of ['train.py', 'README.md', 'configs/default/train.yaml', 'data/sensors.csv'])
+    expect(existsSync(`${target}/${name}`), name).toBe(true)
+  const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
+  expect(config).toContain('valid/average_precision')
+  expect(config).toContain('anomaly_autoencoder')
+
+  // 正解が無く距離にすると, 正解の列と指標の問いが消え, 分布と上位の行の要約で見る
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^無い$/)
+  await choose(page, '異常の度合いを, どう出しますか', /^学習用の正常の行の中心からの距離/)
+  await expect(page.getByText('異常の正解の列は', { exact: true })).toHaveCount(0)
+  await expect(card.getByText(/^異常の正解の列/)).toContainText('全ての行を正常と見なす')
+  await expect(card.getByText(/度合いの分布と上位 K 行の要約/)).toBeVisible()
+  await expect(card.getByText(/モデルは作りません/)).toBeVisible()
+  await expect(card.getByText(/監視する指標/)).toHaveCount(0)
+})
+
 test('守る指標の数える量は 7 の節に意思決定の型に合う選択肢で出て, 受け渡しに言葉で出る', async ({
   page,
 }) => {

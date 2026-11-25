@@ -159,6 +159,22 @@ export interface Group {
   stability: string | null
 }
 
+/** 異常の検知の列と度合いの決め方, 件数の上限 (異常の検知のときだけ. ML-Quest の受け渡しの anomaly) */
+export interface Anomaly {
+  /** 度合いの決め方 (問いの選択肢の値. autoencoder か distance) */
+  score: string | null
+  /** 異常の正解の列 (正解が無ければ null) */
+  label: string | null
+  /** 行の id の列 (答えていなければ null) */
+  id: string | null
+  /** 度合いに使う列の名前の並び */
+  columns: string[]
+  /** 人が 1 回に確かめる件数の上限 */
+  capacity: number | null
+  /** 評価の上位 K 件の K (件数の上限と同じ) */
+  k: number | null
+}
+
 /** 推論の段階のたどり直しで数える守る指標 (列の予測で, 名前を答えたときだけ. ML-Quest の guard_of) */
 export interface Guard {
   name: string
@@ -221,6 +237,10 @@ export interface Handoff {
     } | null
     /** 書き出したプロジェクトのデータセットの置き場 (絶対パス. 書き出していなければ null) */
     project_dataset?: string | null
+    /** 行の id の列 (異常の検知だけ. 答えていなければ null) */
+    id?: string | null
+    /** 正解の欠けた行の扱い (異常の検知で正解の列があれば normal) */
+    unlabeled?: string | null
   }
   model: {
     task: string | null
@@ -257,6 +277,8 @@ export interface Handoff {
   rank?: Rank | null
   /** まとめるの群を作る列, 群の数と安定性の数え方 (まとめるで学習しなければ null) */
   group?: Group | null
+  /** 異常の検知の列と度合い (異常の検知でなければ null) */
+  anomaly?: Anomaly | null
   /** 書き出したプロジェクト (書き出していなければ path は null) */
   project?: { path: string | null }
 }

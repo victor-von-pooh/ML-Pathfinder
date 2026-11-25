@@ -373,6 +373,128 @@ describe('HandoffCard', () => {
     expect(screen.queryByText(/守る指標を問いません/)).not.toBeInTheDocument()
   })
 
+  it('異常の検知は, 度合いの決め方の言葉, 件数の上限と K, 正解の有る無しの評価と振り分けを出す', () => {
+    const anomaly: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        unit: 'row',
+        output: 'value',
+        target_kind: 'anomaly',
+        target_source: 'few',
+        target_process: null,
+      },
+      data: {
+        ...POINT_CLOUD.data,
+        target: 'is_anomaly',
+        task: 'anomaly',
+        split: 'random',
+        known: ['temp', 'vibration'],
+        drop: ['memo'],
+        id: 'reading_id',
+        unlabeled: 'normal',
+      },
+      model: {
+        ...POINT_CLOUD.model,
+        target_kind: 'anomaly',
+        outputs: 2,
+        example: 'tabular_autoencoder',
+      },
+      training: {
+        metric: 'average_precision',
+        monitor: 'valid/average_precision',
+        mode: 'max',
+        role: 'predict',
+        target_kind: 'anomaly',
+      },
+      inference: {
+        decision: { type: 'triage', capacity: 20 },
+        conclusion: {},
+        horizon: null,
+        guard: null,
+        ready: null,
+      },
+      anomaly: {
+        score: 'autoencoder',
+        label: 'is_anomaly',
+        id: 'reading_id',
+        columns: ['temp', 'vibration'],
+        capacity: 20,
+        k: 20,
+      },
+    }
+    const score = choice('ml.parts.0.anomaly.score', 'autoencoder', [
+      ['autoencoder', '正常の行だけで学ぶ自己符号化器の再構成の誤差 (行ごとの二乗誤差の平均)'],
+      ['distance', '学習用の正常の行の中心からの距離 (Mahalanobis 距離. 学習しない)'],
+    ])
+    const questions = [
+      choice('ml.parts.0.role', 'predict', [['predict', '予測する (当てる)']]),
+      choice('ml.parts.0.target.kind', 'anomaly', [
+        ['anomaly', '異常か正常か (正常の行が多い表. 正解は無いか少しだけ)'],
+      ]),
+      choice('ml.parts.0.target.source', 'few', [
+        ['none', '無い'],
+        ['few', '少し (確かめの組だけ)'],
+      ]),
+      score,
+      { ...choice('action.decision', null, [['triage', '振り分ける (人が確かめる, 再検査)']]) },
+    ]
+    const { rerender } = render(
+      <HandoffCard problem={problemWith(anomaly, questions)} splits={SPLITS} />,
+    )
+    expect(screen.getByText('正解の種類: 異常か正常か')).toBeInTheDocument()
+    expect(screen.getByText(/^異常の正解の列/)).toHaveTextContent(
+      '異常の正解の列 is_anomaly (正解の欠けた行は正常と見なす)',
+    )
+    expect(screen.getByText(/^行の id の列/)).toHaveTextContent('reading_id')
+    expect(screen.getByText(/分割は無作為/)).toHaveTextContent('学習用は正常の行だけ')
+    expect(screen.getByText(/^度合いに使う列/)).toHaveTextContent(/temp\s*vibration/)
+    expect(screen.getByText(/度合いの決め方:/)).toHaveTextContent(
+      '度合いの決め方: 正常の行だけで学ぶ自己符号化器の再構成の誤差 (大きいほど異常)',
+    )
+    expect(screen.getByText(/件数の上限は 20 件/)).toHaveTextContent('K は 20')
+    expect(screen.getByText(/上位 K 件の適合率と PR-AUC/)).toBeInTheDocument()
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_autoencoder')
+    expect(screen.getByText(/出力の大きさ 2/)).toBeInTheDocument()
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent('valid/average_precision')
+    expect(screen.getByText(/^意思決定:/)).toHaveTextContent('意思決定: 振り分ける件数の上限: 20')
+    expect(screen.getByText(/度合いの高い順に, 件数の上限まで/)).toBeInTheDocument()
+    expect(screen.getByText(/異常の度合いの一式/)).toHaveTextContent('仮のモデルでは作らない')
+    // 列の予測の欄と守る指標は出さない
+    expect(screen.queryByText(/目的の列/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/守る指標:/)).not.toBeInTheDocument()
+    // 値の名前は出さない
+    expect(screen.queryByText(/\bautoencoder\b/)).not.toBeInTheDocument()
+
+    // 正解が無く距離なら, 全てを正常と見なし, 分布と上位の行の要約で見て, モデルと学習の欄は無い
+    rerender(
+      <HandoffCard
+        problem={problemWith(
+          {
+            ...anomaly,
+            part: { ...anomaly.part, target_source: 'none' },
+            data: { ...anomaly.data, target: null, unlabeled: null },
+            model: { ...anomaly.model, example: null },
+            training: { ...anomaly.training, metric: null, monitor: null, mode: null },
+            anomaly: { ...anomaly.anomaly!, score: 'distance', label: null, id: null },
+          },
+          [...questions.filter((q) => q !== score), { ...score, value: 'distance' }],
+        )}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^異常の正解の列/)).toHaveTextContent('無し (全ての行を正常と見なす)')
+    expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
+    expect(screen.getByText(/度合いの決め方:/)).toHaveTextContent(
+      '学習用の正常の行の中心からの距離',
+    )
+    expect(screen.getByText(/度合いの分布と上位 K 行の要約/)).toBeInTheDocument()
+    expect(screen.getByText(/学習の繰り返しはありません/)).toBeInTheDocument()
+    expect(screen.getByText(/モデルは作りません/)).toBeInTheDocument()
+    expect(screen.queryByText(/監視する指標/)).not.toBeInTheDocument()
+    expect(screen.getByText(/異常の度合いの一式/)).not.toHaveTextContent('仮のモデル')
+  })
+
   it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {
     const column: Handoff = {
       ...POINT_CLOUD,

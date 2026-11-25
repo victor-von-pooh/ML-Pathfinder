@@ -25,11 +25,11 @@ function answerOf(problem: Problem, id: string): string | null {
  * 学習せず, 推論の一式だけを作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
  * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 並べる
  * (並べるで既製のモデルをそのまま使わない), まとめる (まとめるで既製のモデルをそのまま使わない),
- * 他は列の予測
+ * 異常の検知 (予測するで正解の種類が異常), 他は列の予測
  */
 function skeletonType(
   problem: Problem,
-): 'column' | 'items' | 'generate' | 'table' | 'rank' | 'group' | 'policy' | 'ready' {
+): 'column' | 'items' | 'generate' | 'table' | 'rank' | 'group' | 'anomaly' | 'policy' | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
   // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
   const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
@@ -58,6 +58,8 @@ function skeletonType(
   )
     return 'group'
   const kind = answerOf(problem, 'ml.parts.0.target.kind')
+  // ML-Quest の is_anomaly_part と同じく, 予測するで正解の種類が異常 (既製のモデルは上で除く)
+  if (answerOf(problem, 'ml.parts.0.role') === 'predict' && kind === 'anomaly') return 'anomaly'
   if (answerOf(problem, 'ml.parts.0.role') === 'generate') {
     if (kind === 'image') return 'generate'
     if (kind === 'table') return 'table'
@@ -73,6 +75,7 @@ const DEFAULT_NAMES = {
   table: '正解の種類と受け持ち',
   rank: '品物の列と受け持ち',
   group: '受け持ちと群の数',
+  anomaly: '受け持ちと度合いの決め方',
   // 英字の後は空けて読む
   policy: '環境の登録名か env ',
   // 一式の名前は, 省略するとモデルと重みの名前から
@@ -94,8 +97,11 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 方策は, 列の予測と既定の名前と次にすることが違う
+  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 方策の, 列の予測と違う既定の名前と次にすること
   const type = skeletonType(problem)
+  // 異常の検知の度合いの決め方と正解の出どころ (次にすることの出し分け. 距離は学習しない)
+  const distance = answerOf(problem, 'ml.parts.0.anomaly.score') === 'distance'
+  const labeled = answerOf(problem, 'ml.parts.0.target.source') === 'few'
   // 方策の環境の登録名 (次にすることの環境の手順の出し分け)
   const envId = answerOf(problem, 'ml.parts.0.env_id')?.trim() || null
   const [path, setPath] = useState('')
@@ -163,7 +169,11 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 ? '反応の表とモデルの定義を置いて学習します.'
                 : type === 'group'
                   ? '群を作る表とモデルの定義を置いて学習します.'
-                  : 'データセットとモデルの定義を置いて学習します.'}
+                  : type === 'anomaly' && distance
+                    ? '異常の検知の表を置いて度合いを数えます (学習はしません).'
+                    : type === 'anomaly'
+                      ? '異常の検知の表とモデルの定義を置いて学習します.'
+                      : 'データセットとモデルの定義を置いて学習します.'}
           </>
         )}
       </p>
@@ -417,6 +427,32 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   列の符号化と群の中心が残り, その実験で新しい行を群に割り当てられる
                   {write.variables?.accept &&
                     '. README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
+              </ol>
+            ) : type === 'anomaly' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  {
+                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 異常の検知の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 学習用は正常の行だけで, 異常の行は検証用とテスト用に入る. 欠けた値と種類の列は前処理で無くす (表を入れていれば data/ に写してある)'
+                  }
+                </li>
+                <li>
+                  {distance
+                    ? 'モデルの定義は要らない (距離は学習用の正常の行の中心と散らばりを数えるだけ)'
+                    : 'ML-CreateArchitecture で行を縮めて戻す自己符号化器を組み, models/model.yaml に保存する. モデルの作成の画面で開ける例 tabular_autoencoder を, 列の数に合わせて使える (列の数は学習の記録 train.log の初めの行に出る). 定義が無いうちは仮のモデルで学習する'}
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かす.{' '}
+                  {labeled
+                    ? '異常の行のある分割で, 上位 K 件の適合率と PR-AUC を evaluations/ に書く'
+                    : '正解が無いので, 度合いの分布と上位 K 行の要約 (行の id, 度合い, 最も外れた列) を evaluations/ に書く'}
+                </li>
+                <li>
+                  学習の後に, 異常の度合いの一式を実験の inference/ に作る
+                  {!distance && ' (仮のモデルでは作らない)'}. 推論の 1 回で,
+                  度合いの高い順に人が確かめる件数の上限まで人の確認に回す
+                  {write.variables?.accept &&
+                    '. 一式は ML-Provide に登録して使えるが, 書き出した README.md の最後に残した「直すところ」を問題の設定で直すまで, 一式に問題の設定 (件数の上限など) はつながらない'}
                 </li>
               </ol>
             ) : type === 'items' ? (
