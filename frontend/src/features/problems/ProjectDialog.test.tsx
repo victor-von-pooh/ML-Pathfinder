@@ -499,11 +499,27 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/1\s*件の問いの待ち時間/)).toBeInTheDocument()
   })
 
-  it('まとめるで既製のモデルをそのまま使う答えは, まとめるの説明にしない', () => {
+  it('まとめるで既製のモデルをそのまま使う答えは, 既製の埋め込みの群分けの説明と次にすることを出す', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['bundle.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
     const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'group' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
-    renderDialog({ ...problemWith([]), questions: [{ ...KIND, applies: false }, role, method] })
+    renderDialog({
+      ...problemWith([]),
+      questions: [{ ...KIND, applies: false }, role, method, OWNER],
+    })
     expect(screen.queryByText(/受け持ちと群の数から/)).toBeNull()
+    expect(screen.getByText(/既製のモデルの埋め込みで写真を群に分け/)).toBeInTheDocument()
+    expect(screen.getByText(/モデルの名前と群の数から/)).toBeInTheDocument()
+    expect(screen.queryByText(/既製のモデルの推論の一式を作る骨組み/)).toBeNull()
+    expect(screen.getByRole('checkbox', { name: /bundle\.py/ })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), { target: { value: '/x' } })
+    fireEvent.click(screen.getByRole('button', { name: /書き出す/ }))
+    expect(await screen.findByText(/群の安定性と群の要約を/)).toBeInTheDocument()
+    expect(screen.getByText(/写真ごとの群と群の要約を見る/)).toBeInTheDocument()
   })
 
   it('既製のモデルは, 一式づくりの次にすることを出し, 学習の言葉を出さない', async () => {

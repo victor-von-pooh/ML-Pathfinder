@@ -1180,6 +1180,44 @@ describe('HandoffCard', () => {
     expect(screen.queryByText(/学習 \(ML-Found/)).not.toBeInTheDocument()
   })
 
+  it('既製の埋め込みの群分けは, 推論に群の数と安定性の数え方のまとめ方を出す', () => {
+    const handoff: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        role: 'group',
+        target_kind: null,
+        target_process: null,
+        method: 'pretrained',
+      },
+      training: { metric: null, monitor: null, mode: null, role: 'group', target_kind: null },
+      inference: {
+        decision: null,
+        conclusion: {},
+        horizon: null,
+        ready: {
+          library: 'torchvision',
+          model: 'resnet18',
+          weights: 'IMAGENET1K_V1',
+          sha256: 'ab12cd',
+        },
+      },
+    }
+    const questions = [
+      choice('ml.parts.0.role', 'group', [['group', 'まとめる']]),
+      { ...choice('ml.parts.0.group.k', 4, []), kind: 'number' as const },
+      choice('ml.parts.0.group.stability', 'seed', [['seed', '種を変えて作り直す']]),
+    ]
+    render(<HandoffCard problem={problemWith(handoff, questions)} />)
+    expect(
+      screen.getByText(
+        /写真を既製のモデルの埋め込みで 4 つの群に分ける \(群の安定性: 種を変えて作り直す\)/,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText('resnet18')).toBeInTheDocument()
+    expect(screen.queryByText(/学習 \(ML-Found/)).not.toBeInTheDocument()
+  })
+
   it('既製のモデルで hash が無ければ固定しないことを添える', () => {
     const handoff: Handoff = {
       ...POINT_CLOUD,

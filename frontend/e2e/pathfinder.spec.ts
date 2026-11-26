@@ -2009,3 +2009,30 @@ test('似た写真を探す見本は, 推論に検索の判断を出し, 検索�
   await expect(dialog.getByRole('status')).toContainText('bundle.py')
   await expect(dialog.getByText(/検索の一式を作る/)).toBeVisible()
 })
+
+// 既製の埋め込みの群分けの見本は, 推論にまとめ方を出し, 群分けの一式の骨組みを書き出す
+test('既製の埋め込みの群分けの見本は, 推論にまとめ方を出し, 群分けの一式の骨組みを書き出す', async ({
+  page,
+}) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '商品の写真の群分け (既製の埋め込み)' }).click()
+  await expect(
+    page.getByRole('heading', { name: '商品の写真の群分け (既製の埋め込み)' }),
+  ).toBeVisible()
+  await expect(page.getByText('監視する指標')).toHaveCount(0)
+  await expect(page.getByText('既製のモデルをそのまま使います')).toBeVisible()
+  await expect(page.getByText('resnet18', { exact: true })).toBeVisible()
+  await expect(
+    page.getByText(/写真を既製のモデルの埋め込みで 4 つの群に分ける \(群の安定性: /),
+  ).toBeVisible()
+
+  await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText(/既製のモデルの埋め込みで写真を群に分け/)).toBeVisible()
+  await dialog
+    .getByLabel('書き出すディレクトリ (無ければ作る)')
+    .fill(`${process.cwd()}/e2e/.work/ready-group-project`)
+  await dialog.getByRole('button', { name: '書き出す' }).click()
+  await expect(dialog.getByRole('status')).toContainText('bundle.py')
+  await expect(dialog.getByText(/写真ごとの群と群の要約を見る/)).toBeVisible()
+})
