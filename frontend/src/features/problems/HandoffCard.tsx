@@ -130,7 +130,7 @@ function ReadyRow({ problem }: { problem: Problem }) {
   const role = problem.questions.find((q) => q.id === `${PART}.role`)?.value
   const groupK = problem.questions.find((q) => q.id === `${PART}.group.k`)
   const stabilityQuestion = problem.questions.find((q) => q.id === `${PART}.group.stability`)
-  const readyGroup = role === 'group'
+  const readyGroup = role === 'group' && problem.handoff?.part.method === 'pretrained'
   const stabilityLabel =
     stabilityQuestion?.applies && typeof stabilityQuestion.value === 'string'
       ? (stabilityQuestion.choices.find((choice) => choice.value === stabilityQuestion.value)
@@ -175,8 +175,11 @@ function ReadyRow({ problem }: { problem: Problem }) {
           <>
             <span>
               まとめ方:{' '}
-              {groupK?.applies && typeof groupK.value === 'number'
-                ? `写真を既製のモデルの埋め込みで ${groupK.value} つの群に分ける`
+              {groupK?.applies &&
+              Number.isFinite(Number(groupK.value)) &&
+              groupK.value !== null &&
+              groupK.value !== ''
+                ? `写真を既製のモデルの埋め込みで ${Number(groupK.value)} つの群に分ける`
                 : '群の数はまだ答えていません'}
               {stabilityLabel && ` (群の安定性: ${stabilityLabel})`}
             </span>
