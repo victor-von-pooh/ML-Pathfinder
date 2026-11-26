@@ -50,8 +50,9 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
   // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 効果の見積もり, 値段を変える判断, 時間をまたぐ量の判断, 方策の, 列の予測と違う既定の名前と次にすること
-  // 骨組みの型は ML-Quest の skeleton_type (書き出せるのは機械学習を使うときだけなので, 無ければ列の予測)
-  const type = problem.skeleton_type ?? 'column'
+  // 骨組みの型は ML-Quest の skeleton_type (書き出せるのは機械学習を使うときだけなので, 無いか知らない型なら列の予測)
+  const given = problem.skeleton_type
+  const type = given !== null && Object.hasOwn(DEFAULT_NAMES, given) ? given : 'column'
   // 異常の検知の度合いの決め方と正解の出どころ (次にすることの出し分け. 距離は学習しない)
   const distance = answerOf(problem, 'ml.parts.0.anomaly.score') === 'distance'
   const labeled = answerOf(problem, 'ml.parts.0.target.source') === 'few'

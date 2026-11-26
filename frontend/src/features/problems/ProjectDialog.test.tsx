@@ -186,7 +186,7 @@ describe('ProjectDialog', () => {
     const problem = problemWith([
       { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
     ])
-    // 並べるは正解の種類の問いが要らない (古い答えが残っていても並べるの説明)
+    // 並べるは正解の種類の問いが要らない (型が並べるなら並べるの説明)
     renderDialog({
       ...problem,
       skeleton_type: 'rank',
@@ -576,26 +576,22 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/ready\.sha256/)).toBeInTheDocument()
   })
 
-  it('既製のモデルの答えが残っても, 予測するでなければ既製の案内にしない', () => {
-    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'generate' }
+  it('説明は骨組みの型だけで出し分け, 問いの答えからは決めない', () => {
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'predict' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
-    const base = problemWith([])
-    // 受け持ちが予測するでない (作り方の答えは残るだけ)
+    // 答えが既製のモデルでも, 型が領域なら既製の案内にしない
     const { unmount } = renderDialog({
-      ...base,
-      skeleton_type: 'items',
+      ...problemWith([]),
       questions: [KIND, role, method, OWNER],
     })
     expect(screen.queryByText(/学習はしません/)).toBeNull()
     unmount()
-    // 作り方の問いが無効 (applies が偽)
-    const predict: Question = { ...role, value: 'predict' }
+    // 知らない型 (ML-Quest が型を足した後の古い画面) は列の予測の説明
     renderDialog({
-      ...base,
-      skeleton_type: 'items',
-      questions: [KIND, predict, { ...method, applies: false }, OWNER],
+      ...problemWith([]),
+      skeleton_type: 'unknown' as Problem['skeleton_type'],
     })
-    expect(screen.queryByText(/学習はしません/)).toBeNull()
+    expect(screen.getByText(/目的の列とタスクから/)).toBeInTheDocument()
   })
 
   it('方策は, 環境と守りと学習の次にすることを出し, 損得と制約の注意を出さない', async () => {
