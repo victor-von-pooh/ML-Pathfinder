@@ -25,11 +25,22 @@ function answerOf(problem: Problem, id: string): string | null {
  * 学習せず, 推論の一式だけを作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
  * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 並べる
  * (並べるで既製のモデルをそのまま使わない), まとめる (まとめるで既製のモデルをそのまま使わない),
- * 異常の検知 (予測するで正解の種類が異常), 他は列の予測
+ * 異常の検知 (予測するで正解の種類が異常), 効果の見積もり (効果を見積もるで方策でなく, 今ある
+ * 記録から), 他は列の予測
  */
 function skeletonType(
   problem: Problem,
-): 'column' | 'items' | 'generate' | 'table' | 'rank' | 'group' | 'anomaly' | 'policy' | 'ready' {
+):
+  | 'column'
+  | 'items'
+  | 'generate'
+  | 'table'
+  | 'rank'
+  | 'group'
+  | 'anomaly'
+  | 'uplift'
+  | 'policy'
+  | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
   // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
   const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
@@ -45,6 +56,16 @@ function skeletonType(
     autonomous.value === true
   )
     return 'policy'
+  // ML-Quest の is_uplift_part と同じく, 効果を見積もるで方策でなく, 集め方が今ある記録で,
+  // 作り方が既製のモデルをそのまま使うでないとき (方策は上で除く)
+  const collect = problem.questions.find((q) => q.id === 'ml.parts.0.collect')
+  if (
+    answerOf(problem, 'ml.parts.0.role') === 'effect' &&
+    collect?.applies &&
+    collect.value === 'log' &&
+    !(method?.applies && method.value === 'pretrained')
+  )
+    return 'uplift'
   // ML-Quest の is_rank_part と同じく, 並べるで, 作り方が既製のモデルをそのまま使うでないとき
   if (
     answerOf(problem, 'ml.parts.0.role') === 'rank' &&
@@ -76,6 +97,7 @@ const DEFAULT_NAMES = {
   rank: '品物の列と受け持ち',
   group: '受け持ちと群の数',
   anomaly: '受け持ちと度合いの決め方',
+  uplift: '結果の列と受け持ち',
   // 英字の後は空けて読む
   policy: '環境の登録名か env ',
   // 一式の名前は, 省略するとモデルと重みの名前から
@@ -97,7 +119,7 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 方策の, 列の予測と違う既定の名前と次にすること
+  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 効果の見積もり, 方策の, 列の予測と違う既定の名前と次にすること
   const type = skeletonType(problem)
   // 異常の検知の度合いの決め方と正解の出どころ (次にすることの出し分け. 距離は学習しない)
   const distance = answerOf(problem, 'ml.parts.0.anomaly.score') === 'distance'
@@ -115,8 +137,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 問題の設定の確かめの直すところが残ると推論の段階に渡す値を作れない (入れたデータの確かめ
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
-  // ファイルの組, 画像と表の生成, 並べる, まとめる, 方策の一式は意思決定を持たないので, 損得と制約の注意は列の予測だけ
-  const dropped = type === 'column' && decisionDropped(errors)
+  // ファイルの組, 画像と表の生成, 並べる, まとめる, 方策の一式は意思決定を持たないので, 損得と制約の
+  // 注意は列の予測と効果の見積もり (配る数の上限) だけ
+  const dropped = (type === 'column' || type === 'uplift') && decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
     // 書き出した時点の確かめ (読み直した一覧が変わっても, 次にすることはその時点のまま)
@@ -173,7 +196,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                     ? '異常の検知の表を置いて度合いを数えます (学習はしません).'
                     : type === 'anomaly'
                       ? '異常の検知の表とモデルの定義を置いて学習します.'
-                      : 'データセットとモデルの定義を置いて学習します.'}
+                      : type === 'uplift'
+                        ? '介入の記録の表とモデルの定義を置いて, 顧客ごとの効果を見積もります.'
+                        : 'データセットとモデルの定義を置いて学習します.'}
           </>
         )}
       </p>
@@ -231,7 +256,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 ? '問題の設定の確かめの直すところが残るので, 推論の段階 (ML-Provide) に渡す値を作れず, 直すまで問題の設定につなげません.'
                 : '入れたデータの確かめの直すところだけなので, 推論の段階 (ML-Provide) に渡す値は作れますが, 同じ誤りのまま使われないように, 直すまで問題の設定にはつなぎません.'}
               {dropped &&
-                ' 損得と制約に直すところが残るので, 推論の一式は意思決定の既定値を付けずに作ります.'}
+                (type === 'uplift'
+                  ? ' 損得と制約に直すところが残るので, 配る数の上限を付けずに (config の uplift.budget を空にして) 書き出します.'
+                  : ' 損得と制約に直すところが残るので, 推論の一式は意思決定の既定値を付けずに作ります.')}
             </p>
             <ul aria-label="残っている直すところ" className="mb-2 list-disc pl-5 text-xs">
               {errors.map((finding) => {
@@ -453,6 +480,33 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   度合いの高い順に人が確かめる件数の上限まで人の確認に回す
                   {write.variables?.accept &&
                     '. 一式は ML-Provide に登録して使えるが, 書き出した README.md の最後に残した「直すところ」を問題の設定で直すまで, 一式に問題の設定 (件数の上限など) はつながらない'}
+                </li>
+              </ol>
+            ) : type === 'uplift' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  {
+                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 介入の記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は処置で層を作り, 全ての分割に処置の群と対照の群が入る. 処置は無作為に配った記録を前提にするので, ML-EDA の describe_uplift で群の釣り合いと配った後に決まる列を確かめる. 欠けた値と種類の列は前処理で無くす (表を入れていれば data/ に写してある)'
+                  }
+                </li>
+                <li>
+                  {
+                    'ML-CreateArchitecture で, 行の特徴 x から処置したときの予測 treated としないときの予測 control を出す定義を組み, models/model.yaml に保存する. モデルの作成の画面で開ける例 tabular_uplift を, 列の数に合わせて使える (列の数は学習の記録 train.log の初めの行に出る). 定義が無いうちは仮のモデルで学習する'
+                  }
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かす. 検証用とテスト用の分割で, Qini
+                  の係数と上位 K 割の効果の差 (処置の群と対照の群の結果の平均の差) と Qini の曲線を
+                  evaluations/ に書き, 行ごとの効果 (uplift_effects.csv) を実験に残す
+                </li>
+                <li>
+                  学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json)
+                  と前処理のレシピの写しを実験に残す. 推論の 1 回で, 効果の高い順に配る数の上限まで
+                  配る. 配った効果は, 配る相手を無作為に分けて試して確かめる
+                  {write.variables?.accept &&
+                    '. README.md の最後の一覧を直すまで問題の設定はつながない'}
+                  {write.variables?.dropped &&
+                    '. 損得と制約に直すところが残ったので, 配る数の上限は空 (config の uplift.budget) のまま'}
                 </li>
               </ol>
             ) : type === 'items' ? (

@@ -710,6 +710,167 @@ function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[
   )
 }
 
+/**
+ * 効果の見積もりの値 (受け渡しの uplift があるときだけ). 列の予測の欄と分け, 処置と結果の列,
+ * 効果の意味, 上位 K 割の K と配る数の上限, 群の差で数える評価と, 配る数の上限で配る判断を
+ * 言葉で出す (顧客ごとの正解の効果は見えず, 当たり具合を行ごとに数える型と違うため)
+ */
+function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[] }) {
+  const handoff = problem.handoff
+  const uplift = handoff?.uplift
+  if (!handoff || !uplift) return null
+  const { part, data, model, inference } = handoff
+  // 結果の種類は今の答えに合う選択肢の言葉 (問いが要るときだけ. 引けなければ値のまま)
+  const question = problem.questions.find((q) => q.id === `${PART}.uplift.outcome_kind`)
+  const kind =
+    question?.applies && uplift.outcome_kind
+      ? shortLabel(question.choices, uplift.outcome_kind)
+      : uplift.outcome_kind
+  const amount = uplift.outcome_kind === 'amount'
+  const decision = inference.decision
+  const treat = choicesOf(problem, 'action.decision').find((choice) => choice.value === 'treat')
+  const budget = treat?.fields?.find((field) => field.key === 'budget')
+  const budgetName = budget?.label.split(' (')[0] ?? '配る数の上限'
+  const rows: [string, string | null][] = [
+    ['受け持ち', partLabel(problem, 'role', part.role)],
+    ['出力の形', partLabel(problem, 'output', part.output)],
+    ['正解の出どころ', partLabel(problem, 'target.source', part.target_source)],
+  ]
+  return (
+    <Card title="後ろの段階に渡す値">
+      <dl className="flex flex-col gap-3 text-sm">
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">機械学習の受け持ち</dt>
+          <dd className="flex flex-col gap-1">
+            {rows
+              .filter(([, value]) => value !== null)
+              .map(([name, value]) => (
+                <span key={name}>
+                  {name}: {value}
+                </span>
+              ))}
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dd className="flex flex-col gap-1">
+            <span className="flex flex-wrap items-center gap-1">
+              処置の列 <Code>{uplift.treatment ?? ''}</Code> (配ったら 1, 配らなければ 0.
+              無作為に配った記録を前提にする. 見積もりには使わない)
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              結果の列 <Code>{uplift.outcome ?? ''}</Code>
+              {kind && ` (${kind})`}
+            </span>
+            {uplift.id ? (
+              <span className="flex flex-wrap items-center gap-1">
+                行の id の列 <Code>{uplift.id}</Code> (行ごとの効果と配る判断が 1 行を指す.
+                見積もりには使わない)
+              </span>
+            ) : (
+              <span>
+                行の id の列: <span className="text-ink-3">無し (行の位置で指す)</span>
+              </span>
+            )}
+            {data.split && (
+              <span>
+                分割は{shortLabel(splits, data.split)} (処置で層を作り,
+                全ての分割に処置の群と対照の群が入る)
+              </span>
+            )}
+            <span className="flex flex-wrap items-center gap-1">
+              見積もりに使う列 <Names names={uplift.columns} />
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              除く列 <Names names={data.drop} />
+            </span>
+            {data.unlabeled === 'drop' && <span>結果の欠けた行は落とす</span>}
+            {data.source ? (
+              <span>
+                データ <Code>{data.source.source}</Code> (データの分析から推論までのアプリも,
+                写したこのファイルを同じ読み方で開く)
+              </span>
+            ) : (
+              <span className="text-ink-3">データは入れていません</span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            効果の見積もり (データの分析, 学習, 評価)
+          </dt>
+          <dd className="flex flex-col gap-1">
+            <span>
+              効果は, 処置したときの結果 − しないときの結果 (
+              {uplift.outcome_kind === null
+                ? '結果の種類はまだ答えていません'
+                : amount
+                  ? '値の差'
+                  : '確率の差'}
+              )
+            </span>
+            <span>
+              {uplift.k !== null
+                ? `評価の上位 K 割の K は ${uplift.k}`
+                : '評価の上位 K 割の K はまだ答えていません'}
+              {decision?.budget !== undefined &&
+                `. ${budgetName}は ${String(decision.budget)} (守る指標)`}
+            </span>
+            <span className="text-xs text-ink-2">
+              顧客ごとの正解の効果は見えないので, 評価は効果の見積もりの高い順に, Qini の曲線と Qini
+              の係数, 上位 K 割の効果の差 (処置の群と対照の群の結果の平均の差) で数えます
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            モデルの作成 (ML-CreateArchitecture)
+          </dt>
+          <dd className="flex flex-col gap-1">
+            <ModelExample problem={problem} />
+            <span>
+              出力は処置したときの予測 treated としないときの予測 control の 2 つ
+              {model.outputs !== null && ` (それぞれの大きさ ${model.outputs})`}.
+              処置の列は入力に入れない
+            </span>
+          </dd>
+        </div>
+        <TrainingRow problem={problem} />
+        <RequiresRow problem={problem} />
+        <ProjectRow problem={problem} />
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+          <dd className="flex flex-col gap-1">
+            {decision ? (
+              <span className="flex flex-wrap items-center gap-1">
+                意思決定: {treat?.label.split(' (')[0] ?? decision.type}
+                {decision.budget !== undefined && (
+                  <Code>{`${budgetName}: ${String(decision.budget)}`}</Code>
+                )}
+              </span>
+            ) : (
+              <span>
+                意思決定: <span className="text-ink-3">まだ決めていません</span>
+              </span>
+            )}
+            <span>
+              効果の高い順に, {budgetName}まで配ります (確率としきい値でなく, 数の上限で配る)
+            </span>
+            <span>
+              学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json) と行ごとの効果
+              (uplift_effects.csv) を実験に残します
+            </span>
+            <span className="text-xs text-ink-2">
+              効果は無作為に配った記録からの見積もりです. 配った効果は,
+              配る相手を無作為に分けて試して確かめます
+            </span>
+          </dd>
+        </div>
+      </dl>
+    </Card>
+  )
+}
+
 /** 後ろの段階ごとに, 各段階の画面で選ぶ値 */
 export function HandoffCard({
   problem,
@@ -737,6 +898,8 @@ export function HandoffCard({
     )
   // 異常の検知は, タスクがあっても列の予測と別の欄
   if (handoff.anomaly) return <AnomalyHandoff problem={problem} splits={splits} />
+  // 効果の見積もりも, タスクがあっても列の予測と別の欄
+  if (handoff.uplift) return <UpliftHandoff problem={problem} splits={splits} />
   // 列の予測でなければ, タスクが無い (受け持ちごとの表示)
   if (handoff.data.task === null)
     return <PartHandoff problem={problem} splits={splits} onJump={onJump} />
