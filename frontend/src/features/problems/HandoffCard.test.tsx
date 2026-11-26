@@ -627,6 +627,154 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
   })
 
+  it('値段を変える判断は, 値段と売れた数と原価の列, 今の値段, 候補と上限, 評価と値段の判断を出す', () => {
+    const price: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        role: 'effect',
+        unit: 'row',
+        output: 'effect',
+        target_kind: null,
+        target_source: 'intervention',
+        target_process: null,
+      },
+      data: {
+        ...POINT_CLOUD.data,
+        target: 'units',
+        task: 'price',
+        split: 'stratified',
+        known: ['category', 'weekday', 'price'],
+        drop: ['left'],
+        id: 'record_id',
+        price: 'price',
+        cost: 'unit_cost',
+        product: 'product_id',
+        unlabeled: 'drop',
+      },
+      model: {
+        ...POINT_CLOUD.model,
+        role: 'effect',
+        target_kind: null,
+        outputs: 1,
+        example: 'tabular_price',
+      },
+      training: {
+        metric: 'mae',
+        monitor: 'valid/mae',
+        mode: 'min',
+        role: 'effect',
+        target_kind: null,
+      },
+      inference: {
+        decision: { type: 'price', candidates: [-0.1, -0.05, 0, 0.05, 0.1], max_change: 0.1 },
+        conclusion: {},
+        horizon: null,
+        guard: null,
+        ready: null,
+      },
+      price: {
+        price: 'price',
+        units: 'units',
+        cost: 'unit_cost',
+        product: 'product_id',
+        id: 'record_id',
+        columns: ['category', 'weekday'],
+      },
+    }
+    const decision: Question = {
+      ...choice(
+        'action.decision',
+        { type: 'price', candidates: [-0.1, -0.05, 0, 0.05, 0.1], max_change: 0.1 },
+        [],
+      ),
+      choices: [
+        {
+          value: 'price',
+          label: '利益が最も大きい値段を選ぶ (商品ごとの値段)',
+          fields: [
+            {
+              key: 'candidates',
+              label: '値段の候補 (今の値段に対する変える割合の並び. 0 を含む. 1 割上げるなら 0.1)',
+              required: true,
+              list: true,
+            },
+            {
+              key: 'max_change',
+              label: '値段を変える幅の上限 (守る指標. 変える割合の絶対値. 1 割までなら 0.1)',
+              required: true,
+            },
+          ],
+        },
+      ],
+    }
+    const questions = [
+      choice('ml.parts.0.role', 'effect', [
+        ['effect', '効果を見積もる (行動したときとしないときの差)'],
+      ]),
+      choice('ml.parts.0.output', 'effect', [['effect', '行動ごとの差']]),
+      choice('ml.parts.0.target.source', 'intervention', [
+        ['intervention', '介入の記録 (無作為の試験, 記録した方策の確率)'],
+      ]),
+      decision,
+    ]
+    const { rerender } = render(
+      <HandoffCard problem={problemWith(price, questions)} splits={SPLITS} />,
+    )
+    expect(screen.getByText('受け持ち: 効果を見積もる')).toBeInTheDocument()
+    expect(screen.getByText(/^値段の列/)).toHaveTextContent('price')
+    expect(screen.getByText(/^値段の列/)).toHaveTextContent('試しに値段を変えた記録 (無作為に近い)')
+    expect(screen.getByText(/^売れた数の列/)).toHaveTextContent('units (その値段で売れた数')
+    expect(screen.getByText(/^原価の列/)).toHaveTextContent('unit_cost (商品 1 つを')
+    expect(screen.getByText(/^商品の id の列/)).toHaveTextContent('product_id (値段を選ぶ単位')
+    expect(screen.getByText(/^行の id の列/)).toHaveTextContent('record_id')
+    expect(screen.getByText(/分割は層別/)).toHaveTextContent('値段の段で層を作る')
+    expect(screen.getByText(/^予測に使う列/)).toHaveTextContent(/category\s*weekday/)
+    expect(screen.getByText(/^除く列/)).toHaveTextContent('left')
+    expect(screen.getByText('売れた数の欠けた行は落とす')).toBeInTheDocument()
+    expect(screen.getByText(/^今の値段は/)).toHaveTextContent('商品ごとの記録の値段の中央値')
+    expect(screen.getByText(/^値段の候補 \(/)).toHaveTextContent('-10 %, -5 %, 0 %, +5 %, +10 %')
+    expect(screen.getByText(/^値段の候補 \(/)).toHaveTextContent('今の値段 × (1 + 割合)')
+    expect(screen.getByText(/^値段を変える幅の上限 \(/)).toHaveTextContent('守る指標')
+    expect(screen.getByText(/^値段を変える幅の上限 \(/)).toHaveTextContent('は 10 %')
+    expect(screen.getByText(/^利益は/)).toHaveTextContent('(値段 − 原価) × 予測した売れた数')
+    expect(screen.getByText(/弾力性 \(値段を 1 %/)).toHaveTextContent('見込みの利益の比べ')
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_price')
+    expect(screen.getByText(/^入力の最後の列が値段/)).toHaveTextContent(
+      '売れた数の予測 units (大きさ 1)',
+    )
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent('valid/mae')
+    expect(screen.getByText(/^意思決定:/)).toHaveTextContent(
+      '意思決定: 利益が最も大きい値段を選ぶ値段の候補: -0.1, -0.05, 0, 0.05, 0.1値段を変える幅の上限: 0.1',
+    )
+    expect(screen.getByText(/^商品ごとに, 値段を変える幅の上限を超えない/)).toBeInTheDocument()
+    expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent('price_choices.csv')
+    expect(screen.getByText(/値段を試して確かめます/)).toBeInTheDocument()
+    // 列の予測と効果の見積もりの欄と守る指標は出さない
+    expect(screen.queryByText(/目的の列/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^処置の列/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/守る指標:/)).not.toBeInTheDocument()
+
+    // 原価, 商品と行の id が無ければ, 売上で選び, 行ごとに選び, 今の値段は行の値段
+    rerender(
+      <HandoffCard
+        problem={problemWith(
+          {
+            ...price,
+            data: { ...price.data, id: null, cost: null, product: null },
+            price: { ...price.price!, id: null, cost: null, product: null },
+          },
+          questions,
+        )}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^原価の列/)).toHaveTextContent('無し (原価を 0 とし, 売上で選ぶ)')
+    expect(screen.getByText(/^商品の id の列/)).toHaveTextContent('無し (行ごとに値段を選ぶ)')
+    expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
+    expect(screen.getByText(/^今の値段は/)).toHaveTextContent('その行の記録の値段')
+  })
+
   it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {
     const column: Handoff = {
       ...POINT_CLOUD,

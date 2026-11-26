@@ -1344,6 +1344,151 @@ def test_uplift(client: TestClient, tmp_path: Path) -> None:
                    for key in ("treatment", "outcome", "columns", "k"))
 
 
+def test_price(client: TestClient, tmp_path: Path) -> None:
+    """
+    効果を見積もるで今ある記録の値段を変えたと答えるときに, 値段, 売れた数,
+    原価, 商品の id, 行の id の列と値段の判断の問いが出て, 表を入れると受け
+    渡しに値段を変える判断の値と値段の判断が渡り, 値段を変える判断の骨組み
+    を書き出せることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題の受け持ちの, 今ある記録の値段を変える判断での答え直し
+    part = ml_quest.PART
+    view = client.post("/api/problems",
+                       json={"example": "解約の引き止め"}).json()
+    url = f"/api/problems/{view['id']}"
+    for key, value in [("role", "effect"), ("unit", "row"),
+                       ("output", "effect"),
+                       ("target.source", "intervention"),
+                       ("method", "scratch"), ("autonomous", False),
+                       ("collect", "log"), ("varied", "price"),
+                       ("what", "値段ごとの売れた数"),
+                       ("item", "商品と日ごとの 1 行"),
+                       ("baseline", "今の値段のまま")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # ML-Quest の並びのままの 5 の節の値段を変える判断の問い 6 つ. 出ない
+    # 効果の見積もりと列の予測の問いと, 値段の判断だけの意思決定の型
+    view = client.get(url).json()
+    shown = [q for q in view["questions"] if q["applies"]]
+    price = [(q["id"], q["kind"], q["required"], q["section"])
+             for q in shown if q["id"].startswith(f"{part}.price.")]
+    assert price == [
+        (f"{part}.price.price", "column", True, 5),
+        (f"{part}.price.units", "column", True, 5),
+        (f"{part}.price.cost", "column", False, 5),
+        (f"{part}.price.product", "column", False, 5),
+        (f"{part}.price.id", "column", False, 5),
+        (f"{part}.price.columns", "columns", True, 5),
+    ]
+    ids = [q["id"] for q in shown]
+    assert not any(name.startswith(f"{part}.uplift.") for name in ids)
+    assert f"{part}.target.column" not in ids and "action.current" not in ids
+    decision = next(q for q in shown if q["id"] == "action.decision")
+    assert [c["value"] for c in decision["choices"]] == ["price"]
+    fields = decision["choices"][0]["fields"]
+    assert [(f["key"], f.get("list", False)) for f in fields] == [
+        ("candidates", True), ("max_change", False)]
+    metric = next(q for q in shown if q["id"] == f"{part}.evaluation.metric")
+    values = [c["value"] for c in metric["choices"]]
+    assert "mae" in values and "loss" in values
+    assert "qini" not in values and "reward" not in values
+
+    # 試しに値段を変えた売れ行きの表の取り込みと, 列, 値段の判断 (画面は
+    # 候補をカンマで区切った文で送る) と指標の答え
+    rows = [{"record_id": f"r{i}", "product_id": f"p{i % 12}",
+             "category": i % 3, "weekday": i % 7,
+             "price": 100 * (1 + (i % 5 - 2) * 0.05),
+             "units": 20 - (i % 5) * (1 + i % 3), "unit_cost": 60,
+             "left": i % 4}
+            for i in range(240)]
+    pd.DataFrame(rows).to_csv(tmp_path / "sales.csv", index=False)
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "sales.csv")}).json()
+    for key, value in [("price.price", "price"), ("price.units", "units"),
+                       ("price.cost", "unit_cost"),
+                       ("price.product", "product_id"),
+                       ("price.id", "record_id"),
+                       ("price.columns", ["category", "weekday"]),
+                       ("evaluation.metric", "mae"),
+                       ("evaluation.link", "売れた数が当たるほど利益が増える")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+    response = client.put(f"{url}/answers", json={
+        "id": "action.decision",
+        "value": {"type": "price", "candidates": "-0.1, -0.05, 0, 0.05, 0.1",
+                  "max_change": "0.1"}})
+    assert response.status_code == 200, response.json()
+    view = client.get(url).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [], errors
+
+    # 受け渡しの値段を変える判断の値と, 候補と上限だけの値段の判断
+    handoff = view["handoff"]
+    assert handoff["price"] == {
+        "price": "price", "units": "units", "cost": "unit_cost",
+        "product": "product_id", "id": "record_id",
+        "columns": ["category", "weekday"],
+    }
+    assert handoff["uplift"] is None
+    assert handoff["data"]["task"] == "price"
+    assert handoff["data"]["split"] == "stratified"
+    assert handoff["data"]["known"] == ["category", "weekday", "price"]
+    assert handoff["data"]["drop"] == ["left"]
+    assert handoff["inference"]["decision"] == {
+        "type": "price", "candidates": [-0.1, -0.05, 0, 0.05, 0.1],
+        "max_change": 0.1}
+    assert handoff["inference"]["guard"] is None
+    assert handoff["model"]["example"] == "tabular_price"
+    assert handoff["model"]["outputs"] == 1
+    assert handoff["training"]["monitor"] == "valid/mae"
+
+    # 値段を変える判断の骨組みの書き出しと, data/ への入れた表の写し
+    assert view["exportable"] is True and view["export_error"] is None
+    target = tmp_path / "price"
+    written = client.post(f"{url}/project", json={"path": str(target)})
+    assert written.status_code == 200, written.json()
+    assert {"train.py", "README.md", "configs/default/train.yaml",
+            "data/sales.csv"} <= set(written.json()["files"])
+    config = yaml.safe_load((target / "configs" / "default" / "train.yaml")
+                            .read_text(encoding="utf-8"))
+    assert config["price"]["candidates"] == [-0.1, -0.05, 0, 0.05, 0.1]
+    assert config["price"]["max_change"] == 0.1
+    assert config["experiment"]["name"] == "units_price"
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "price_estimator.json" in readme
+
+    # 候補に今の値段 (0) が無いと確かめに出て, 受け渡せないが書き出せる
+    view = client.put(f"{url}/answers", json={
+        "id": "action.decision",
+        "value": {"type": "price", "candidates": "-0.1, 0.1",
+                  "max_change": "0.1"}}).json()
+    assert any(f["id"].startswith("action.decision")
+               for f in view["open_errors"]), view["open_errors"]
+    assert view["exportable"] is True, view["export_error"]
+
+    # 配ったかと答え直すと値段を変える判断の問いは要らなくなる
+    view = client.put(f"{url}/answers", json={"id": f"{part}.varied",
+                                             "value": "treat"}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert not any(applies[f"{part}.price.{key}"]
+                   for key in ("price", "units", "columns"))
+    assert applies[f"{part}.uplift.treatment"]
+
+
 def test_guard_counted(client: TestClient) -> None:
     """
     守る指標の数える量の問いが 7 の節に意思決定の型で絞った選択肢で出て,

@@ -1531,6 +1531,172 @@ test('効果を見積もるで今ある記録からと画面で答え, クーポ
   expect(config).toMatch(/^ {2}budget: 50$/m)
 })
 
+test('効果を見積もるで今ある記録の値段を変えたと画面で答え, 売れ行きの記録を入れると, 列と値段の候補と上限を選べて値段を変える判断の骨組みを書き出す', async ({
+  page,
+}) => {
+  // 試しに値段を上げ下げした売れ行きの記録 (種類ごとに値段の効き方が違う)
+  const rows = ['record_id,product_id,category,weekday,price,units,unit_cost,left']
+  for (let index = 0; index < 240; index++) {
+    const step = (index % 5) - 2
+    const category = index % 3
+    const units = 20 - (step + 2) * (1 + category)
+    rows.push(
+      `r${index},p${index % 12},${category},${index % 7},${100 * (1 + step * 0.05)},${units},60,${index % 4}`,
+    )
+  }
+  const file = `${process.cwd()}/e2e/.work/sales.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('商品の値段')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '商品の値段' })).toBeVisible()
+
+  // 受け持ちに依らない節 (1 から 4, 9, 10) は API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['issue.owner', '値付けの係'],
+    ['issue.pain', '値段を変えたときの売れ行きが分からず, 利益を逃している'],
+    ['issue.current', '値段を変えない'],
+    ['issue.kpi.name', '粗利'],
+    ['issue.kpi.unit', '円 / 月'],
+    ['issue.kpi.better', 'higher'],
+    [
+      'decomposition',
+      [{ cause: '値段の効き方が商品ごとに違う', lever: '商品ごとに値段を変える', ml: true }],
+    ],
+    ['action.who', '値付けの係'],
+    ['action.when', '週の初め'],
+    ['action.what', '商品ごとの値段'],
+    ['ml.reason', '値段と売れ行きの関係は商品ごとに違い, 決まりで書けない'],
+    ['verification.method', 'trial'],
+    ['verification.trial', '店を無作為に分けて, 選んだ値段と今の値段を比べる'],
+    ['verification.success', '粗利が 1 割増える'],
+    ['operation.review', '月に 1 回'],
+    ['operation.approver', '店の長'],
+    ['operation.stop', '粗利が今の値段より下がったら'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: key, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 5 の節で, 効果を見積もるで方策でなく, 今ある記録で値段を変えたと画面で答える
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await choose(page, '機械学習を使いますか', 'はい')
+  await choose(page, '機械学習は何を受け持ちますか', /^効果を見積もる/)
+  await choose(page, '1 件の単位は', /^行/)
+  await choose(page, '出力の形は', /^行動ごとの差/)
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^介入の記録/)
+  await choose(page, 'どう作りますか (作り方)', /^一から学習/)
+  await write(page, '何を出させますか', '値段ごとの売れた数')
+  await write(page, '1 件は何ですか', '商品と日ごとの 1 行')
+  await choose(page, '機械学習が, 続けて自分で行動を選びますか (方策)', 'いいえ')
+  await choose(page, '行動の結果のデータは, どう集めますか', /^今ある記録から/)
+  await choose(page, '記録で変えたのは, 配ったかですか, 値段ですか', /^値段/)
+  await write(page, '機械学習を使わない比べる相手は', '今の値段のまま')
+  // 効果の見積もりと列の予測の問いは出ない
+  await expect(page.getByText('処置の列は', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('目的の列は', { exact: true })).toHaveCount(0)
+
+  // 手元のデータに売れ行きの記録を選んで入れる
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const picker = page.getByRole('dialog')
+  await picker.getByLabel('パス').fill(file)
+  await picker.getByRole('button', { name: '移動' }).click()
+  await picker.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByText('240 行, 8 列')).toBeVisible({ timeout: 20_000 })
+
+  // 値段, 売れた数, 原価, 商品の id, 行の id の列と, 予測に使う列を答える
+  for (const [title, column] of [
+    ['値段の列は', 'price'],
+    ['売れた数の列は', 'units'],
+    ['原価の列は (あれば)', 'unit_cost'],
+    ['商品の id の列は (あれば)', 'product_id'],
+    ['行の id の列は (あれば)', 'record_id'],
+  ]) {
+    await page.getByLabel(title, { exact: true }).selectOption(column)
+    await expect(page.getByText(`「${title}」を保存しました`)).toBeVisible()
+  }
+  const columns = page.getByRole('group', {
+    name: '売れ行きの予測に使う列は (値段の列の他)',
+    exact: true,
+  })
+  for (const column of ['category', 'weekday']) {
+    await columns.getByLabel(column, { exact: true }).click()
+    await expect(columns.getByLabel(column, { exact: true })).toBeChecked()
+  }
+
+  // 7 の節で, 利益が最も大きい値段を選ぶ判断と, 値段の候補 (カンマで区切る) と上限を答える
+  await nav.getByRole('button', { name: /^7\b/ }).click()
+  await page.getByLabel('行動の損得と制約は', { exact: true }).selectOption('price')
+  await page.getByLabel(/^値段の候補 \(/).fill('-0.1, -0.05, 0, 0.05, 0.1')
+  await page.getByLabel(/^値段を変える幅の上限 \(/).fill('0.1')
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByText('「行動の損得と制約は」を保存しました')).toBeVisible()
+  // 保存した並びはカンマで区切って出て, 書きかけの印は消える
+  await expect(page.getByLabel(/^値段の候補 \(/)).toHaveValue('-0.1, -0.05, 0, 0.05, 0.1')
+  await expect(page.getByText('保存していません')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /値を決める手伝い/ })).toHaveCount(0)
+
+  // 8 の節で売れた数の平均絶対誤差を答える (評価の上位の割合は問わない)
+  await nav.getByRole('button', { name: /^8\b/ }).click()
+  await choose(page, '最も良いモデルを何で選びますか', /^外れの大きさの平均/)
+  await write(
+    page,
+    'その指標が良くなると, 課題の指標はどう良くなりますか',
+    '売れた数が当たるほど, 選んだ値段の利益が見込みに近づく',
+  )
+  await expect(page.getByText(/評価で見る上位の割合 K/)).toHaveCount(0)
+
+  // 確かめに直すところが無く, 書き出せる
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByText('直す', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
+
+  // 後ろの段階に渡す値に, 列, 今の値段, 候補と上限, 評価, 値段の判断が出る
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('受け持ち: 効果を見積もる')
+  await expect(card.getByText(/^値段の列/)).toHaveText(/price/)
+  await expect(card.getByText(/^売れた数の列/)).toHaveText(/units/)
+  await expect(card.getByText(/^原価の列/)).toHaveText(/unit_cost/)
+  await expect(card.getByText(/^商品の id の列/)).toHaveText(/product_id/)
+  await expect(card.getByText(/^予測に使う列/)).toHaveText(/category\s*weekday/)
+  await expect(card.getByText(/^除く列/)).toHaveText(/left/)
+  await expect(card.getByText(/分割は層別/)).toBeVisible()
+  await expect(card.getByText(/^今の値段は/)).toContainText('中央値')
+  await expect(card.getByText(/^値段の候補 \(/)).toContainText('-10 %, -5 %, 0 %, +5 %, +10 %')
+  await expect(card.getByText(/^値段を変える幅の上限 \(/)).toContainText('は 10 %')
+  await expect(card.getByText(/弾力性 \(値段を 1 %/)).toBeVisible()
+  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_price/)
+  await expect(card.getByText(/監視する指標/)).toHaveText(/valid\/mae/)
+  await expect(card.getByText(/^意思決定:/)).toContainText('利益が最も大きい値段を選ぶ')
+  await expect(card.getByText(/price_estimator\.json/)).toBeVisible()
+  await expect(card).not.toContainText(/目的の列/)
+  await expect(card).not.toContainText(/処置の列/)
+
+  // 書き出すと, 値段を変える判断の手順と, 入れた表の写しができる
+  const target = await exportProject(page, 'price-project', [
+    '値段を変えた記録の表をデータセットの書き出し先',
+    'tabular_price',
+    'price_choices.csv',
+    'price_estimator.json',
+  ])
+  for (const name of ['train.py', 'README.md', 'configs/default/train.yaml', 'data/sales.csv'])
+    expect(existsSync(`${target}/${name}`), name).toBe(true)
+  const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
+  expect(config).toContain('valid/mae')
+  expect(config).toContain('units_price')
+  expect(config).toMatch(/^ {2}max_change: 0\.1$/m)
+})
+
 test('守る指標の数える量は 7 の節に意思決定の型に合う選択肢で出て, 受け渡しに言葉で出る', async ({
   page,
 }) => {

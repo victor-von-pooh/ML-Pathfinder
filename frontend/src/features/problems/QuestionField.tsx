@@ -5,7 +5,14 @@ import { useRef, useState, type ReactNode } from 'react'
 import type { Decision, Finding, Insight, Lever, Question, Suggestion } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
 import { Button } from '../../components/ui'
-import { decisionDraft, decisionFields, sameDecision, splitLines, toLevers } from '../../lib/draft'
+import {
+  decisionDraft,
+  decisionFields,
+  decisionText,
+  sameDecision,
+  splitLines,
+  toLevers,
+} from '../../lib/draft'
 import { LEVEL_NAMES } from '../../lib/labels'
 
 /** 入力の共通の見た目 */
@@ -341,7 +348,7 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
     Object.fromEntries(
       Object.entries(saved ?? {})
         .filter(([key]) => key !== 'type')
-        .map(([key, item]) => [key, String(item)]),
+        .map(([key, item]) => [key, decisionText(item)]),
     ),
   )
   const types = question.choices
@@ -403,6 +410,8 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
                 <input
                   id={`d-${question.id}-${field.key}`}
                   value={values[field.key] ?? ''}
+                  // 数の並びの欄はカンマで区切る例を出す
+                  placeholder={field.list ? '-0.1, -0.05, 0, 0.05, 0.1' : undefined}
                   onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}
                   className={clsx(INPUT, 'h-8')}
                 />
