@@ -1209,7 +1209,11 @@ describe('HandoffCard', () => {
       { ...choice('ml.parts.0.group.k', 4, []), kind: 'number' as const },
       choice('ml.parts.0.group.stability', 'seed', [['seed', '種を変えて作り直す']]),
     ]
-    render(<HandoffCard problem={problemWith(handoff, questions)} />)
+    render(
+      <HandoffCard
+        problem={{ ...problemWith(handoff, questions), skeleton_type: 'group_ready' }}
+      />,
+    )
     expect(
       screen.getByText(
         /写真を既製のモデルの埋め込みで 4 つの群に分ける \(群の安定性: 種を変えて作り直す\)/,

@@ -127,10 +127,10 @@ function ReadyRow({ problem }: { problem: Problem }) {
   const search = decision?.type === 'search'
   // 既製の埋め込みの群分け (まとめるで既製のモデル) は, 群の数と数え方を問いの答えから読む
   // (受け渡しの group は空. 骨組みが問題の設定の答えを config に書くため)
-  const role = problem.questions.find((q) => q.id === `${PART}.role`)?.value
   const groupK = problem.questions.find((q) => q.id === `${PART}.group.k`)
   const stabilityQuestion = problem.questions.find((q) => q.id === `${PART}.group.stability`)
-  const readyGroup = role === 'group' && problem.handoff?.part.method === 'pretrained'
+  // 型の決まりは ML-Quest の skeleton_type だけが持つ
+  const readyGroup = problem.skeleton_type === 'group_ready'
   const stabilityLabel =
     stabilityQuestion?.applies && typeof stabilityQuestion.value === 'string'
       ? (stabilityQuestion.choices.find((choice) => choice.value === stabilityQuestion.value)
