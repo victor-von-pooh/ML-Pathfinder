@@ -896,6 +896,9 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^発注の数は, τ の分位点/)).toHaveTextContent(
       '商品 1 つあたりの同じお金の単位',
     )
+    expect(screen.getByText(/^発注の数は, τ の分位点/)).toHaveTextContent(
+      '切り捨てと切り上げ (0 より下は 0) のうち見込みの損の小さい方',
+    )
     expect(screen.getByText(/^評価は, 0.5 の分位点の誤差/)).toHaveTextContent('発注の数の損')
     expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_demand')
     expect(screen.getByText(/^入力は行 x/)).toHaveTextContent('quantiles (大きさ 4. 学ぶ水準の数)')
@@ -941,6 +944,20 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
     expect(screen.getByText(/^学ぶ分位点の水準は/)).toHaveTextContent('0.1, 0.333, 0.5, 0.9')
     expect(screen.getByText(/^発注に使う水準 τ/)).toHaveTextContent('は 0.333')
+
+    // 損を決めていなければ, 水準の文は τ に触れない
+    rerender(
+      <HandoffCard
+        problem={problemWith(
+          { ...demand, inference: { ...demand.inference, decision: null } },
+          questions,
+        )}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^学ぶ分位点の水準は/)).toHaveTextContent('(0.5 を含む. 0.9 は')
+    expect(screen.getByText(/^学ぶ分位点の水準は/)).not.toHaveTextContent('τ')
+    expect(screen.getByText(/^発注に使う水準 τ/)).toHaveTextContent('損を決めると出ます')
   })
 
   it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {

@@ -1204,8 +1204,9 @@ function DemandHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
               を分位点で予測する
             </span>
             <span>
-              学ぶ分位点の水準は {demand.levels.map(levelText).join(', ')} (0.5 と発注に使う水準 τ
-              を含む. 0.9 は 9 割の場合でこれより少ない数)
+              学ぶ分位点の水準は {demand.levels.map(levelText).join(', ')} (
+              {tau !== null ? '0.5 と発注に使う水準 τ を含む' : '0.5 を含む'}. 0.9 は 9
+              割の場合でこれより少ない数)
             </span>
             <span>
               {tau !== null
@@ -1213,8 +1214,9 @@ function DemandHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
                 : `発注に使う水準 τ (${shortageName} / (${shortageName} + ${holdingName})) は, 損を決めると出ます`}
             </span>
             <span>
-              発注の数は, τ の分位点から在庫の数を引いた数を, 0 から{maxName}
-              の間の整数にしたもの. 2 つの損は, 商品 1 つあたりの同じお金の単位で書く
+              発注の数は, τ の分位点から在庫の数を引いた数の切り捨てと切り上げ (0 より下は 0)
+              のうち見込みの損の小さい方 (同じなら少ない方) を, {maxName}で切ったもの. 2 つの損は,
+              商品 1 つあたりの同じお金の単位で書く
             </span>
             <span className="text-xs text-ink-2">
               評価は, 0.5 の分位点の誤差, 分位点の損失と, 実際の需要での発注の数の損
