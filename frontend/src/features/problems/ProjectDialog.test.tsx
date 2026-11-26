@@ -41,6 +41,7 @@ function problemWith(errors: Finding[]): Problem {
     ready: false,
     exportable: true,
     export_error: null,
+    skeleton_type: 'items',
     open_errors: errors,
     finished: false,
     file_version: 2,
@@ -121,7 +122,11 @@ describe('ProjectDialog', () => {
     const problem = problemWith([
       { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
     ])
-    renderDialog({ ...problem, questions: [{ ...KIND, value: 'image' }, role, OWNER] })
+    renderDialog({
+      ...problem,
+      skeleton_type: 'generate',
+      questions: [{ ...KIND, value: 'image' }, role, OWNER],
+    })
     expect(screen.getByText(/正解の種類と受け持ちから/)).toBeInTheDocument()
     expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
 
@@ -146,7 +151,11 @@ describe('ProjectDialog', () => {
     const problem = problemWith([
       { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
     ])
-    renderDialog({ ...problem, questions: [{ ...KIND, value: 'table' }, role, OWNER] })
+    renderDialog({
+      ...problem,
+      skeleton_type: 'table',
+      questions: [{ ...KIND, value: 'table' }, role, OWNER],
+    })
     expect(screen.getByText(/正解の種類と受け持ちから/)).toBeInTheDocument()
     expect(screen.queryByText(/既定値を付けずに/)).toBeNull()
 
@@ -177,8 +186,12 @@ describe('ProjectDialog', () => {
     const problem = problemWith([
       { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
     ])
-    // 並べるは正解の種類の問いが要らない (古い答えが残っていても並べるの説明)
-    renderDialog({ ...problem, questions: [{ ...KIND, applies: false }, role, method, OWNER] })
+    // 並べるは正解の種類の問いが要らない (型が並べるなら並べるの説明)
+    renderDialog({
+      ...problem,
+      skeleton_type: 'rank',
+      questions: [{ ...KIND, applies: false }, role, method, OWNER],
+    })
     expect(screen.getByText(/品物の列と受け持ちから/)).toBeInTheDocument()
     expect(screen.getByText(/反応の表とモデルの定義を置いて学習します/)).toBeInTheDocument()
 
@@ -202,7 +215,11 @@ describe('ProjectDialog', () => {
   it('並べるで既製のモデルをそのまま使う答えは, 並べるの説明にしない', () => {
     const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'rank' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
-    renderDialog({ ...problemWith([]), questions: [{ ...KIND, applies: false }, role, method] })
+    renderDialog({
+      ...problemWith([]),
+      skeleton_type: 'search',
+      questions: [{ ...KIND, applies: false }, role, method],
+    })
     expect(screen.queryByText(/品物の列と受け持ちから/)).toBeNull()
   })
 
@@ -216,7 +233,11 @@ describe('ProjectDialog', () => {
     const problem = problemWith([
       { level: 'error', id: 'action.decision.value', message: '数を答えてください' },
     ])
-    renderDialog({ ...problem, questions: [{ ...KIND, applies: false }, role, method, OWNER] })
+    renderDialog({
+      ...problem,
+      skeleton_type: 'group',
+      questions: [{ ...KIND, applies: false }, role, method, OWNER],
+    })
     expect(screen.getByText(/受け持ちと群の数から/)).toBeInTheDocument()
     expect(screen.getByText(/群を作る表とモデルの定義を置いて学習します/)).toBeInTheDocument()
 
@@ -250,6 +271,7 @@ describe('ProjectDialog', () => {
     const problem = problemWith([])
     const { unmount } = renderDialog({
       ...problem,
+      skeleton_type: 'anomaly',
       questions: [kind, role, method, source, score, OWNER],
     })
     expect(screen.getByText(/受け持ちと度合いの決め方から/)).toBeInTheDocument()
@@ -271,6 +293,7 @@ describe('ProjectDialog', () => {
     // 正解が無く距離なら, 学習せず, 度合いの分布と上位の行の要約で見る
     renderDialog({
       ...problem,
+      skeleton_type: 'anomaly',
       questions: [
         kind,
         role,
@@ -310,6 +333,7 @@ describe('ProjectDialog', () => {
     ])
     const { unmount } = renderDialog({
       ...problem,
+      skeleton_type: 'uplift',
       questions: [{ ...KIND, value: null }, role, method, autonomous, collect, OWNER],
     })
     expect(screen.getByText(/結果の列と受け持ちから/)).toBeInTheDocument()
@@ -343,6 +367,7 @@ describe('ProjectDialog', () => {
     // 方策と答えると, 効果の見積もりの説明にしない
     renderDialog({
       ...problemWith([]),
+      skeleton_type: 'policy',
       questions: [
         { ...KIND, value: null },
         role,
@@ -376,6 +401,7 @@ describe('ProjectDialog', () => {
     ])
     const { unmount } = renderDialog({
       ...problem,
+      skeleton_type: 'price',
       questions: [{ ...KIND, value: null }, role, method, autonomous, collect, varied, OWNER],
     })
     expect(screen.getByText(/売れた数の列と受け持ちから/)).toBeInTheDocument()
@@ -413,6 +439,7 @@ describe('ProjectDialog', () => {
     // 配ったかと答えると, 効果の見積もりの説明にする
     renderDialog({
       ...problemWith([]),
+      skeleton_type: 'uplift',
       questions: [
         { ...KIND, value: null },
         role,
@@ -439,6 +466,7 @@ describe('ProjectDialog', () => {
     ])
     const { unmount } = renderDialog({
       ...problem,
+      skeleton_type: 'demand',
       questions: [{ ...KIND, value: 'demand' }, role, method, OWNER],
     })
     expect(screen.getByText(/日ごとの売れた数の列と受け持ちから/)).toBeInTheDocument()
@@ -469,6 +497,7 @@ describe('ProjectDialog', () => {
     // 既製のモデルをそのまま使うと, 時間をまたぐ量の判断の説明にしない
     renderDialog({
       ...problemWith([]),
+      skeleton_type: 'ready',
       questions: [{ ...KIND, value: 'demand' }, role, { ...method, value: 'pretrained' }, OWNER],
     })
     expect(screen.queryByText(/需要の記録の表/)).toBeNull()
@@ -484,6 +513,7 @@ describe('ProjectDialog', () => {
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
     renderDialog({
       ...problemWith([]),
+      skeleton_type: 'search',
       questions: [{ ...KIND, applies: false }, role, method, OWNER],
     })
     expect(screen.getByText(/似た写真を探す推論の一式を作る骨組み/)).toBeInTheDocument()
@@ -508,6 +538,7 @@ describe('ProjectDialog', () => {
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
     renderDialog({
       ...problemWith([]),
+      skeleton_type: 'group_ready',
       questions: [{ ...KIND, applies: false }, role, method, OWNER],
     })
     expect(screen.queryByText(/受け持ちと群の数から/)).toBeNull()
@@ -531,6 +562,7 @@ describe('ProjectDialog', () => {
     const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'predict' }
     renderDialog({
       ...problemWith([]),
+      skeleton_type: 'ready',
       questions: [{ ...KIND, value: 'image' }, role, method, OWNER],
     })
     expect(screen.getByText(/学習はしません/)).toBeInTheDocument()
@@ -544,21 +576,22 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/ready\.sha256/)).toBeInTheDocument()
   })
 
-  it('既製のモデルの答えが残っても, 予測するでなければ既製の案内にしない', () => {
-    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'generate' }
+  it('説明は骨組みの型だけで出し分け, 問いの答えからは決めない', () => {
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'predict' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
-    const base = problemWith([])
-    // 受け持ちが予測するでない (作り方の答えは残るだけ)
-    const { unmount } = renderDialog({ ...base, questions: [KIND, role, method, OWNER] })
-    expect(screen.queryByText(/学習はしません/)).toBeNull()
-    unmount()
-    // 作り方の問いが無効 (applies が偽)
-    const predict: Question = { ...role, value: 'predict' }
-    renderDialog({
-      ...base,
-      questions: [KIND, predict, { ...method, applies: false }, OWNER],
+    // 答えが既製のモデルでも, 型が領域なら既製の案内にしない
+    const { unmount } = renderDialog({
+      ...problemWith([]),
+      questions: [KIND, role, method, OWNER],
     })
     expect(screen.queryByText(/学習はしません/)).toBeNull()
+    unmount()
+    // 知らない型 (ML-Quest が型を足した後の古い画面) は列の予測の説明
+    renderDialog({
+      ...problemWith([]),
+      skeleton_type: 'unknown' as Problem['skeleton_type'],
+    })
+    expect(screen.getByText(/目的の列とタスクから/)).toBeInTheDocument()
   })
 
   it('方策は, 環境と守りと学習の次にすることを出し, 損得と制約の注意を出さない', async () => {
@@ -595,6 +628,7 @@ describe('ProjectDialog', () => {
     // 環境の登録名を答えていれば, その環境を使う
     const { unmount } = renderDialog({
       ...problem,
+      skeleton_type: 'policy',
       questions: [role, autonomous, env('CartPole-v1'), OWNER],
     })
     expect(screen.getByText(/環境の登録名か env から/)).toBeInTheDocument()
@@ -620,7 +654,11 @@ describe('ProjectDialog', () => {
     unmount()
 
     // 答えていなければ, 自作の環境の雛形を書き換える
-    renderDialog({ ...problem, questions: [role, autonomous, env(null), OWNER] })
+    renderDialog({
+      ...problem,
+      skeleton_type: 'policy',
+      questions: [role, autonomous, env(null), OWNER],
+    })
     await write()
     expect(screen.getByText(/自作の環境の雛形 env\.py \(ProjectEnv\)/)).toBeInTheDocument()
   })
@@ -635,6 +673,7 @@ describe('ProjectDialog', () => {
     ])
     renderDialog({
       ...problem,
+      skeleton_type: 'column',
       questions: [{ ...KIND, value: 'column' }, OWNER],
       handoff: {} as Problem['handoff'],
       ready: true,

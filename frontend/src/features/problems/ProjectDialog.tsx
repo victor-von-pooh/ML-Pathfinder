@@ -8,110 +8,10 @@ import { Dialog } from '../../components/Dialog'
 import { PathField } from '../../components/PathPicker'
 import { Button, ErrorBox } from '../../components/ui'
 
-/**
- * ファイルの組 (ML-EDA の版 2 のデータセットで学ぶ) の正解の種類. ML-Quest の ITEMS_KINDS の写しで,
- * 説明の文の出し分けだけに使う (書き出せるかの決まりは project_error だけが持つ)
- */
-const ITEMS_KINDS = ['mask', 'point_cloud']
-
 /** 問いの答え (受け渡しの値は直すところが残ると無いので, 問いの答えから読む) */
 function answerOf(problem: Problem, id: string): string | null {
   const value = problem.questions.find((q) => q.id === id)?.value
   return typeof value === 'string' ? value : null
-}
-
-/**
- * 骨組みの型 (説明の文の出し分けだけ). 既製 (予測するで作り方が既製のモデルをそのまま使う.
- * 学習せず, 推論の一式だけを作る), 似た写真を探す (並べるで作り方が既製のモデルをそのまま使う.
- * 学習せず, 索引と評価を作ってから検索の一式を作る), 既製の埋め込みの群分け (まとめるで
- * 作り方が既製のモデルをそのまま使う. 学習せず, 群と群の安定性を作ってから群分けの一式を作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
- * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 並べる
- * (並べるで既製のモデルをそのまま使わない), まとめる (まとめるで既製のモデルをそのまま使わない),
- * 異常の検知 (予測するで正解の種類が異常), 効果の見積もり (効果を見積もるで方策でなく, 今ある
- * 記録から), 値段を変える判断 (効果の見積もりで, 記録で変えたものが値段), 時間をまたぐ量の判断
- * (予測するで正解の種類が先の期間の需要), 他は列の予測
- */
-function skeletonType(
-  problem: Problem,
-):
-  | 'column'
-  | 'items'
-  | 'generate'
-  | 'table'
-  | 'rank'
-  | 'group'
-  | 'anomaly'
-  | 'uplift'
-  | 'price'
-  | 'demand'
-  | 'policy'
-  | 'ready'
-  | 'search'
-  | 'group_ready' {
-  const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
-  // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
-  const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
-  if (
-    answerOf(problem, 'ml.parts.0.role') === 'predict' &&
-    method?.applies &&
-    method.value === 'pretrained'
-  )
-    return 'ready'
-  // ML-Quest の is_search_part と同じく, 並べるで, 作り方の問いが有効で既製のモデルをそのまま使うとき
-  if (
-    answerOf(problem, 'ml.parts.0.role') === 'rank' &&
-    method?.applies &&
-    method.value === 'pretrained'
-  )
-    return 'search'
-  // ML-Quest の is_ready_group_part と同じく, まとめるで, 作り方の問いが有効で既製のモデルをそのまま使うとき
-  if (
-    answerOf(problem, 'ml.parts.0.role') === 'group' &&
-    method?.applies &&
-    method.value === 'pretrained'
-  )
-    return 'group_ready'
-  if (
-    answerOf(problem, 'ml.parts.0.role') === 'effect' &&
-    autonomous?.applies &&
-    autonomous.value === true
-  )
-    return 'policy'
-  // ML-Quest の is_logged_part と同じく, 効果を見積もるで方策でなく, 集め方が今ある記録で,
-  // 作り方が既製のモデルをそのまま使うでないとき (方策は上で除く). 記録で変えたものが値段なら
-  // is_price_part, 他は is_uplift_part
-  const collect = problem.questions.find((q) => q.id === 'ml.parts.0.collect')
-  if (
-    answerOf(problem, 'ml.parts.0.role') === 'effect' &&
-    collect?.applies &&
-    collect.value === 'log' &&
-    !(method?.applies && method.value === 'pretrained')
-  ) {
-    const varied = problem.questions.find((q) => q.id === 'ml.parts.0.varied')
-    return varied?.applies && varied.value === 'price' ? 'price' : 'uplift'
-  }
-  // ML-Quest の is_rank_part と同じく, 並べるで, 作り方が既製のモデルをそのまま使うでないとき
-  if (
-    answerOf(problem, 'ml.parts.0.role') === 'rank' &&
-    !(method?.applies && method.value === 'pretrained')
-  )
-    return 'rank'
-  // ML-Quest の is_group_part と同じく, まとめるで, 作り方が既製のモデルをそのまま使うでないとき
-  if (
-    answerOf(problem, 'ml.parts.0.role') === 'group' &&
-    !(method?.applies && method.value === 'pretrained')
-  )
-    return 'group'
-  const kind = answerOf(problem, 'ml.parts.0.target.kind')
-  // ML-Quest の is_anomaly_part と同じく, 予測するで正解の種類が異常 (既製のモデルは上で除く)
-  if (answerOf(problem, 'ml.parts.0.role') === 'predict' && kind === 'anomaly') return 'anomaly'
-  // ML-Quest の is_demand_part と同じく, 予測するで正解の種類が先の期間の需要 (既製のモデルは上で除く)
-  if (answerOf(problem, 'ml.parts.0.role') === 'predict' && kind === 'demand') return 'demand'
-  if (answerOf(problem, 'ml.parts.0.role') === 'generate') {
-    if (kind === 'image') return 'generate'
-    if (kind === 'table') return 'table'
-  }
-  return kind !== null && ITEMS_KINDS.includes(kind) ? 'items' : 'column'
 }
 
 /** 実験の名前を省略したときの元 (ML-Quest の experiment_name と同じ) */
@@ -150,7 +50,9 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
   // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 効果の見積もり, 値段を変える判断, 時間をまたぐ量の判断, 方策の, 列の予測と違う既定の名前と次にすること
-  const type = skeletonType(problem)
+  // 骨組みの型は ML-Quest の skeleton_type (書き出せるのは機械学習を使うときだけなので, 無いか知らない型なら列の予測)
+  const given = problem.skeleton_type
+  const type = given !== null && Object.hasOwn(DEFAULT_NAMES, given) ? given : 'column'
   // 異常の検知の度合いの決め方と正解の出どころ (次にすることの出し分け. 距離は学習しない)
   const distance = answerOf(problem, 'ml.parts.0.anomaly.score') === 'distance'
   const labeled = answerOf(problem, 'ml.parts.0.target.source') === 'few'

@@ -265,6 +265,11 @@ def test_project_with_open_errors(
                       json={"id": "issue.owner", "value": None}).json()
     assert view["ready"] is False and view["handoff"] is None
     assert view["exportable"] is True and view["export_error"] is None
+    # 骨組みの型は, 直すところが残っても ML-Quest の skeleton_type の名前
+    assert view["skeleton_type"] == ml_quest.skeleton_type(
+        ml_quest.example_problem(examples[0])
+    )
+    assert view["skeleton_type"] in ml_quest.SKELETON_TYPES
     assert [item["id"] for item in view["open_errors"]] == ["issue.owner"]
     assert view["open_errors"][0]["level"] == "error"
     listed = client.get("/api/problems").json()
