@@ -9,6 +9,7 @@ import {
   decisionDraft,
   decisionFields,
   decisionText,
+  listText,
   sameDecision,
   splitLines,
   toLevers,
@@ -31,13 +32,16 @@ interface InputState {
   errorId?: string
 }
 
-/** 保存した答えを文にする (空は空の文字列) */
-function savedText(value: unknown): string {
+/** 保存した答えを文にする (空は空の文字列. 数の並びはカンマで区切る) */
+function savedText(value: unknown, numbers = false): string {
   if (value === null || value === undefined) return ''
-  return Array.isArray(value) ? value.join('\n') : String(value)
+  return Array.isArray(value) ? value.join(numbers ? ', ' : '\n') : String(value)
 }
 
-/** 文と数: 欄を離れたか Enter で, 変わっていれば保存 (同じ値は 2 回送らない) */
+/**
+ * 文, 数と数の並び: 欄を離れたか Enter で, 変わっていれば保存 (同じ値は 2 回送らない). 数の並びは
+ * カンマの前後の空白をそろえた文で送り, 数の並びにするのは ML-Quest (空の要素も消さずに送る)
+ */
 function TextInput({
   question,
   onAnswer,
@@ -47,14 +51,17 @@ function TextInput({
 }: InputState & { multiline: boolean }) {
   // 1 行の欄は改行を出せない (input は改行を消して詰める) ので, 前の答えの改行は空白にして出す.
   // 直さなければ保存しない (同じ値とみなす)
-  const text = savedText(question.value)
+  const numbers = question.kind === 'numbers'
+  const text = savedText(question.value, numbers)
   const saved = multiline ? text : text.replace(/[^\S\r\n]*\r?\n\s*/g, ' ')
   const [draft, setDraft] = useState(saved)
   const sent = useRef(saved)
+  // 数の並びは空白の違いだけなら同じ値と見る
+  const shape = (value: string) => (numbers ? listText(value.trim()) : value.trim())
   const commit = () => {
-    if (draft.trim() === sent.current.trim()) return
+    if (shape(draft) === shape(sent.current)) return
     sent.current = draft
-    onAnswer(draft.trim() === '' ? null : draft)
+    onAnswer(draft.trim() === '' ? null : numbers ? listText(draft.trim()) : draft)
   }
   const props = {
     id: `q-${question.id}`,
@@ -71,6 +78,8 @@ function TextInput({
     <input
       {...props}
       inputMode={question.kind === 'number' ? 'decimal' : undefined}
+      // 数の並びの欄の, カンマで区切る書き方の案内 (決めごとの欄と同じ)
+      placeholder={numbers ? '数をカンマで区切って並べる' : undefined}
       onKeyDown={(event) => event.key === 'Enter' && commit()}
       className={clsx(INPUT, 'h-8', question.kind === 'number' && 'max-w-48')}
     />
@@ -783,6 +792,8 @@ export function QuestionField({
   if (question.kind === 'text' || question.kind === 'number')
     // 欄の形 (1 行か複数行か) は ML-Quest の問いが持つ
     input = <TextInput key={key} {...state} multiline={question.multiline} />
+  // 数の並び (学ぶ分位点の水準) は 1 行の欄にカンマで区切って書く
+  else if (question.kind === 'numbers') input = <TextInput key={key} {...state} multiline={false} />
   else if (question.kind === 'choice' || question.kind === 'boolean')
     input = <ChoiceInput {...state} />
   else if (usesColumns && columns.length)

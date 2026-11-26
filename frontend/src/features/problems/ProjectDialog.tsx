@@ -26,7 +26,8 @@ function answerOf(problem: Problem, id: string): string | null {
  * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 並べる
  * (並べるで既製のモデルをそのまま使わない), まとめる (まとめるで既製のモデルをそのまま使わない),
  * 異常の検知 (予測するで正解の種類が異常), 効果の見積もり (効果を見積もるで方策でなく, 今ある
- * 記録から), 値段を変える判断 (効果の見積もりで, 記録で変えたものが値段), 他は列の予測
+ * 記録から), 値段を変える判断 (効果の見積もりで, 記録で変えたものが値段), 時間をまたぐ量の判断
+ * (予測するで正解の種類が先の期間の需要), 他は列の予測
  */
 function skeletonType(
   problem: Problem,
@@ -40,6 +41,7 @@ function skeletonType(
   | 'anomaly'
   | 'uplift'
   | 'price'
+  | 'demand'
   | 'policy'
   | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
@@ -85,6 +87,8 @@ function skeletonType(
   const kind = answerOf(problem, 'ml.parts.0.target.kind')
   // ML-Quest の is_anomaly_part と同じく, 予測するで正解の種類が異常 (既製のモデルは上で除く)
   if (answerOf(problem, 'ml.parts.0.role') === 'predict' && kind === 'anomaly') return 'anomaly'
+  // ML-Quest の is_demand_part と同じく, 予測するで正解の種類が先の期間の需要 (既製のモデルは上で除く)
+  if (answerOf(problem, 'ml.parts.0.role') === 'predict' && kind === 'demand') return 'demand'
   if (answerOf(problem, 'ml.parts.0.role') === 'generate') {
     if (kind === 'image') return 'generate'
     if (kind === 'table') return 'table'
@@ -103,6 +107,7 @@ const DEFAULT_NAMES = {
   anomaly: '受け持ちと度合いの決め方',
   uplift: '結果の列と受け持ち',
   price: '売れた数の列と受け持ち',
+  demand: '日ごとの売れた数の列と受け持ち',
   // 英字の後は空けて読む
   policy: '環境の登録名か env ',
   // 一式の名前は, 省略するとモデルと重みの名前から
@@ -124,7 +129,7 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 効果の見積もり, 値段を変える判断, 方策の, 列の予測と違う既定の名前と次にすること
+  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 効果の見積もり, 値段を変える判断, 時間をまたぐ量の判断, 方策の, 列の予測と違う既定の名前と次にすること
   const type = skeletonType(problem)
   // 異常の検知の度合いの決め方と正解の出どころ (次にすることの出し分け. 距離は学習しない)
   const distance = answerOf(problem, 'ml.parts.0.anomaly.score') === 'distance'
@@ -143,9 +148,11 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
   // ファイルの組, 画像と表の生成, 並べる, まとめる, 方策の一式は意思決定を持たないので, 損得と制約の
-  // 注意は列の予測, 効果の見積もり (配る数の上限), 値段を変える判断 (値段の候補と変える幅の上限) だけ
+  // 注意は列の予測, 効果の見積もり (配る数の上限), 値段を変える判断 (値段の候補と変える幅の上限),
+  // 時間をまたぐ量の判断 (発注の判断の損と上限) だけ
   const dropped =
-    (type === 'column' || type === 'uplift' || type === 'price') && decisionDropped(errors)
+    (type === 'column' || type === 'uplift' || type === 'price' || type === 'demand') &&
+    decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
     // 書き出した時点の確かめ (読み直した一覧が変わっても, 次にすることはその時点のまま)
@@ -206,7 +213,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                         ? '介入の記録の表とモデルの定義を置いて, 顧客ごとの効果を見積もります.'
                         : type === 'price'
                           ? '値段を変えた記録の表とモデルの定義を置いて, 商品ごとに利益が最も大きい値段を選びます.'
-                          : 'データセットとモデルの定義を置いて学習します.'}
+                          : type === 'demand'
+                            ? '需要の記録の表とモデルの定義を置いて, 商品ごとの発注の数を決めます.'
+                            : 'データセットとモデルの定義を置いて学習します.'}
           </>
         )}
       </p>
@@ -268,7 +277,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   ? ' 損得と制約に直すところが残るので, 配る数の上限を付けずに (config の uplift.budget を空にして) 書き出します.'
                   : type === 'price'
                     ? ' 損得と制約に直すところが残るので, 値段の候補と変える幅の上限を付けずに (config の price.candidates と price.max_change を空にして) 書き出します. 空のままでは学習の前に止まります.'
-                    : ' 損得と制約に直すところが残るので, 推論の一式は意思決定の既定値を付けずに作ります.')}
+                    : type === 'demand'
+                      ? ' 損得と制約に直すところが残るので, 発注の判断の損と上限を付けずに (config の order を空にして) 書き出します. 空のままでは学習の前に止まります.'
+                      : ' 損得と制約に直すところが残るので, 推論の一式は意思決定の既定値を付けずに作ります.')}
             </p>
             <ul aria-label="残っている直すところ" className="mb-2 list-disc pl-5 text-xs">
               {errors.map((finding) => {
@@ -550,6 +561,38 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                     '. README.md の最後の一覧を直すまで問題の設定はつながない'}
                   {write.variables?.dropped &&
                     '. 損得と制約に直すところが残ったので, 値段の候補と変える幅の上限は空 (config の price) のまま. 書き足すか, 直して書き出し直すまで学習の前に止まる'}
+                </li>
+              </ol>
+            ) : type === 'demand' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  {
+                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 需要の記録の表 (1 行が商品と発注を決める日. 正解は先の期間の売れた数の合計) をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は発注を決める日の順. 過去の売れた数はずらした列 (lag) に, 曜日は列 (datetime_parts) にする. ML-EDA の describe_demand で商品ごとの記録の日数, 抜けの日と在庫が 0 の日を確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
+                  }
+                </li>
+                <li>
+                  {
+                    'ML-CreateArchitecture で, 行の特徴 x から水準の小さい順の分位点 quantiles を出す定義を組み, models/model.yaml に保存する. モデルの作成の画面で開ける例 tabular_demand を, 列の数と学ぶ水準の数に合わせて使える (列の数は学習の記録 train.log の初めの行に出る). 定義が無いうちは仮のモデルで学習する'
+                  }
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かす. 学ぶ水準 (0.5 と水準 τ を含む)
+                  の分位点の損失で学び, 学習の後に, 発注を決める日の行ごとに τ (品切れの損 /
+                  (品切れの損 + 売れ残りの損)) の分位点から在庫の数を引き, 0 から上限の間の整数で
+                  発注の数を決める. 検証用とテスト用の分割で, 0.5 の分位点の誤差, 分位点の損失と,
+                  実際の需要での発注の数の損と前の期間と同じ数の発注の損の比べを evaluations/
+                  に書き, 発注の数 (demand_orders.csv) を実験に残す
+                </li>
+                <li>
+                  学習の後に, 推論の段階が読む需要の決め方 (demand_estimator.json)
+                  と前処理のレシピの写しを実験に残し, ML-Inference の需要の一式を実験の inference/
+                  に作る (config の data.source の元の表があれば, 一式の発注の数を実験と比べる.
+                  仮のモデルでは作らない). 発注の数は見積もりで, 品切れの多い商品は需要を少なめに
+                  見積もるので, 実際の損は発注の後の売れた数で確かめる
+                  {write.variables?.accept &&
+                    '. README.md の最後の一覧を直すまで問題の設定はつながない'}
+                  {write.variables?.dropped &&
+                    '. 損得と制約に直すところが残ったので, 発注の判断の損と上限は空 (config の order) のまま. 書き足すか, 直して書き出し直すまで学習の前に止まる'}
                 </li>
               </ol>
             ) : type === 'items' ? (

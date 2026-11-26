@@ -12,8 +12,11 @@ export function decisionText(value: Decision[string]): string {
   return Array.isArray(value) ? value.join(', ') : String(value)
 }
 
-/** 数の並びの欄の書きかけの正規化 (区切りの前後の空白をそろえる. 数にするのは ML-Quest) */
-function listText(text: string): string {
+/**
+ * 数の並びの欄の書きかけの正規化 (区切りの前後の空白をそろえる. 数にするのは ML-Quest).
+ * 空の要素 (末尾のカンマ, 続いたカンマ) は消さずに残し, ML-Quest の誤りで知らせる
+ */
+export function listText(text: string): string {
   return text
     .split(',')
     .map((item) => item.trim())
