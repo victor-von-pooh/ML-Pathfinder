@@ -475,6 +475,7 @@ def problem_view(
         "ready": handoff is not None,
         "exportable": export_error is None,
         "export_error": export_error,
+        "skeleton_type": ml_quest.skeleton_type(problem),
         "open_errors": remaining,
         "project": project_of(problem),
         "finished": uses is False and not any(

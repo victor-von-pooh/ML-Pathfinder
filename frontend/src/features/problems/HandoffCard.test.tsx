@@ -39,6 +39,7 @@ function problemWith(handoff: Handoff, questions: Question[]): Problem {
     ready: true,
     exportable: false,
     export_error: null,
+    skeleton_type: null,
     open_errors: [],
     finished: false,
     file_version: 2,

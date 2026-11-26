@@ -377,6 +377,23 @@ export interface ProjectRecord {
   model_spec: string | null
 }
 
+/** 骨組みの型 (ML-Quest の SKELETON_TYPES) */
+export type SkeletonType =
+  | 'search'
+  | 'group_ready'
+  | 'ready'
+  | 'policy'
+  | 'rank'
+  | 'group'
+  | 'anomaly'
+  | 'uplift'
+  | 'price'
+  | 'demand'
+  | 'table'
+  | 'generate'
+  | 'items'
+  | 'column'
+
 /** 問題の設定の全て */
 export interface Problem {
   id: string
@@ -401,6 +418,11 @@ export interface Problem {
   exportable: boolean
   /** 骨組みを組めない理由 (ML-Quest の project_error の文) */
   export_error: string | null
+  /**
+   * 書き出す骨組みの型 (ML-Quest の skeleton_type. 機械学習を使わないときは null).
+   * 書き出す対話の説明の文の出し分けだけに使う
+   */
+  skeleton_type: SkeletonType | null
   /**
    * 書き出すときに残っている直すところ (ML-Quest の open_errors. 問題の設定の確かめと入れた
    * データの確かめの error. 書き出せないときは空). 残っていれば「それでも書き出す」の確かめが要る
