@@ -53,6 +53,8 @@ export interface DecisionField {
   unset?: string
   /** 他の欄の値で要るかが決まる */
   when?: { key: string; equals: string }
+  /** 数の並びの欄 (値段の候補. カンマで区切って書く) */
+  list?: boolean
 }
 
 /** 要因と打てる手の 1 行 */
@@ -62,10 +64,10 @@ export interface Lever {
   ml: boolean
 }
 
-/** 意思決定の型と損得と制約 (ML-Inference の形. 値は数か列の名前) */
+/** 意思決定の型と損得と制約 (ML-Inference の形. 値は数か列の名前か, 値段の候補の数の並び) */
 export interface Decision {
-  type: 'quantity' | 'select' | 'triage' | 'treat' | 'none'
-  [field: string]: string | number | undefined
+  type: 'quantity' | 'select' | 'triage' | 'treat' | 'price' | 'none'
+  [field: string]: string | number | number[] | undefined
 }
 
 /** 問い (今の答え, 答えたか, 今要るかを含む) */
@@ -191,6 +193,22 @@ export interface Uplift {
   k: number | null
 }
 
+/** 値段を変える判断の値段, 売れた数, 原価, 商品と行の id と予測に使う列 (値段を変える判断のときだけ. ML-Quest の受け渡しの price) */
+export interface Price {
+  /** 値段の列 */
+  price: string | null
+  /** 売れた数の列 */
+  units: string | null
+  /** 原価の列 (答えていなければ null) */
+  cost: string | null
+  /** 商品の id の列 (答えていなければ null. 行ごとに選ぶ) */
+  product: string | null
+  /** 行の id の列 (答えていなければ null) */
+  id: string | null
+  /** 売れ行きの予測に使う列の名前の並び (値段の列は含まない) */
+  columns: string[]
+}
+
 /** 推論の段階のたどり直しで数える守る指標 (列の予測で, 名前を答えたときだけ. ML-Quest の guard_of) */
 export interface Guard {
   name: string
@@ -253,14 +271,20 @@ export interface Handoff {
     } | null
     /** 書き出したプロジェクトのデータセットの置き場 (絶対パス. 書き出していなければ null) */
     project_dataset?: string | null
-    /** 行の id の列 (異常の検知と効果の見積もりだけ. 答えていなければ null) */
+    /** 行の id の列 (異常の検知, 効果の見積もり, 値段を変える判断だけ. 答えていなければ null) */
     id?: string | null
-    /** 正解の欠けた行の扱い (異常の検知で正解の列があれば normal, 効果の見積もりは drop) */
+    /** 正解の欠けた行の扱い (異常の検知で正解の列があれば normal, 効果の見積もりと値段を変える判断は drop) */
     unlabeled?: string | null
     /** 処置の列 (効果の見積もりだけ) */
     treatment?: string | null
     /** 結果の種類 (効果の見積もりだけ. binary か amount) */
     outcome_kind?: string | null
+    /** 値段の列 (値段を変える判断だけ) */
+    price?: string | null
+    /** 原価の列 (値段を変える判断だけ. 答えていなければ null) */
+    cost?: string | null
+    /** 商品の id の列 (値段を変える判断だけ. 答えていなければ null) */
+    product?: string | null
   }
   model: {
     task: string | null
@@ -301,6 +325,8 @@ export interface Handoff {
   anomaly?: Anomaly | null
   /** 効果の見積もりの処置, 結果, 列と上位の割合 (効果の見積もりでなければ null) */
   uplift?: Uplift | null
+  /** 値段を変える判断の列 (値段を変える判断でなければ null) */
+  price?: Price | null
   /** 書き出したプロジェクト (書き出していなければ path は null) */
   project?: { path: string | null }
 }

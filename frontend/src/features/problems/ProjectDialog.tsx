@@ -26,7 +26,7 @@ function answerOf(problem: Problem, id: string): string | null {
  * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 並べる
  * (並べるで既製のモデルをそのまま使わない), まとめる (まとめるで既製のモデルをそのまま使わない),
  * 異常の検知 (予測するで正解の種類が異常), 効果の見積もり (効果を見積もるで方策でなく, 今ある
- * 記録から), 他は列の予測
+ * 記録から), 値段を変える判断 (効果の見積もりで, 記録で変えたものが値段), 他は列の予測
  */
 function skeletonType(
   problem: Problem,
@@ -39,6 +39,7 @@ function skeletonType(
   | 'group'
   | 'anomaly'
   | 'uplift'
+  | 'price'
   | 'policy'
   | 'ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
@@ -56,16 +57,19 @@ function skeletonType(
     autonomous.value === true
   )
     return 'policy'
-  // ML-Quest の is_uplift_part と同じく, 効果を見積もるで方策でなく, 集め方が今ある記録で,
-  // 作り方が既製のモデルをそのまま使うでないとき (方策は上で除く)
+  // ML-Quest の is_logged_part と同じく, 効果を見積もるで方策でなく, 集め方が今ある記録で,
+  // 作り方が既製のモデルをそのまま使うでないとき (方策は上で除く). 記録で変えたものが値段なら
+  // is_price_part, 他は is_uplift_part
   const collect = problem.questions.find((q) => q.id === 'ml.parts.0.collect')
   if (
     answerOf(problem, 'ml.parts.0.role') === 'effect' &&
     collect?.applies &&
     collect.value === 'log' &&
     !(method?.applies && method.value === 'pretrained')
-  )
-    return 'uplift'
+  ) {
+    const varied = problem.questions.find((q) => q.id === 'ml.parts.0.varied')
+    return varied?.applies && varied.value === 'price' ? 'price' : 'uplift'
+  }
   // ML-Quest の is_rank_part と同じく, 並べるで, 作り方が既製のモデルをそのまま使うでないとき
   if (
     answerOf(problem, 'ml.parts.0.role') === 'rank' &&
@@ -98,6 +102,7 @@ const DEFAULT_NAMES = {
   group: '受け持ちと群の数',
   anomaly: '受け持ちと度合いの決め方',
   uplift: '結果の列と受け持ち',
+  price: '売れた数の列と受け持ち',
   // 英字の後は空けて読む
   policy: '環境の登録名か env ',
   // 一式の名前は, 省略するとモデルと重みの名前から
@@ -119,7 +124,7 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
-  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 効果の見積もり, 方策の, 列の予測と違う既定の名前と次にすること
+  // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 効果の見積もり, 値段を変える判断, 方策の, 列の予測と違う既定の名前と次にすること
   const type = skeletonType(problem)
   // 異常の検知の度合いの決め方と正解の出どころ (次にすることの出し分け. 距離は学習しない)
   const distance = answerOf(problem, 'ml.parts.0.anomaly.score') === 'distance'
@@ -138,8 +143,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // だけなら作れるが, 直すまでつながない). ML-Quest の README の書き分けと同じ
   const checked = problem.handoff === null
   // ファイルの組, 画像と表の生成, 並べる, まとめる, 方策の一式は意思決定を持たないので, 損得と制約の
-  // 注意は列の予測と効果の見積もり (配る数の上限) だけ
-  const dropped = (type === 'column' || type === 'uplift') && decisionDropped(errors)
+  // 注意は列の予測, 効果の見積もり (配る数の上限), 値段を変える判断 (値段の候補と変える幅の上限) だけ
+  const dropped =
+    (type === 'column' || type === 'uplift' || type === 'price') && decisionDropped(errors)
   const client = useQueryClient()
   const write = useMutation({
     // 書き出した時点の確かめ (読み直した一覧が変わっても, 次にすることはその時点のまま)
@@ -198,7 +204,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                       ? '異常の検知の表とモデルの定義を置いて学習します.'
                       : type === 'uplift'
                         ? '介入の記録の表とモデルの定義を置いて, 顧客ごとの効果を見積もります.'
-                        : 'データセットとモデルの定義を置いて学習します.'}
+                        : type === 'price'
+                          ? '値段を変えた記録の表とモデルの定義を置いて, 商品ごとに利益が最も大きい値段を選びます.'
+                          : 'データセットとモデルの定義を置いて学習します.'}
           </>
         )}
       </p>
@@ -258,7 +266,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               {dropped &&
                 (type === 'uplift'
                   ? ' 損得と制約に直すところが残るので, 配る数の上限を付けずに (config の uplift.budget を空にして) 書き出します.'
-                  : ' 損得と制約に直すところが残るので, 推論の一式は意思決定の既定値を付けずに作ります.')}
+                  : type === 'price'
+                    ? ' 損得と制約に直すところが残るので, 値段の候補と変える幅の上限を付けずに (config の price.candidates と price.max_change を空にして) 書き出します. 空のままでは学習の前に止まります.'
+                    : ' 損得と制約に直すところが残るので, 推論の一式は意思決定の既定値を付けずに作ります.')}
             </p>
             <ul aria-label="残っている直すところ" className="mb-2 list-disc pl-5 text-xs">
               {errors.map((finding) => {
@@ -508,6 +518,38 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                     '. README.md の最後の一覧を直すまで問題の設定はつながない'}
                   {write.variables?.dropped &&
                     '. 損得と制約に直すところが残ったので, 配る数の上限は空 (config の uplift.budget) のまま'}
+                </li>
+              </ol>
+            ) : type === 'price' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>
+                  {
+                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 値段を変えた記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は値段の段 (値段の高さで行を分けた組) で層を作る. 値段は試しに変えた記録 (無作為に近い) を前提にするので, ML-EDA の describe_price で商品ごとの試した値段と, 値段と他の列の偏りを確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
+                  }
+                </li>
+                <li>
+                  {
+                    'ML-CreateArchitecture で, 行の特徴 x (最後の列が値段) から売れた数の予測 units を出す定義を組み, models/model.yaml に保存する. モデルの作成の画面で開ける例 tabular_price を, 列の数に合わせて使える (列の数は学習の記録 train.log の初めの行に出る). 定義が無いうちは仮のモデルで学習する'
+                  }
+                </li>
+                <li>
+                  ML-Found (か ML-Dashboard) で train.py を動かす. 学習の後に,
+                  今の値段に候補の割合をかけた値段で売れた数を予測し,
+                  変える幅の上限を超えない候補の中で見込みの利益 ((値段 − 原価) × 予測した数)
+                  が最も大きい値段を商品ごとに選ぶ. 検証用とテスト用の分割で, 売れた数の誤差, 弾力性
+                  (値段を 1 % 上げたときに売れた数が何 % 変わるか) と見込みの利益の比べを
+                  evaluations/ に書き, 商品ごとの選んだ値段 (price_choices.csv) を実験に残す
+                </li>
+                <li>
+                  学習の後に, 推論の段階が読む値段の決め方 (price_estimator.json)
+                  と前処理のレシピの写しを実験に残し, ML-Inference の値段の一式を実験の inference/
+                  に作る (config の data.source の元の表があれば, 一式の選んだ値段を実験と比べる.
+                  仮のモデルでは作らない). 選ぶ値段は見積もりで,
+                  値段を変えた効き目は値段を試して確かめる
+                  {write.variables?.accept &&
+                    '. README.md の最後の一覧を直すまで問題の設定はつながない'}
+                  {write.variables?.dropped &&
+                    '. 損得と制約に直すところが残ったので, 値段の候補と変える幅の上限は空 (config の price) のまま. 書き足すか, 直して書き出し直すまで学習の前に止まる'}
                 </li>
               </ol>
             ) : type === 'items' ? (

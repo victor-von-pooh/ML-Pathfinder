@@ -356,6 +356,77 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/環境と守りを整えて方策を学習します/)).toBeInTheDocument()
   })
 
+  it('値段を変える判断は, 値段を変えた記録の表の次にすることと実験の名前と, 候補と上限の注意を出す', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'effect' }
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'scratch' }
+    const autonomous: Question = {
+      ...KIND,
+      id: 'ml.parts.0.autonomous',
+      kind: 'boolean',
+      value: false,
+    }
+    const collect: Question = { ...KIND, id: 'ml.parts.0.collect', value: 'log' }
+    const varied: Question = { ...KIND, id: 'ml.parts.0.varied', value: 'price' }
+    const problem = problemWith([
+      { level: 'error', id: 'action.decision.candidates', message: '0 を含めてください' },
+    ])
+    const { unmount } = renderDialog({
+      ...problem,
+      questions: [{ ...KIND, value: null }, role, method, autonomous, collect, varied, OWNER],
+    })
+    expect(screen.getByText(/売れた数の列と受け持ちから/)).toBeInTheDocument()
+    expect(screen.getByText(/値段を変えた記録の表とモデルの定義を置いて/)).toBeInTheDocument()
+    expect(screen.getByText(/値段の候補と変える幅の上限を付けずに/)).toHaveTextContent(
+      '空のままでは学習の前に止まります',
+    )
+    expect(screen.queryByText(/配る数の上限を付けずに/)).toBeNull()
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
+    fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
+    expect(
+      await screen.findByText(/値段を変えた記録の表をデータセットの書き出し先/),
+    ).toHaveTextContent('試しに変えた記録 (無作為に近い) を前提にする')
+    expect(screen.getByText(/値段を変えた記録の表をデータセットの書き出し先/)).toHaveTextContent(
+      'describe_price',
+    )
+    expect(screen.getByText(/tabular_price/)).toHaveTextContent('売れた数の予測 units')
+    expect(screen.getByText(/price_choices\.csv/)).toHaveTextContent(
+      '弾力性 (値段を 1 % 上げたとき',
+    )
+    expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent('値段を試して確かめる')
+    expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent(
+      '値段の候補と変える幅の上限は空 (config の price) のまま',
+    )
+    expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent(
+      'ML-Inference の値段の一式を実験の inference/ に作る',
+    )
+    expect(screen.queryByText(/まだ作らない/)).toBeNull()
+    expect(screen.queryByText(/uplift_estimator/)).toBeNull()
+    unmount()
+
+    // 配ったかと答えると, 効果の見積もりの説明にする
+    renderDialog({
+      ...problemWith([]),
+      questions: [
+        { ...KIND, value: null },
+        role,
+        method,
+        autonomous,
+        collect,
+        { ...varied, value: 'treat' },
+        OWNER,
+      ],
+    })
+    expect(screen.queryByText(/値段を変えた記録の表/)).toBeNull()
+    expect(screen.getByText(/介入の記録の表とモデルの定義を置いて/)).toBeInTheDocument()
+  })
+
   it('まとめるで既製のモデルをそのまま使う答えは, まとめるの説明にしない', () => {
     const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'group' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }

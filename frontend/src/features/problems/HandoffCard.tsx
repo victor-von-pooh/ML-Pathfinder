@@ -872,6 +872,202 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
   )
 }
 
+/** 今の値段に対する変える割合の言葉 (0.05 は +5 %) */
+function ratioText(ratio: number): string {
+  const percent = Math.round(ratio * 1000) / 10
+  return `${percent > 0 ? '+' : ''}${percent} %`
+}
+
+/** 変える割合の絶対値の言葉 (0.1 は 10 %. 向きの符号を付けない) */
+function limitText(ratio: number): string {
+  return `${Math.round(ratio * 1000) / 10} %`
+}
+
+/**
+ * 値段を変える判断の値 (受け渡しの price があるときだけ). 列の予測と効果の見積もりの欄と分け,
+ * 値段, 売れた数, 原価の列, 今の値段の決め方, 値段の候補と変える幅の上限, 誤差と弾力性と利益の
+ * 比べで数える評価と, 利益が最も大きい値段を選ぶ判断を言葉で出す (配る判断の型と違う言葉のため)
+ */
+function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] }) {
+  const handoff = problem.handoff
+  const price = handoff?.price
+  if (!handoff || !price) return null
+  const { part, data, model, inference } = handoff
+  const decision = inference.decision
+  const choice = choicesOf(problem, 'action.decision').find((item) => item.value === 'price')
+  // 欄の名前は ML-Quest の欄の言葉の括弧の前まで (引けなければ ML-Quest の名前と同じ言葉)
+  const nameOf = (key: string, fallback: string) =>
+    choice?.fields?.find((field) => field.key === key)?.label.split(' (')[0] ?? fallback
+  const candidatesName = nameOf('candidates', '値段の候補')
+  const maxName = nameOf('max_change', '値段を変える幅の上限')
+  const candidates = Array.isArray(decision?.candidates) ? decision.candidates : null
+  const max = typeof decision?.max_change === 'number' ? decision.max_change : null
+  const rows: [string, string | null][] = [
+    ['受け持ち', partLabel(problem, 'role', part.role)],
+    ['出力の形', partLabel(problem, 'output', part.output)],
+    ['正解の出どころ', partLabel(problem, 'target.source', part.target_source)],
+  ]
+  return (
+    <Card title="後ろの段階に渡す値">
+      <dl className="flex flex-col gap-3 text-sm">
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">機械学習の受け持ち</dt>
+          <dd className="flex flex-col gap-1">
+            {rows
+              .filter(([, value]) => value !== null)
+              .map(([name, value]) => (
+                <span key={name}>
+                  {name}: {value}
+                </span>
+              ))}
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dd className="flex flex-col gap-1">
+            <span className="flex flex-wrap items-center gap-1">
+              値段の列 <Code>{price.price ?? ''}</Code> (売ったときの値段. 試しに値段を変えた記録
+              (無作為に近い) を前提にする. 売れ行きの予測の入力の最後の列)
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              売れた数の列 <Code>{price.units ?? ''}</Code> (その値段で売れた数. 予測する値)
+            </span>
+            {price.cost ? (
+              <span className="flex flex-wrap items-center gap-1">
+                原価の列 <Code>{price.cost}</Code> (商品 1 つを仕入れるか作るのにかかる値段.
+                予測には使わない)
+              </span>
+            ) : (
+              <span>
+                原価の列: <span className="text-ink-3">無し (原価を 0 とし, 売上で選ぶ)</span>
+              </span>
+            )}
+            {price.product ? (
+              <span className="flex flex-wrap items-center gap-1">
+                商品の id の列 <Code>{price.product}</Code> (値段を選ぶ単位. 予測には使わない)
+              </span>
+            ) : (
+              <span>
+                商品の id の列: <span className="text-ink-3">無し (行ごとに値段を選ぶ)</span>
+              </span>
+            )}
+            {price.id ? (
+              <span className="flex flex-wrap items-center gap-1">
+                行の id の列 <Code>{price.id}</Code> (記録の 1 行を指す. 予測には使わない)
+              </span>
+            ) : (
+              <span>
+                行の id の列: <span className="text-ink-3">無し (行の位置で指す)</span>
+              </span>
+            )}
+            {data.split && (
+              <span>
+                分割は{shortLabel(splits, data.split)} (値段の段 (値段の高さで行を分けた組)
+                で層を作る)
+              </span>
+            )}
+            <span className="flex flex-wrap items-center gap-1">
+              予測に使う列 <Names names={price.columns} />
+              (値段の列は最後に足す)
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              除く列 <Names names={data.drop} />
+            </span>
+            {data.unlabeled === 'drop' && <span>売れた数の欠けた行は落とす</span>}
+            {data.source ? (
+              <span>
+                データ <Code>{data.source.source}</Code> (データの分析から推論までのアプリも,
+                写したこのファイルを同じ読み方で開く)
+              </span>
+            ) : (
+              <span className="text-ink-3">データは入れていません</span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            値段の選び方 (データの分析, 学習, 評価)
+          </dt>
+          <dd className="flex flex-col gap-1">
+            <span>
+              今の値段は,{' '}
+              {price.product
+                ? '商品ごとの記録の値段の中央値 (試しに上げ下げした値段の真ん中)'
+                : 'その行の記録の値段'}
+            </span>
+            <span>
+              {candidates
+                ? `${candidatesName} (今の値段に対する変える割合. 候補の値段は今の値段 × (1 + 割合)) は ${candidates.map(ratioText).join(', ')}`
+                : `${candidatesName} (今の値段に対する変える割合) はまだ決めていません`}
+            </span>
+            <span>
+              {max !== null
+                ? `${maxName} (変える割合の絶対値. 守る指標. 上限を超える候補は選ばない) は ${limitText(max)}`
+                : `${maxName} (変える割合の絶対値. 守る指標) はまだ決めていません`}
+            </span>
+            <span>
+              利益は (値段 − 原価) × 予測した売れた数. 商品ごとに,
+              候補の中で利益が最も大きい値段を選ぶ
+            </span>
+            <span className="text-xs text-ink-2">
+              評価は, 記録の値段での売れた数の誤差, 弾力性 (値段を 1 % 上げたときに売れた数が何 %
+              変わるか. 負なら値上げで売れる数が減る),
+              選んだ値段と今の値段での見込みの利益の比べで数えます
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            モデルの作成 (ML-CreateArchitecture)
+          </dt>
+          <dd className="flex flex-col gap-1">
+            <ModelExample problem={problem} />
+            <span>
+              入力の最後の列が値段で, 出力は売れた数の予測 units
+              {model.outputs !== null && ` (大きさ ${model.outputs})`}.
+              値段の列を候補の値段に置き換えて, 候補ごとの売れた数を予測する
+            </span>
+          </dd>
+        </div>
+        <TrainingRow problem={problem} />
+        <RequiresRow problem={problem} />
+        <ProjectRow problem={problem} />
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+          <dd className="flex flex-col gap-1">
+            {decision ? (
+              <span className="flex flex-wrap items-center gap-1">
+                意思決定: {choice?.label.split(' (')[0] ?? decision.type}
+                {candidates && (
+                  <Code>{`${candidatesName}: ${candidates.map(ratioText).join(', ')}`}</Code>
+                )}
+                {max !== null && <Code>{`${maxName}: ${limitText(max)}`}</Code>}
+              </span>
+            ) : (
+              <span>
+                意思決定: <span className="text-ink-3">まだ決めていません</span>
+              </span>
+            )}
+            <span>
+              商品ごとに, {maxName}を超えない候補の中で利益が最も大きい値段を選びます
+              (今の値段も候補なので, 見込みの利益は今の値段より小さくならない)
+            </span>
+            <span>
+              学習の後に, 推論の段階が読む値段の決め方 (price_estimator.json) と商品ごとの選んだ値段
+              (price_choices.csv) を実験に残し, ML-Inference の値段の一式を実験の inference/
+              に作ります (仮のモデルでは作らない)
+            </span>
+            <span className="text-xs text-ink-2">
+              選ぶ値段は試しに値段を変えた記録からの見積もりです. 値段を変えた効き目は,
+              値段を試して確かめます
+            </span>
+          </dd>
+        </div>
+      </dl>
+    </Card>
+  )
+}
+
 /** 後ろの段階ごとに, 各段階の画面で選ぶ値 */
 export function HandoffCard({
   problem,
@@ -901,6 +1097,8 @@ export function HandoffCard({
   if (handoff.anomaly) return <AnomalyHandoff problem={problem} splits={splits} />
   // 効果の見積もりも, タスクがあっても列の予測と別の欄
   if (handoff.uplift) return <UpliftHandoff problem={problem} splits={splits} />
+  // 値段を変える判断も, タスクがあっても列の予測と別の欄
+  if (handoff.price) return <PriceHandoff problem={problem} splits={splits} />
   // 列の予測でなければ, タスクが無い (受け持ちごとの表示)
   if (handoff.data.task === null)
     return <PartHandoff problem={problem} splits={splits} onJump={onJump} />

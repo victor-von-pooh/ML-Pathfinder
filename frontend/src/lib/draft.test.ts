@@ -1,5 +1,12 @@
 import type { DecisionField } from '../api/types'
-import { decisionDraft, decisionFields, sameDecision, splitLines, toLevers } from './draft'
+import {
+  decisionDraft,
+  decisionFields,
+  decisionText,
+  sameDecision,
+  splitLines,
+  toLevers,
+} from './draft'
 
 // ML-Quest が返す欄の形 (テスト用に一部)
 const QUANTITY: DecisionField[] = [
@@ -53,6 +60,24 @@ describe('sameDecision', () => {
     )
     expect(sameDecision({ type: 'quantity', under_cost: '200' }, saved)).toBe(false)
     expect(sameDecision({ type: 'quantity' }, null)).toBe(false)
+  })
+})
+
+describe('数の並びの欄', () => {
+  const PRICE: DecisionField[] = [
+    { key: 'candidates', label: '値段の候補', required: true, list: true },
+    { key: 'max_change', label: '値段を変える幅の上限', required: true },
+  ]
+  it('カンマの前後の空白をそろえて文で送り, 保存した並びと同じと見る', () => {
+    const draft = decisionDraft('price', PRICE, {
+      candidates: ' -0.1 ,0,  0.1 ',
+      max_change: '0.1',
+    })
+    expect(draft).toEqual({ type: 'price', candidates: '-0.1, 0, 0.1', max_change: '0.1' })
+    const saved = { type: 'price' as const, candidates: [-0.1, 0, 0.1], max_change: 0.1 }
+    expect(sameDecision(draft, saved)).toBe(true)
+    expect(sameDecision({ ...draft, candidates: '-0.1, 0' }, saved)).toBe(false)
+    expect(decisionText(saved.candidates)).toBe('-0.1, 0, 0.1')
   })
 })
 

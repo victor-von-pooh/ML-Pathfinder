@@ -7,6 +7,19 @@ export function decisionFields(
   return fields.filter((field) => !field.when || values[field.when.key] === field.when.equals)
 }
 
+/** 保存した意思決定の値の, 欄に書く文字 (数の並びはカンマで区切る) */
+export function decisionText(value: Decision[string]): string {
+  return Array.isArray(value) ? value.join(', ') : String(value)
+}
+
+/** 数の並びの欄の書きかけの正規化 (区切りの前後の空白をそろえる. 数にするのは ML-Quest) */
+function listText(text: string): string {
+  return text
+    .split(',')
+    .map((item) => item.trim())
+    .join(', ')
+}
+
 /** 意思決定の欄の書きかけから, 保存する形を作る (空の欄と使わない欄は除く) */
 export function decisionDraft(
   kind: Decision['type'],
@@ -16,15 +29,18 @@ export function decisionDraft(
   const draft: Record<string, string> = { type: kind }
   for (const field of decisionFields(fields, values)) {
     const value = values[field.key]?.trim()
-    if (value) draft[field.key] = value
+    if (value) draft[field.key] = field.list ? listText(value) : value
   }
   return draft
 }
 
-/** 書きかけと保存した意思決定が同じか (数は文字で比べる. 1,500 と 1500 は違うと見る) */
+/**
+ * 書きかけと保存した意思決定が同じか (数は文字で比べる. 1,500 と 1500 は違うと見る. 数の並びは
+ * カンマで区切った文字で比べる)
+ */
 export function sameDecision(draft: Record<string, string>, saved: Decision | null): boolean {
   if (!saved) return false
-  const text = Object.fromEntries(Object.entries(saved).map(([k, v]) => [k, String(v)]))
+  const text = Object.fromEntries(Object.entries(saved).map(([k, v]) => [k, decisionText(v)]))
   const keys = new Set([...Object.keys(draft), ...Object.keys(text)])
   return [...keys].every((key) => draft[key] === text[key])
 }
