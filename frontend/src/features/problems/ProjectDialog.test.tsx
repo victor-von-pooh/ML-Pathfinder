@@ -291,6 +291,71 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/異常の度合いの一式/)).not.toHaveTextContent('仮のモデル')
   })
 
+  it('効果の見積もりは, 介入の記録の表の次にすることと実験の名前と, 配る数の上限の注意を出す', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'effect' }
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'scratch' }
+    const autonomous: Question = {
+      ...KIND,
+      id: 'ml.parts.0.autonomous',
+      kind: 'boolean',
+      value: false,
+    }
+    const collect: Question = { ...KIND, id: 'ml.parts.0.collect', value: 'log' }
+    const problem = problemWith([
+      { level: 'error', id: 'action.decision.budget', message: '1 以上の整数で答えてください' },
+    ])
+    const { unmount } = renderDialog({
+      ...problem,
+      questions: [{ ...KIND, value: null }, role, method, autonomous, collect, OWNER],
+    })
+    expect(screen.getByText(/結果の列と受け持ちから/)).toBeInTheDocument()
+    expect(screen.getByText(/介入の記録の表とモデルの定義を置いて/)).toBeInTheDocument()
+    expect(screen.getByText(/配る数の上限を付けずに/)).toBeInTheDocument()
+    expect(screen.queryByText(/意思決定の既定値を付けずに/)).toBeNull()
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
+    fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
+    expect(await screen.findByText(/介入の記録の表をデータセットの書き出し先/)).toHaveTextContent(
+      '無作為に配った記録を前提にする',
+    )
+    expect(screen.getByText(/tabular_uplift/)).toBeInTheDocument()
+    expect(screen.getByText(/Qini の曲線/)).toHaveTextContent('上位 K 割の効果の差')
+    expect(screen.getByText(/Qini の曲線/)).toHaveTextContent('でたらめに配るよりどれだけ良いか')
+    expect(screen.getByText(/介入の記録の表をデータセットの書き出し先/)).toHaveTextContent(
+      '種類の列は one_hot で数の列にする',
+    )
+    expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
+      '効果の高い順に配る数の上限まで',
+    )
+    expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
+      '配る数の上限は空 (config の uplift.budget) のまま',
+    )
+    expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
+    expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
+    unmount()
+
+    // 方策と答えると, 効果の見積もりの説明にしない
+    renderDialog({
+      ...problemWith([]),
+      questions: [
+        { ...KIND, value: null },
+        role,
+        method,
+        { ...autonomous, value: true },
+        { ...collect, value: 'simulator' },
+        OWNER,
+      ],
+    })
+    expect(screen.queryByText(/介入の記録の表/)).toBeNull()
+    expect(screen.getByText(/環境と守りを整えて方策を学習します/)).toBeInTheDocument()
+  })
+
   it('まとめるで既製のモデルをそのまま使う答えは, まとめるの説明にしない', () => {
     const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'group' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }

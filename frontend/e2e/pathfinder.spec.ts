@@ -1383,6 +1383,154 @@ test('異常の検知と画面で答え, センサの表を入れると, 列と�
   await expect(card.getByText(/監視する指標/)).toHaveCount(0)
 })
 
+test('効果を見積もるで今ある記録からと画面で答え, クーポンの記録を入れると, 列と K と配る数の上限を選べて効果の見積もりの骨組みを書き出す', async ({
+  page,
+}) => {
+  // クーポンを無作為に配った記録 (来店の回数の多い顧客ほど配ると買う)
+  const rows = ['customer_id,age,visits,coupon,purchased,used']
+  for (let index = 0; index < 240; index++) {
+    const coupon = index % 2
+    const visits = index % 9
+    const purchased = (index * 7) % 10 < 3 + Math.floor((coupon * visits) / 3) ? 1 : 0
+    rows.push(`c${index},${20 + (index % 40)},${visits},${coupon},${purchased},${coupon}`)
+  }
+  const file = `${process.cwd()}/e2e/.work/coupons.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('クーポンの配り先')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'クーポンの配り先' })).toBeVisible()
+
+  // 受け持ちに依らない節 (1 から 4, 9, 10) は API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['issue.owner', '販促の係'],
+    ['issue.pain', '配っても買わない顧客にクーポンの費用がかかる'],
+    ['issue.current', '全員に配る'],
+    ['issue.kpi.name', 'クーポンで増えた売上'],
+    ['issue.kpi.unit', '円 / 月'],
+    ['issue.kpi.better', 'higher'],
+    [
+      'decomposition',
+      [{ cause: '配ると買う顧客が限られる', lever: '効果の大きい顧客から配る', ml: true }],
+    ],
+    ['action.who', '販促の係'],
+    ['action.when', '月の初め'],
+    ['action.what', 'クーポンを配る顧客'],
+    ['ml.reason', '配ったときの効果の違いは決まりで書けない'],
+    ['verification.method', 'trial'],
+    ['verification.trial', '配る相手を無作為に分けて, 選んだ配り方と比べる'],
+    ['verification.success', 'クーポンで増えた売上が 2 割増える'],
+    ['operation.review', '月に 1 回'],
+    ['operation.approver', '販促の長'],
+    ['operation.stop', '効果の差が無くなったら'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: key, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 5 の節で, 効果を見積もるで方策でなく, 今ある記録から集めると画面で答える
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await choose(page, '機械学習を使いますか', 'はい')
+  await choose(page, '機械学習は何を受け持ちますか', /^効果を見積もる/)
+  await choose(page, '1 件の単位は', /^行/)
+  await choose(page, '出力の形は', /^行動ごとの差/)
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^介入の記録/)
+  await choose(page, 'どう作りますか (作り方)', /^一から学習/)
+  await write(page, '何を出させますか', 'クーポンで買う確率がどれだけ上がるか')
+  await write(page, '1 件は何ですか', '顧客ごとの 1 行')
+  await choose(page, '機械学習が, 続けて自分で行動を選びますか (方策)', 'いいえ')
+  await choose(page, '行動の結果のデータは, どう集めますか', /^今ある記録から/)
+  await write(page, '機械学習を使わない比べる相手は', '全員に配る')
+  // 列の予測の問いは出ない
+  await expect(page.getByText('目的の列は', { exact: true })).toHaveCount(0)
+
+  // 手元のデータにクーポンの記録を選んで入れる
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const picker = page.getByRole('dialog')
+  await picker.getByLabel('パス').fill(file)
+  await picker.getByRole('button', { name: '移動' }).click()
+  await picker.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByText('240 行, 6 列')).toBeVisible({ timeout: 20_000 })
+
+  // 処置の列, 結果の列と種類, 行の id の列, 見積もりに使う列を答える
+  await page.getByLabel('処置の列は', { exact: true }).selectOption('coupon')
+  await expect(page.getByText('「処置の列は」を保存しました')).toBeVisible()
+  await page.getByLabel('結果の列は', { exact: true }).selectOption('purchased')
+  await expect(page.getByText('「結果の列は」を保存しました')).toBeVisible()
+  await choose(page, '結果は, 起きたかですか, 量ですか', /^起きたか/)
+  await page.getByLabel('行の id の列は (あれば)', { exact: true }).selectOption('customer_id')
+  await expect(page.getByText('「行の id の列は (あれば)」を保存しました')).toBeVisible()
+  const columns = page.getByRole('group', { name: '効果の見積もりに使う列は', exact: true })
+  for (const column of ['age', 'visits']) {
+    await columns.getByLabel(column, { exact: true }).click()
+    await expect(columns.getByLabel(column, { exact: true })).toBeChecked()
+  }
+
+  // 7 の節で, 効果の上位から配る判断と配る数の上限を答える (値を決める手伝いは出ない)
+  await nav.getByRole('button', { name: /^7\b/ }).click()
+  await page.getByLabel('行動の損得と制約は', { exact: true }).selectOption('treat')
+  await page.getByLabel('配る数の上限 (守る指標. 1 以上の整数)', { exact: true }).fill('50')
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByText('「行動の損得と制約は」を保存しました')).toBeVisible()
+  await expect(page.getByRole('button', { name: /値を決める手伝い/ })).toHaveCount(0)
+
+  // 8 の節で Qini の係数と, 評価の上位の割合 K を答える
+  await nav.getByRole('button', { name: /^8\b/ }).click()
+  await choose(page, '最も良いモデルを何で選びますか', /^効果の順の当たり/)
+  await write(
+    page,
+    'その指標が良くなると, 課題の指標はどう良くなりますか',
+    '効果の順が当たるほど, 配る費用が売上になる',
+  )
+  await write(page, '評価で見る上位の割合 K は (0 より大きく 1 以下)', '0.3')
+
+  // 確かめに直すところが無く, 書き出せる
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByText('直す', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
+
+  // 後ろの段階に渡す値に, 列, 効果の意味, K と配る数の上限, 評価, 配る判断が出る
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('受け持ち: 効果を見積もる')
+  await expect(card.getByText(/^処置の列/)).toHaveText(/coupon/)
+  await expect(card.getByText(/^結果の列/)).toHaveText(/purchased\s*\(起きたか\)/)
+  await expect(card.getByText(/^見積もりに使う列/)).toHaveText(/age\s*visits/)
+  await expect(card.getByText(/^除く列/)).toHaveText(/used/)
+  await expect(card.getByText(/分割は層別/)).toBeVisible()
+  await expect(card.getByText(/^効果は, 処置したとき/)).toContainText('確率の差')
+  await expect(card.getByText(/見るか\) は 0\.3/)).toContainText('配る数の上限は 50')
+  await expect(card.getByText(/Qini の曲線と/)).toContainText('上位 K 割の効果の差')
+  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_uplift/)
+  await expect(card.getByText(/監視する指標/)).toHaveText(/valid\/qini/)
+  await expect(card.getByText(/^意思決定:/)).toContainText('効果の上位から配る')
+  await expect(card.getByText(/効果の高い順に, 配る数の上限まで/)).toBeVisible()
+  await expect(card).not.toContainText(/目的の列/)
+
+  // 書き出すと, 効果の見積もりの手順と, 入れた表の写しができる
+  const target = await exportProject(page, 'uplift-project', [
+    '介入の記録の表をデータセットの書き出し先',
+    'tabular_uplift',
+    '上位 K 割の効果の差',
+    'uplift_estimator.json',
+  ])
+  for (const name of ['train.py', 'README.md', 'configs/default/train.yaml', 'data/coupons.csv'])
+    expect(existsSync(`${target}/${name}`), name).toBe(true)
+  const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
+  expect(config).toContain('valid/qini')
+  expect(config).toContain('purchased_uplift')
+  expect(config).toMatch(/^ {2}budget: 50$/m)
+})
+
 test('守る指標の数える量は 7 の節に意思決定の型に合う選択肢で出て, 受け渡しに言葉で出る', async ({
   page,
 }) => {

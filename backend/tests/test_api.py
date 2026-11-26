@@ -1207,6 +1207,143 @@ def test_anomaly(client: TestClient, tmp_path: Path) -> None:
     assert view["exportable"] is True, view["export_error"]
 
 
+def test_uplift(client: TestClient, tmp_path: Path) -> None:
+    """
+    効果を見積もるで方策でなく今ある記録から集めるときに, 処置と結果の列,
+    上位の割合と配る判断の問いが出て, 表を入れると受け渡しに効果の見積もり
+    の値と配る数の上限の判断が渡り, 効果の見積もりの骨組みを書き出せること
+    を確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題の受け持ちの, 今ある記録からの効果の見積もりでの答え直し
+    part = ml_quest.PART
+    view = client.post("/api/problems",
+                       json={"example": "解約の引き止め"}).json()
+    url = f"/api/problems/{view['id']}"
+    for key, value in [("role", "effect"), ("unit", "row"),
+                       ("output", "effect"),
+                       ("target.source", "intervention"),
+                       ("method", "scratch"), ("autonomous", False),
+                       ("collect", "log"),
+                       ("what", "クーポンで買う確率がどれだけ上がるか"),
+                       ("item", "顧客ごとの 1 行"),
+                       ("baseline", "全員に配る")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # ML-Quest の並びのままの 5 の節の効果の見積もりの問い 5 つと 8 の節の
+    # 上位の割合. 出ない列の予測の問いと, 配る判断だけの意思決定の型
+    view = client.get(url).json()
+    shown = [q for q in view["questions"] if q["applies"]]
+    uplift = [(q["id"], q["kind"], q["required"], q["section"])
+              for q in shown if q["id"].startswith(f"{part}.uplift.")]
+    assert uplift == [
+        (f"{part}.uplift.treatment", "column", True, 5),
+        (f"{part}.uplift.outcome", "column", True, 5),
+        (f"{part}.uplift.outcome_kind", "choice", True, 5),
+        (f"{part}.uplift.id", "column", False, 5),
+        (f"{part}.uplift.columns", "columns", True, 5),
+        (f"{part}.uplift.k", "number", True, 8),
+    ]
+    ids = [q["id"] for q in shown]
+    assert f"{part}.target.column" not in ids and f"{part}.task" not in ids
+    assert "action.current" not in ids
+    decision = next(q for q in shown if q["id"] == "action.decision")
+    assert [c["value"] for c in decision["choices"]] == ["treat"]
+    assert [f["key"] for f in decision["choices"][0]["fields"]] == ["budget"]
+    metric = next(q for q in shown if q["id"] == f"{part}.evaluation.metric")
+    assert "qini" in [c["value"] for c in metric["choices"]]
+    assert "reward" not in [c["value"] for c in metric["choices"]]
+
+    # 無作為に配った記録の表の取り込みと, 列, 上位の割合 (画面は文で送る),
+    # 配る判断と指標の答え
+    rows = [{"customer_id": f"c{i}", "age": 20 + i % 40,
+             "visits": i % 9, "coupon": i % 2,
+             "purchased": int((i * 7) % 10 < 3 + (i % 2) * (i % 9) // 3),
+             "used": i % 2 * (i % 3 == 0)}
+            for i in range(240)]
+    pd.DataFrame(rows).to_csv(tmp_path / "coupons.csv", index=False)
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "coupons.csv")}).json()
+    for key, value in [("uplift.treatment", "coupon"),
+                       ("uplift.outcome", "purchased"),
+                       ("uplift.outcome_kind", "binary"),
+                       ("uplift.id", "customer_id"),
+                       ("uplift.columns", ["age", "visits"]),
+                       ("uplift.k", "0.3"),
+                       ("evaluation.metric", "qini"),
+                       ("evaluation.link", "効果の順が当たるほど費用が実る")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+    response = client.put(f"{url}/answers",
+                          json={"id": "action.decision",
+                                "value": {"type": "treat", "budget": "50"}})
+    assert response.status_code == 200, response.json()
+    view = client.get(url).json()
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [], errors
+
+    # 受け渡しの効果の見積もりの値と, 配る数の上限だけの判断
+    handoff = view["handoff"]
+    assert handoff["uplift"] == {
+        "treatment": "coupon", "outcome": "purchased",
+        "outcome_kind": "binary", "id": "customer_id",
+        "columns": ["age", "visits"], "k": 0.3,
+    }
+    assert handoff["anomaly"] is None
+    assert handoff["data"]["task"] == "uplift"
+    assert handoff["data"]["split"] == "stratified"
+    assert handoff["data"]["drop"] == ["used"]
+    assert handoff["inference"]["decision"] == {"type": "treat",
+                                                "budget": 50}
+    assert handoff["inference"]["guard"] is None
+    assert handoff["model"]["example"] == "tabular_uplift"
+    assert handoff["model"]["outputs"] == 1
+    assert handoff["training"]["monitor"] == "valid/qini"
+
+    # 効果の見積もりの骨組みの書き出しと, data/ への入れた表の写し
+    assert view["exportable"] is True and view["export_error"] is None
+    target = tmp_path / "uplift"
+    written = client.post(f"{url}/project", json={"path": str(target)})
+    assert written.status_code == 200, written.json()
+    assert {"train.py", "README.md", "configs/default/train.yaml",
+            "data/coupons.csv"} <= set(written.json()["files"])
+    config = yaml.safe_load((target / "configs" / "default" / "train.yaml")
+                            .read_text(encoding="utf-8"))
+    assert config["uplift"]["k"] == 0.3
+    assert config["uplift"]["budget"] == 50
+    assert config["experiment"]["name"] == "purchased_uplift"
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "uplift_estimator.json" in readme
+
+    # 配る数の上限が 1 より小さいと確かめに出て, 受け渡せないが書き出せる
+    view = client.put(f"{url}/answers",
+                      json={"id": "action.decision",
+                            "value": {"type": "treat", "budget": "0"}}).json()
+    assert any(f["id"].startswith("action.decision")
+               for f in view["open_errors"]), view["open_errors"]
+    assert view["exportable"] is True, view["export_error"]
+
+    # 方策と答えると効果の見積もりの問いは要らなくなる
+    view = client.put(f"{url}/answers", json={"id": f"{part}.autonomous",
+                                             "value": True}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert not any(applies[f"{part}.uplift.{key}"]
+                   for key in ("treatment", "outcome", "columns", "k"))
+
+
 def test_guard_counted(client: TestClient) -> None:
     """
     守る指標の数える量の問いが 7 の節に意思決定の型で絞った選択肢で出て,

@@ -495,6 +495,138 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/異常の度合いの一式/)).not.toHaveTextContent('仮のモデル')
   })
 
+  it('効果の見積もりは, 処置と結果の列, 効果の意味, K と配る数の上限, 群の差の評価と配る判断を出す', () => {
+    const uplift: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        role: 'effect',
+        unit: 'row',
+        output: 'effect',
+        target_kind: null,
+        target_source: 'intervention',
+        target_process: null,
+      },
+      data: {
+        ...POINT_CLOUD.data,
+        target: 'purchased',
+        task: 'uplift',
+        split: 'stratified',
+        known: ['age', 'visits'],
+        drop: ['used'],
+        id: 'customer_id',
+        treatment: 'coupon',
+        outcome_kind: 'binary',
+        unlabeled: 'drop',
+      },
+      model: {
+        ...POINT_CLOUD.model,
+        role: 'effect',
+        target_kind: null,
+        outputs: 1,
+        example: 'tabular_uplift',
+      },
+      training: {
+        metric: 'qini',
+        monitor: 'valid/qini',
+        mode: 'max',
+        role: 'effect',
+        target_kind: null,
+      },
+      inference: {
+        decision: { type: 'treat', budget: 500 },
+        conclusion: {},
+        horizon: null,
+        guard: null,
+        ready: null,
+      },
+      uplift: {
+        treatment: 'coupon',
+        outcome: 'purchased',
+        outcome_kind: 'binary',
+        id: 'customer_id',
+        columns: ['age', 'visits'],
+        k: 0.3,
+      },
+    }
+    const kind = choice('ml.parts.0.uplift.outcome_kind', 'binary', [
+      ['binary', '起きたか (買ったかの 0 と 1. 効果は確率の差)'],
+      ['amount', '量 (買った額. 効果は値の差)'],
+    ])
+    const decision: Question = {
+      ...choice('action.decision', { type: 'treat', budget: 500 }, []),
+      choices: [
+        {
+          value: 'treat',
+          label: '効果の上位から配る (クーポン, 案内)',
+          fields: [
+            { key: 'budget', label: '配る数の上限 (守る指標. 1 以上の整数)', required: true },
+          ],
+        },
+      ],
+    }
+    const questions = [
+      choice('ml.parts.0.role', 'effect', [
+        ['effect', '効果を見積もる (行動したときとしないときの差)'],
+      ]),
+      choice('ml.parts.0.output', 'effect', [['effect', '行動ごとの差']]),
+      choice('ml.parts.0.target.source', 'intervention', [
+        ['intervention', '介入の記録 (無作為の試験, 記録した方策の確率)'],
+      ]),
+      kind,
+      decision,
+    ]
+    const { rerender } = render(
+      <HandoffCard problem={problemWith(uplift, questions)} splits={SPLITS} />,
+    )
+    expect(screen.getByText('受け持ち: 効果を見積もる')).toBeInTheDocument()
+    expect(screen.getByText('正解の出どころ: 介入の記録')).toBeInTheDocument()
+    expect(screen.getByText(/^処置の列/)).toHaveTextContent('coupon')
+    expect(screen.getByText(/^処置の列/)).toHaveTextContent('無作為に配った記録を前提にする')
+    expect(screen.getByText(/^結果の列/)).toHaveTextContent('結果の列 purchased (起きたか)')
+    expect(screen.getByText(/^行の id の列/)).toHaveTextContent('customer_id')
+    expect(screen.getByText(/分割は層別/)).toHaveTextContent('対照の群 (配らなかった行) が入る')
+    expect(screen.getByText(/^見積もりに使う列/)).toHaveTextContent(/age\s*visits/)
+    expect(screen.getByText(/^除く列/)).toHaveTextContent('used')
+    expect(screen.getByText('結果の欠けた行は落とす')).toBeInTheDocument()
+    expect(screen.getByText(/^効果は, 処置したとき/)).toHaveTextContent('確率の差')
+    expect(screen.getByText(/見るか\) は 0\.3/)).toHaveTextContent('配る数の上限は 500 (守る指標)')
+    expect(screen.getByText(/顧客ごとの正解の効果は見えない/)).toHaveTextContent(
+      'でたらめに配るよりどれだけ良いか), 上位 K 割の効果の差 (処置の群と対照の群の結果の平均の差)',
+    )
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_uplift')
+    expect(screen.getByText(/^出力は処置したとき/)).toHaveTextContent('それぞれの大きさ 1')
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent('valid/qini')
+    expect(screen.getByText(/^意思決定:/)).toHaveTextContent(
+      '意思決定: 効果の上位から配る配る数の上限: 500',
+    )
+    expect(screen.getByText(/効果の高い順に, 配る数の上限まで/)).toBeInTheDocument()
+    expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent('uplift_effects.csv')
+    // 列の予測の欄と守る指標は出さない
+    expect(screen.queryByText(/目的の列/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/守る指標:/)).not.toBeInTheDocument()
+    // 値の名前は出さない
+    expect(screen.queryByText(/\bbinary\b/)).not.toBeInTheDocument()
+
+    // 量で行の id が無ければ, 値の差と行の位置
+    rerender(
+      <HandoffCard
+        problem={problemWith(
+          {
+            ...uplift,
+            data: { ...uplift.data, id: null, outcome_kind: 'amount' },
+            uplift: { ...uplift.uplift!, id: null, outcome_kind: 'amount' },
+          },
+          [...questions.filter((q) => q !== kind), { ...kind, value: 'amount' }],
+        )}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^結果の列/)).toHaveTextContent('(量)')
+    expect(screen.getByText(/^効果は, 処置したとき/)).toHaveTextContent('値の差')
+    expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
+  })
+
   it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {
     const column: Handoff = {
       ...POINT_CLOUD,

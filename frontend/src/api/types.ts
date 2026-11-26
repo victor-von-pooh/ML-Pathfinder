@@ -64,7 +64,7 @@ export interface Lever {
 
 /** 意思決定の型と損得と制約 (ML-Inference の形. 値は数か列の名前) */
 export interface Decision {
-  type: 'quantity' | 'select' | 'triage' | 'none'
+  type: 'quantity' | 'select' | 'triage' | 'treat' | 'none'
   [field: string]: string | number | undefined
 }
 
@@ -175,6 +175,22 @@ export interface Anomaly {
   k: number | null
 }
 
+/** 効果の見積もりの処置, 結果, 列と上位の割合 (効果の見積もりのときだけ. ML-Quest の受け渡しの uplift) */
+export interface Uplift {
+  /** 処置の列 (配ったら 1, 配らなければ 0) */
+  treatment: string | null
+  /** 結果の列 */
+  outcome: string | null
+  /** 結果の種類 (問いの選択肢の値. binary か amount) */
+  outcome_kind: string | null
+  /** 行の id の列 (答えていなければ null) */
+  id: string | null
+  /** 効果の見積もりに使う列の名前の並び */
+  columns: string[]
+  /** 評価の上位 K 割の K (0 より大きく 1 以下) */
+  k: number | null
+}
+
 /** 推論の段階のたどり直しで数える守る指標 (列の予測で, 名前を答えたときだけ. ML-Quest の guard_of) */
 export interface Guard {
   name: string
@@ -237,10 +253,14 @@ export interface Handoff {
     } | null
     /** 書き出したプロジェクトのデータセットの置き場 (絶対パス. 書き出していなければ null) */
     project_dataset?: string | null
-    /** 行の id の列 (異常の検知だけ. 答えていなければ null) */
+    /** 行の id の列 (異常の検知と効果の見積もりだけ. 答えていなければ null) */
     id?: string | null
-    /** 正解の欠けた行の扱い (異常の検知で正解の列があれば normal) */
+    /** 正解の欠けた行の扱い (異常の検知で正解の列があれば normal, 効果の見積もりは drop) */
     unlabeled?: string | null
+    /** 処置の列 (効果の見積もりだけ) */
+    treatment?: string | null
+    /** 結果の種類 (効果の見積もりだけ. binary か amount) */
+    outcome_kind?: string | null
   }
   model: {
     task: string | null
@@ -279,6 +299,8 @@ export interface Handoff {
   group?: Group | null
   /** 異常の検知の列と度合い (異常の検知でなければ null) */
   anomaly?: Anomaly | null
+  /** 効果の見積もりの処置, 結果, 列と上位の割合 (効果の見積もりでなければ null) */
+  uplift?: Uplift | null
   /** 書き出したプロジェクト (書き出していなければ path は null) */
   project?: { path: string | null }
 }
