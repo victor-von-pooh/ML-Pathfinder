@@ -1982,3 +1982,30 @@ test('既製のモデルの見本は, 学習の欄を出さず, 推論の一式�
   await expect(dialog.getByRole('status')).toContainText('bundle.py')
   await expect(dialog.getByRole('status')).toContainText('outputs/inference')
 })
+
+// 似た写真を探す見本は, 学習の欄が無く, 推論に出どころと検索の判断を出し, 学習しない骨組みを書き出す
+test('似た写真を探す見本は, 推論に検索の判断を出し, 検索の一式の骨組みを書き出す', async ({
+  page,
+}) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByRole('button', { name: '似た商品の写真を探す (既製の埋め込み)' }).click()
+  await expect(
+    page.getByRole('heading', { name: '似た商品の写真を探す (既製の埋め込み)' }),
+  ).toBeVisible()
+  await expect(page.getByText('監視する指標')).toHaveCount(0)
+  await expect(page.getByText('既製のモデルをそのまま使います')).toBeVisible()
+  await expect(page.getByText('resnet18', { exact: true })).toBeVisible()
+  await expect(page.getByText('返す件数: 5')).toBeVisible()
+  await expect(page.getByText('待ち時間の上限: 200 ms (守る指標)')).toBeVisible()
+  await expect(page.getByText(/種類を評価の正解に使い/)).toBeVisible()
+
+  await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText(/似た写真を探す推論の一式を作る骨組み/)).toBeVisible()
+  await dialog
+    .getByLabel('書き出すディレクトリ (無ければ作る)')
+    .fill(`${process.cwd()}/e2e/.work/search-project`)
+  await dialog.getByRole('button', { name: '書き出す' }).click()
+  await expect(dialog.getByRole('status')).toContainText('bundle.py')
+  await expect(dialog.getByText(/検索の一式を作る/)).toBeVisible()
+})

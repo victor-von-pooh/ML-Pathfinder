@@ -114,10 +114,26 @@ function ModelExample({ problem }: { problem: Problem }) {
   )
 }
 
-/** 既製のモデルをそのまま使う予測の推論の欄 (出どころ, モデル, 重み, hash) */
+/**
+ * 既製のモデルをそのまま使う予測の推論の欄 (出どころ, モデル, 重み, hash). 似た写真を探す
+ * (並べるで既製のモデル) は, 検索の判断 (返す件数) と評価の正解の出どころも添える
+ */
 function ReadyRow({ problem }: { problem: Problem }) {
   const ready = problem.handoff?.inference.ready
+  const decision = problem.handoff?.inference.decision
   if (!ready) return null
+  // 判断の言葉は問いの選択肢から (引けなければ型の名前のまま). 待ち時間の上限は問いの答えから
+  // (受け渡しの判断は件数だけで, 上限は骨組みの config で一式に渡すため)
+  const search = decision?.type === 'search'
+  const searchLabel =
+    choicesOf(problem, 'action.decision')
+      .find((choice) => choice.value === 'search')
+      ?.label.split(' (')[0] ?? 'search'
+  const answered = problem.questions.find((q) => q.id === 'action.decision')?.value
+  const limit =
+    answered && typeof answered === 'object' && !Array.isArray(answered)
+      ? (answered as Record<string, unknown>).max_latency_ms
+      : undefined
   const library = ready.library
     ? shortLabel(choicesOf(problem, `${PART}.ready.library`), ready.library)
     : null
@@ -143,6 +159,23 @@ function ReadyRow({ problem }: { problem: Problem }) {
             hash (重みのファイルの指紋) を決めていないので, 重みの版を固定していません.
             一式を作ると求めた hash が出るので, 問題の設定に書くと次から固定できます
           </span>
+        )}
+        {search && (
+          <>
+            <span className="flex flex-wrap items-center gap-1">
+              意思決定: {searchLabel}
+              <Code>{`返す件数: ${String(decision.k)}`}</Code>
+              {typeof limit === 'number' && (
+                <Code>{`待ち時間の上限: ${String(limit)} ms (守る指標)`}</Code>
+              )}
+            </span>
+            <span className="text-xs text-ink-2">
+              写真を既製のモデルの埋め込みにし, 問いの写真に余弦の近さで近い写真を, 登録した写真
+              (索引) から上位 {String(decision.k)} 件返します. 写真が &lt;種類&gt;/&lt;写真&gt;
+              の形なら種類を評価の正解に使い (Recall@K と NDCG@K),
+              そうでなければ評価は近さと見本だけです
+            </span>
+          </>
         )}
       </dd>
     </div>

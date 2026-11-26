@@ -1144,6 +1144,42 @@ describe('HandoffCard', () => {
     expect(screen.queryByText(/重みの版を固定していません/)).not.toBeInTheDocument()
   })
 
+  it('似た写真を探すは, 推論に検索の判断の件数と待ち時間の上限と評価の正解を出す', () => {
+    const handoff: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        role: 'rank',
+        target_kind: null,
+        target_process: null,
+        method: 'pretrained',
+      },
+      training: { metric: null, monitor: null, mode: null, role: 'rank', target_kind: null },
+      inference: {
+        decision: { type: 'search', k: 5 },
+        conclusion: {},
+        horizon: null,
+        ready: {
+          library: 'torchvision',
+          model: 'resnet18',
+          weights: 'IMAGENET1K_V1',
+          sha256: 'ab12cd',
+        },
+      },
+    }
+    const questions = [
+      choice('action.decision', { type: 'search', k: 5, max_latency_ms: 200 }, [
+        ['search', '近い順に上位 K 件を返す (問いの写真に似た写真)'],
+      ]),
+    ]
+    render(<HandoffCard problem={problemWith(handoff, questions)} />)
+    expect(screen.getByText(/意思決定: 近い順に上位 K 件を返す/)).toBeInTheDocument()
+    expect(screen.getByText('返す件数: 5')).toBeInTheDocument()
+    expect(screen.getByText('待ち時間の上限: 200 ms (守る指標)')).toBeInTheDocument()
+    expect(screen.getByText(/種類を評価の正解に使い/)).toBeInTheDocument()
+    expect(screen.queryByText(/学習 \(ML-Found/)).not.toBeInTheDocument()
+  })
+
   it('既製のモデルで hash が無ければ固定しないことを添える', () => {
     const handoff: Handoff = {
       ...POINT_CLOUD,
