@@ -475,6 +475,30 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/既製のモデルの推論の一式を作る骨組み/)).toBeInTheDocument()
   })
 
+  it('似た写真を探すは, 索引と一式づくりの次にすることを出し, 学習の言葉を出さない', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['bundle.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'rank' }
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }
+    renderDialog({
+      ...problemWith([]),
+      questions: [{ ...KIND, applies: false }, role, method, OWNER],
+    })
+    expect(screen.getByText(/似た写真を探す推論の一式を作る骨組み/)).toBeInTheDocument()
+    expect(screen.getByText(/学習はしません/)).toBeInTheDocument()
+    expect(screen.getByText(/モデルの名前と返す件数から/)).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /bundle\.py/ })).toBeInTheDocument()
+    expect(screen.queryByText(/train\.py/)).toBeNull()
+
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), { target: { value: '/x' } })
+    fireEvent.click(screen.getByRole('button', { name: /書き出す/ }))
+    expect(await screen.findByText(/検索の一式を作る/)).toBeInTheDocument()
+    expect(screen.getByText(/種類を評価の正解に使う/)).toBeInTheDocument()
+    expect(screen.getByText(/1\s*件の問いの待ち時間/)).toBeInTheDocument()
+  })
+
   it('まとめるで既製のモデルをそのまま使う答えは, まとめるの説明にしない', () => {
     const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'group' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }

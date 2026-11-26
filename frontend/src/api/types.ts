@@ -67,7 +67,7 @@ export interface Lever {
 
 /** 意思決定の型と損得と制約 (ML-Inference の形. 値は数か列の名前か, 値段の候補の数の並び) */
 export interface Decision {
-  type: 'quantity' | 'select' | 'triage' | 'treat' | 'price' | 'order' | 'none'
+  type: 'quantity' | 'select' | 'triage' | 'treat' | 'price' | 'order' | 'search' | 'none'
   [field: string]: string | number | number[] | undefined
 }
 
