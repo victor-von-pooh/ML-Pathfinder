@@ -1637,6 +1637,8 @@ test('効果を見積もるで今ある記録の値段を変えたと画面で�
   await page.getByLabel('行動の損得と制約は', { exact: true }).selectOption('price')
   await page.getByLabel(/^値段の候補 \(/).fill('-0.1, -0.05, 0, 0.05, 0.1')
   await page.getByLabel(/^値段を変える幅の上限 \(/).fill('0.1')
+  // 欄の下の, 割合の小数で書く案内
+  await expect(page.getByText('割合は小数で書く (0.1 は 10 %)')).toBeVisible()
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.getByText('「行動の損得と制約は」を保存しました')).toBeVisible()
   // 保存した並びはカンマで区切って出て, 書きかけの印は消える
@@ -1678,6 +1680,8 @@ test('効果を見積もるで今ある記録の値段を変えたと画面で�
   await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_price/)
   await expect(card.getByText(/監視する指標/)).toHaveText(/valid\/mae/)
   await expect(card.getByText(/^意思決定:/)).toContainText('利益が最も大きい値段を選ぶ')
+  await expect(card.getByText(/^意思決定:/)).toContainText('-10 %, -5 %, 0 %, +5 %, +10 %')
+  await expect(card.getByText(/^意思決定:/)).toContainText('値段を変える幅の上限: 10 %')
   await expect(card.getByText(/price_estimator\.json/)).toBeVisible()
   await expect(card).not.toContainText(/目的の列/)
   await expect(card).not.toContainText(/処置の列/)

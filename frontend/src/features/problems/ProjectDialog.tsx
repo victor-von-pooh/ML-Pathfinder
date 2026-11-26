@@ -524,7 +524,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   {
-                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 値段を変えた記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は値段の段で層を作る. 値段は試しに変えた記録 (無作為に近い) を前提にするので, ML-EDA の describe_price で商品ごとの試した値段と, 値段と他の列の偏りを確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
+                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 値段を変えた記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は値段の段 (値段の高さで行を分けた組) で層を作る. 値段は試しに変えた記録 (無作為に近い) を前提にするので, ML-EDA の describe_price で商品ごとの試した値段と, 値段と他の列の偏りを確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
                   }
                 </li>
                 <li>
@@ -541,9 +541,11 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   evaluations/ に書き, 商品ごとの選んだ値段 (price_choices.csv) を実験に残す
                 </li>
                 <li>
-                  推論の段階が読む値段の決め方 (price_estimator.json)
-                  と前処理のレシピの写しを実験に残す (推論の一式はまだ作らない).
-                  選ぶ値段は見積もりで, 値段を変えた効き目は値段を試して確かめる
+                  学習の後に, 推論の段階が読む値段の決め方 (price_estimator.json)
+                  と前処理のレシピの写しを実験に残し, ML-Inference の値段の一式を実験の inference/
+                  に作る (config の data.source の元の表があれば, 一式の選んだ値段を実験と比べる.
+                  仮のモデルでは作らない). 選ぶ値段は見積もりで,
+                  値段を変えた効き目は値段を試して確かめる
                   {write.variables?.accept &&
                     '. README.md の最後の一覧を直すまで問題の設定はつながない'}
                   {write.variables?.dropped &&

@@ -878,6 +878,11 @@ function ratioText(ratio: number): string {
   return `${percent > 0 ? '+' : ''}${percent} %`
 }
 
+/** 変える割合の絶対値の言葉 (0.1 は 10 %. 向きの符号を付けない) */
+function limitText(ratio: number): string {
+  return `${Math.round(ratio * 1000) / 10} %`
+}
+
 /**
  * 値段を変える判断の値 (受け渡しの price があるときだけ). 列の予測と効果の見積もりの欄と分け,
  * 値段, 売れた数, 原価の列, 今の値段の決め方, 値段の候補と変える幅の上限, 誤差と弾力性と利益の
@@ -955,7 +960,12 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
                 行の id の列: <span className="text-ink-3">無し (行の位置で指す)</span>
               </span>
             )}
-            {data.split && <span>分割は{shortLabel(splits, data.split)} (値段の段で層を作る)</span>}
+            {data.split && (
+              <span>
+                分割は{shortLabel(splits, data.split)} (値段の段 (値段の高さで行を分けた組)
+                で層を作る)
+              </span>
+            )}
             <span className="flex flex-wrap items-center gap-1">
               予測に使う列 <Names names={price.columns} />
               (値段の列は最後に足す)
@@ -992,7 +1002,7 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
             </span>
             <span>
               {max !== null
-                ? `${maxName} (変える割合の絶対値. 守る指標. 上限を超える候補は選ばない) は ${ratioText(max).replace('+', '')}`
+                ? `${maxName} (変える割合の絶対値. 守る指標. 上限を超える候補は選ばない) は ${limitText(max)}`
                 : `${maxName} (変える割合の絶対値. 守る指標) はまだ決めていません`}
             </span>
             <span>
@@ -1028,8 +1038,10 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
             {decision ? (
               <span className="flex flex-wrap items-center gap-1">
                 意思決定: {choice?.label.split(' (')[0] ?? decision.type}
-                {candidates && <Code>{`${candidatesName}: ${candidates.join(', ')}`}</Code>}
-                {max !== null && <Code>{`${maxName}: ${max}`}</Code>}
+                {candidates && (
+                  <Code>{`${candidatesName}: ${candidates.map(ratioText).join(', ')}`}</Code>
+                )}
+                {max !== null && <Code>{`${maxName}: ${limitText(max)}`}</Code>}
               </span>
             ) : (
               <span>
@@ -1042,7 +1054,8 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
             </span>
             <span>
               学習の後に, 推論の段階が読む値段の決め方 (price_estimator.json) と商品ごとの選んだ値段
-              (price_choices.csv) を実験に残します
+              (price_choices.csv) を実験に残し, ML-Inference の値段の一式を実験の inference/
+              に作ります (仮のモデルでは作らない)
             </span>
             <span className="text-xs text-ink-2">
               選ぶ値段は試しに値段を変えた記録からの見積もりです. 値段を変えた効き目は,

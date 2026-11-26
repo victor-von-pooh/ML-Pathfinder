@@ -728,7 +728,9 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^原価の列/)).toHaveTextContent('unit_cost (商品 1 つを')
     expect(screen.getByText(/^商品の id の列/)).toHaveTextContent('product_id (値段を選ぶ単位')
     expect(screen.getByText(/^行の id の列/)).toHaveTextContent('record_id')
-    expect(screen.getByText(/分割は層別/)).toHaveTextContent('値段の段で層を作る')
+    expect(screen.getByText(/分割は層別/)).toHaveTextContent(
+      '値段の段 (値段の高さで行を分けた組) で層を作る',
+    )
     expect(screen.getByText(/^予測に使う列/)).toHaveTextContent(/category\s*weekday/)
     expect(screen.getByText(/^除く列/)).toHaveTextContent('left')
     expect(screen.getByText('売れた数の欠けた行は落とす')).toBeInTheDocument()
@@ -745,10 +747,13 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText(/監視する指標/)).toHaveTextContent('valid/mae')
     expect(screen.getByText(/^意思決定:/)).toHaveTextContent(
-      '意思決定: 利益が最も大きい値段を選ぶ値段の候補: -0.1, -0.05, 0, 0.05, 0.1値段を変える幅の上限: 0.1',
+      '意思決定: 利益が最も大きい値段を選ぶ値段の候補: -10 %, -5 %, 0 %, +5 %, +10 %値段を変える幅の上限: 10 %',
     )
     expect(screen.getByText(/^商品ごとに, 値段を変える幅の上限を超えない/)).toBeInTheDocument()
     expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent('price_choices.csv')
+    expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent('ML-Inference の値段の一式')
+    // 意思決定の行も小数でなく %
+    expect(screen.getByText(/^意思決定:/)).not.toHaveTextContent('0.05')
     expect(screen.getByText(/値段を試して確かめます/)).toBeInTheDocument()
     // 列の予測と効果の見積もりの欄と守る指標は出さない
     expect(screen.queryByText(/目的の列/)).not.toBeInTheDocument()

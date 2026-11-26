@@ -403,6 +403,10 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent(
       '値段の候補と変える幅の上限は空 (config の price) のまま',
     )
+    expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent(
+      'ML-Inference の値段の一式を実験の inference/ に作る',
+    )
+    expect(screen.queryByText(/まだ作らない/)).toBeNull()
     expect(screen.queryByText(/uplift_estimator/)).toBeNull()
     unmount()
 

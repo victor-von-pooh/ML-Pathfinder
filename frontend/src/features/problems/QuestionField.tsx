@@ -410,8 +410,9 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
                 <input
                   id={`d-${question.id}-${field.key}`}
                   value={values[field.key] ?? ''}
-                  // 数の並びの欄はカンマで区切る例を出す
-                  placeholder={field.list ? '-0.1, -0.05, 0, 0.05, 0.1' : undefined}
+                  // 数の並びの欄の, カンマで区切る書き方の案内
+                  placeholder={field.list ? '数をカンマで区切って並べる' : undefined}
+                  aria-describedby={kind === 'price' ? `d-${question.id}-ratio` : undefined}
                   onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}
                   className={clsx(INPUT, 'h-8')}
                 />
@@ -419,6 +420,12 @@ function DecisionInput({ question, onAnswer, saving }: InputState) {
             </div>
           ))}
         </div>
+      )}
+      {/* 値段の判断の欄の, 割合の小数で答える案内 (ML-Quest の答えの形. 画面の表示は %) */}
+      {kind === 'price' && (
+        <p id={`d-${question.id}-ratio`} className="text-xs text-ink-2">
+          割合は小数で書く (0.1 は 10 %)
+        </p>
       )}
       <div className="flex gap-2">
         <Button
