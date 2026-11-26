@@ -23,7 +23,8 @@ function answerOf(problem: Problem, id: string): string | null {
 /**
  * 骨組みの型 (説明の文の出し分けだけ). 既製 (予測するで作り方が既製のモデルをそのまま使う.
  * 学習せず, 推論の一式だけを作る), 似た写真を探す (並べるで作り方が既製のモデルをそのまま使う.
- * 学習せず, 索引と評価を作ってから検索の一式を作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
+ * 学習せず, 索引と評価を作ってから検索の一式を作る), 既製の埋め込みの群分け (まとめるで
+ * 作り方が既製のモデルをそのまま使う. 学習せず, 群と群の安定性を作ってから群分けの一式を作る), 方策 (効果を見積もるで続けて行動を選ぶ), ファイルの組
  * (領域と点群), 画像の生成 (作るで正解の種類が画像), 表の生成 (作るで正解の種類が表), 並べる
  * (並べるで既製のモデルをそのまま使わない), まとめる (まとめるで既製のモデルをそのまま使わない),
  * 異常の検知 (予測するで正解の種類が異常), 効果の見積もり (効果を見積もるで方策でなく, 今ある
@@ -45,7 +46,8 @@ function skeletonType(
   | 'demand'
   | 'policy'
   | 'ready'
-  | 'search' {
+  | 'search'
+  | 'group_ready' {
   const autonomous = problem.questions.find((q) => q.id === 'ml.parts.0.autonomous')
   // ML-Quest の is_pretrained_part と同じく, 予測するで, 作り方の問いが有効なときだけ
   const method = problem.questions.find((q) => q.id === 'ml.parts.0.method')
@@ -62,6 +64,13 @@ function skeletonType(
     method.value === 'pretrained'
   )
     return 'search'
+  // ML-Quest の is_ready_group_part と同じく, まとめるで, 作り方の問いが有効で既製のモデルをそのまま使うとき
+  if (
+    answerOf(problem, 'ml.parts.0.role') === 'group' &&
+    method?.applies &&
+    method.value === 'pretrained'
+  )
+    return 'group_ready'
   if (
     answerOf(problem, 'ml.parts.0.role') === 'effect' &&
     autonomous?.applies &&
@@ -122,6 +131,7 @@ const DEFAULT_NAMES = {
   // 一式の名前は, 省略するとモデルと重みの名前から
   ready: 'モデルと重みの名前',
   search: 'モデルの名前と返す件数',
+  group_ready: 'モデルの名前と群の数',
 } as const
 
 /** 損得と制約 (action.decision) に直すところが残るか (残れば推論の一式に意思決定の既定値を付けない) */
@@ -196,7 +206,13 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   return (
     <Dialog title="学習のプロジェクトを書き出す" onClose={onClose}>
       <p className="mb-3 text-xs text-ink-2">
-        {type === 'search' ? (
+        {type === 'group_ready' ? (
+          <>
+            既製のモデルの埋め込みで写真を群に分け, 推論の一式を作る骨組み (config の bundle.yaml,
+            bundle.py, README, problem.yaml の写し) を書き出します. 学習はしません. 書き出した
+            README の「次にすること」の順に, 写真を置いて群と一式を作り, 登録します.
+          </>
+        ) : type === 'search' ? (
           <>
             既製のモデルの埋め込みで写真の索引を作り, 似た写真を探す推論の一式を作る骨組み (config
             の bundle.yaml, bundle.py, README, problem.yaml の写し) を書き出します. 学習はしません.
@@ -270,7 +286,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
             }}
           />
           既にあるファイル (problem.yaml, README.md, configs,{' '}
-          {type === 'ready' || type === 'search' ? 'bundle.py' : 'train.py'}
+          {type === 'ready' || type === 'search' || type === 'group_ready'
+            ? 'bundle.py'
+            : 'train.py'}
           {type === 'policy' ? ', model.py, env.py' : ''}, 入れたデータの写しの data/) を上書きする
         </label>
         {errors.length > 0 && !write.data && (
@@ -351,7 +369,28 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               (後ろの段階のアプリはこの記録から場所を読みます)
             </p>
             <p className="mb-1 font-medium">次にすること (書き出した README.md にも同じ手順)</p>
-            {type === 'search' ? (
+            {type === 'group_ready' ? (
+              <ol className="list-decimal pl-5 text-xs">
+                <li>群に分ける写真のディレクトリを config の data.photos の場所に置く</li>
+                <li>
+                  一式を作る環境に ML-Inference と, torchvision の重みを読む ML-ModelControl
+                  (ml-modelcontrol[torchvision]) を入れ, データの分析, モデルの作成, 学習は通らずに
+                  bundle.py を動かす. 写真を既製のモデルで埋め込み, k-means
+                  で群に分けて群の安定性と群の要約を outputs/groups に残し, outputs/inference
+                  に既製の埋め込みの群分けの一式を作る (重みは一式に写さず,
+                  使うときに出どころから読む)
+                </li>
+                <li>
+                  hash を決めていなければ, 作るときに求めた hash が出るので, config の ready.sha256
+                  と問題の設定に書くと次から固定できる
+                </li>
+                <li>
+                  ML-Provide に一式を登録し, 写真を渡して, 写真ごとの群と群の要約を見る
+                  {write.variables?.accept &&
+                    '. 一式は作れるが, README.md の最後の一覧を直すまで問題の設定はつながない'}
+                </li>
+              </ol>
+            ) : type === 'search' ? (
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   索引にする写真のディレクトリを config の data.photos の場所に置く. 写真が

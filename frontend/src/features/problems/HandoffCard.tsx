@@ -125,6 +125,17 @@ function ReadyRow({ problem }: { problem: Problem }) {
   // 判断の言葉は問いの選択肢から (引けなければ型の名前のまま). 待ち時間の上限は問いの答えから
   // (受け渡しの判断は件数だけで, 上限は骨組みの config で一式に渡すため)
   const search = decision?.type === 'search'
+  // 既製の埋め込みの群分け (まとめるで既製のモデル) は, 群の数と数え方を問いの答えから読む
+  // (受け渡しの group は空. 骨組みが問題の設定の答えを config に書くため)
+  const role = problem.questions.find((q) => q.id === `${PART}.role`)?.value
+  const groupK = problem.questions.find((q) => q.id === `${PART}.group.k`)
+  const stabilityQuestion = problem.questions.find((q) => q.id === `${PART}.group.stability`)
+  const readyGroup = role === 'group' && problem.handoff?.part.method === 'pretrained'
+  const stabilityLabel =
+    stabilityQuestion?.applies && typeof stabilityQuestion.value === 'string'
+      ? (stabilityQuestion.choices.find((choice) => choice.value === stabilityQuestion.value)
+          ?.label ?? null)
+      : null
   const searchLabel =
     choicesOf(problem, 'action.decision')
       .find((choice) => choice.value === 'search')
@@ -159,6 +170,25 @@ function ReadyRow({ problem }: { problem: Problem }) {
             hash (重みのファイルの指紋) を決めていないので, 重みの版を固定していません.
             一式を作ると求めた hash が出るので, 問題の設定に書くと次から固定できます
           </span>
+        )}
+        {readyGroup && (
+          <>
+            <span>
+              まとめ方:{' '}
+              {groupK?.applies &&
+              Number.isFinite(Number(groupK.value)) &&
+              groupK.value !== null &&
+              groupK.value !== ''
+                ? `写真を既製のモデルの埋め込みで ${Number(groupK.value)} つの群に分ける`
+                : '群の数はまだ答えていません'}
+              {stabilityLabel && ` (群の安定性: ${stabilityLabel})`}
+            </span>
+            <span className="text-xs text-ink-2">
+              写真を既製のモデルの埋め込みにし, k-means で群に分けて, 群の安定性と群の要約
+              (写真の幅と高さ) を残してから推論の一式を作ります.
+              写真を縮めた画素をそのまま分けた群と比べます
+            </span>
+          </>
         )}
         {search && (
           <>
