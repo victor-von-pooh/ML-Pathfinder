@@ -775,7 +775,7 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
             {data.split && (
               <span>
                 分割は{shortLabel(splits, data.split)} (処置で層を作り,
-                全ての分割に処置の群と対照の群が入る)
+                全ての分割に処置の群と対照の群 (配らなかった行) が入る)
               </span>
             )}
             <span className="flex flex-wrap items-center gap-1">
@@ -811,14 +811,15 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
             </span>
             <span>
               {uplift.k !== null
-                ? `評価の上位 K 割の K は ${uplift.k}`
-                : '評価の上位 K 割の K はまだ答えていません'}
+                ? `評価の上位 K 割の K (効果の見積もりの高い順に上位の何割を見るか) は ${uplift.k}`
+                : '評価の上位 K 割の K (効果の見積もりの高い順に上位の何割を見るか) はまだ答えていません'}
               {decision?.budget !== undefined &&
                 `. ${budgetName}は ${String(decision.budget)} (守る指標)`}
             </span>
             <span className="text-xs text-ink-2">
               顧客ごとの正解の効果は見えないので, 評価は効果の見積もりの高い順に, Qini の曲線と Qini
-              の係数, 上位 K 割の効果の差 (処置の群と対照の群の結果の平均の差) で数えます
+              の係数 (効果の大きい順に配ったときに, でたらめに配るよりどれだけ良いか), 上位 K
+              割の効果の差 (処置の群と対照の群の結果の平均の差) で数えます
             </span>
           </dd>
         </div>

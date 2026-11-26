@@ -486,7 +486,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   {
-                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 介入の記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は処置で層を作り, 全ての分割に処置の群と対照の群が入る. 処置は無作為に配った記録を前提にするので, ML-EDA の describe_uplift で群の釣り合いと配った後に決まる列を確かめる. 欠けた値と種類の列は前処理で無くす (表を入れていれば data/ に写してある)'
+                    'ML-Fathom の「問題の設定から始める」か ML-EDA の書き出しで, 介入の記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は処置で層を作り, 全ての分割に処置の群と対照の群が入る. 処置は無作為に配った記録を前提にするので, ML-EDA の describe_uplift で群の釣り合いと配った後に決まる列を確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
                   }
                 </li>
                 <li>
@@ -496,8 +496,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 </li>
                 <li>
                   ML-Found (か ML-Dashboard) で train.py を動かす. 検証用とテスト用の分割で, Qini
-                  の係数と上位 K 割の効果の差 (処置の群と対照の群の結果の平均の差) と Qini の曲線を
-                  evaluations/ に書き, 行ごとの効果 (uplift_effects.csv) を実験に残す
+                  の係数 (効果の大きい順に配ったときに, でたらめに配るよりどれだけ良いか) と上位 K
+                  割の効果の差 (処置の群と対照の群の結果の平均の差) と Qini の曲線を evaluations/
+                  に書き, 行ごとの効果 (uplift_effects.csv) を実験に残す
                 </li>
                 <li>
                   学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json)

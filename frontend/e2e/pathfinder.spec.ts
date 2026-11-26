@@ -1508,7 +1508,7 @@ test('効果を見積もるで今ある記録からと画面で答え, クーポ
   await expect(card.getByText(/^除く列/)).toHaveText(/used/)
   await expect(card.getByText(/分割は層別/)).toBeVisible()
   await expect(card.getByText(/^効果は, 処置したとき/)).toContainText('確率の差')
-  await expect(card.getByText(/K は 0.3/)).toContainText('配る数の上限は 50')
+  await expect(card.getByText(/見るか\) は 0\.3/)).toContainText('配る数の上限は 50')
   await expect(card.getByText(/Qini の曲線と/)).toContainText('上位 K 割の効果の差')
   await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_uplift/)
   await expect(card.getByText(/監視する指標/)).toHaveText(/valid\/qini/)

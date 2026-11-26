@@ -585,14 +585,14 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^処置の列/)).toHaveTextContent('無作為に配った記録を前提にする')
     expect(screen.getByText(/^結果の列/)).toHaveTextContent('結果の列 purchased (起きたか)')
     expect(screen.getByText(/^行の id の列/)).toHaveTextContent('customer_id')
-    expect(screen.getByText(/分割は層別/)).toHaveTextContent('処置の群と対照の群が入る')
+    expect(screen.getByText(/分割は層別/)).toHaveTextContent('対照の群 (配らなかった行) が入る')
     expect(screen.getByText(/^見積もりに使う列/)).toHaveTextContent(/age\s*visits/)
     expect(screen.getByText(/^除く列/)).toHaveTextContent('used')
     expect(screen.getByText('結果の欠けた行は落とす')).toBeInTheDocument()
     expect(screen.getByText(/^効果は, 処置したとき/)).toHaveTextContent('確率の差')
-    expect(screen.getByText(/K は 0.3/)).toHaveTextContent('配る数の上限は 500 (守る指標)')
+    expect(screen.getByText(/見るか\) は 0\.3/)).toHaveTextContent('配る数の上限は 500 (守る指標)')
     expect(screen.getByText(/顧客ごとの正解の効果は見えない/)).toHaveTextContent(
-      'Qini の係数, 上位 K 割の効果の差 (処置の群と対照の群の結果の平均の差)',
+      'でたらめに配るよりどれだけ良いか), 上位 K 割の効果の差 (処置の群と対照の群の結果の平均の差)',
     )
     expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_uplift')
     expect(screen.getByText(/^出力は処置したとき/)).toHaveTextContent('それぞれの大きさ 1')

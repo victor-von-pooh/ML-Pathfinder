@@ -326,6 +326,10 @@ describe('ProjectDialog', () => {
     )
     expect(screen.getByText(/tabular_uplift/)).toBeInTheDocument()
     expect(screen.getByText(/Qini の曲線/)).toHaveTextContent('上位 K 割の効果の差')
+    expect(screen.getByText(/Qini の曲線/)).toHaveTextContent('でたらめに配るよりどれだけ良いか')
+    expect(screen.getByText(/介入の記録の表をデータセットの書き出し先/)).toHaveTextContent(
+      '種類の列は one_hot で数の列にする',
+    )
     expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
       '効果の高い順に配る数の上限まで',
     )
