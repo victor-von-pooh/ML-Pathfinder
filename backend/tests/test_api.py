@@ -1489,6 +1489,169 @@ def test_price(client: TestClient, tmp_path: Path) -> None:
     assert applies[f"{part}.uplift.treatment"]
 
 
+def test_demand(client: TestClient, tmp_path: Path) -> None:
+    """
+    予測するで正解の種類が先の期間の需要と答えるときに, 商品の id, 日付,
+    売れた数, 在庫の数の列と学ぶ水準 (数の並び) と発注の判断の問いが出て,
+    表を入れると受け渡しに時間をまたぐ量の判断の値と発注の判断が渡り, 時間
+    をまたぐ量の判断の骨組みを書き出せることを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 見本の課題の受け持ちの, 先の期間の需要の予測での答え直し
+    part = ml_quest.PART
+    view = client.post("/api/problems",
+                       json={"example": "解約の引き止め"}).json()
+    url = f"/api/problems/{view['id']}"
+    for key, value in [("role", "predict"), ("unit", "row"),
+                       ("output", "distribution"), ("target.kind", "demand"),
+                       ("target.source", "column"), ("method", "scratch"),
+                       ("what", "先の 7 日の売れる数"),
+                       ("item", "商品と発注を決める日ごとの 1 行"),
+                       ("baseline", "前の 7 日と同じ数を発注する")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+
+    # ML-Quest の並びのままの 5 の節の時間をまたぐ量の判断の問い 8 つ (学ぶ
+    # 水準は数の並び). 出ない列の予測の問いと, 発注の判断だけの意思決定の型
+    view = client.get(url).json()
+    shown = [q for q in view["questions"] if q["applies"]]
+    demand = [(q["id"], q["kind"], q["required"], q["section"])
+              for q in shown if q["id"].startswith(f"{part}.demand.")]
+    assert demand == [
+        (f"{part}.demand.product", "column", True, 5),
+        (f"{part}.demand.date", "column", True, 5),
+        (f"{part}.demand.units", "column", True, 5),
+        (f"{part}.demand.stock", "column", False, 5),
+        (f"{part}.demand.id", "column", False, 5),
+        (f"{part}.demand.columns", "columns", False, 5),
+        (f"{part}.demand.horizon", "number", False, 5),
+        (f"{part}.demand.levels", "numbers", False, 5),
+    ]
+    ids = [q["id"] for q in shown]
+    assert f"{part}.target.column" not in ids and "action.current" not in ids
+    decision = next(q for q in shown if q["id"] == "action.decision")
+    assert [c["value"] for c in decision["choices"]] == ["order"]
+    fields = decision["choices"][0]["fields"]
+    assert [f["key"] for f in fields] == [
+        "shortage_cost", "holding_cost", "max_order"]
+
+    # 商品ごとの日ごとの売れた数の記録の取り込みと, 列, 期間と発注の判断と
+    # 指標の答え
+    rows = [{"record_id": f"r{i}", "product_id": f"p{i % 4}",
+             "date": f"2026-01-{1 + i // 4:02d}", "category": i % 4 % 2,
+             "units": 3 + i % 5, "stock": 2, "waste": i % 3}
+            for i in range(4 * 28)]
+    pd.DataFrame(rows).to_csv(tmp_path / "daily.csv", index=False)
+    view = client.post(f"{url}/data",
+                       json={"path": str(tmp_path / "daily.csv")}).json()
+    for key, value in [("demand.product", "product_id"),
+                       ("demand.date", "date"), ("demand.units", "units"),
+                       ("demand.stock", "stock"),
+                       ("demand.id", "record_id"),
+                       ("demand.columns", ["category"]),
+                       ("demand.horizon", "7"),
+                       ("evaluation.metric", "loss"),
+                       ("evaluation.link", "分位点の損失が小さいほど発注の"
+                        "損の見込みが当たる")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": f"{part}.{key}", "value": value})
+        assert response.status_code == 200, (key, response.json())
+    response = client.put(f"{url}/answers", json={
+        "id": "action.decision",
+        "value": {"type": "order", "shortage_cost": "3",
+                  "holding_cost": "1", "max_order": "60"}})
+    assert response.status_code == 200, response.json()
+
+    # 学ぶ水準は画面がカンマで区切った文で送り, 数の並びで保存する. 末尾の
+    # カンマ, 続いたカンマ, 読点は誤りで, 答えは変えない. 空白だけなら消す
+    levels = f"{part}.demand.levels"
+    response = client.put(f"{url}/answers",
+                          json={"id": levels, "value": "0.1, 0.9"})
+    assert response.status_code == 200, response.json()
+    for text, message in [("0.1, 0.9, ", "空の要素"), ("0.1, , 0.9", "空の要素"),
+                          ("0.1、0.9", "数で")]:
+        response = client.put(f"{url}/answers",
+                              json={"id": levels, "value": text})
+        assert response.status_code == 400, (text, response.json())
+        assert message in response.json()["detail"], response.json()
+    view = client.get(url).json()
+    saved = next(q for q in view["questions"] if q["id"] == levels)
+    assert saved["value"] == [0.1, 0.9]
+    errors = [f for f in view["findings"] if f["level"] == "error"]
+    assert errors == [], errors
+
+    # 受け渡しの時間をまたぐ量の判断の値 (水準に 0.5 と τ = 3 / (3 + 1) を
+    # 足す) と, 損と上限だけの発注の判断
+    handoff = view["handoff"]
+    assert handoff["demand"] == {
+        "product": "product_id", "date": "date", "units": "units",
+        "stock": "stock", "id": "record_id", "columns": ["category"],
+        "horizon": 7, "levels": [0.1, 0.5, 0.75, 0.9],
+    }
+    assert handoff["price"] is None and handoff["uplift"] is None
+    assert handoff["data"]["task"] == "demand"
+    assert handoff["data"]["split"] == "time"
+    assert handoff["data"]["known"] == ["category"]
+    assert handoff["data"]["drop"] == ["waste"]
+    assert handoff["inference"]["decision"] == {
+        "type": "order", "shortage_cost": 3, "holding_cost": 1,
+        "max_order": 60}
+    assert handoff["inference"]["guard"] is None
+    assert handoff["model"]["example"] == "tabular_demand"
+    assert handoff["model"]["outputs"] == 4
+    assert handoff["training"]["monitor"] == "valid/loss"
+
+    # 時間をまたぐ量の判断の骨組みの書き出しと, data/ への入れた表の写し
+    assert view["exportable"] is True and view["export_error"] is None
+    target = tmp_path / "demand"
+    written = client.post(f"{url}/project", json={"path": str(target)})
+    assert written.status_code == 200, written.json()
+    assert {"train.py", "README.md", "configs/default/train.yaml",
+            "data/daily.csv"} <= set(written.json()["files"])
+    config = yaml.safe_load((target / "configs" / "default" / "train.yaml")
+                            .read_text(encoding="utf-8"))
+    assert config["order"] == {"shortage_cost": 3, "holding_cost": 1,
+                               "max_order": 60}
+    assert config["demand"]["levels"] == [0.1, 0.5, 0.75, 0.9]
+    assert config["experiment"]["name"] == "units_demand"
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "demand_estimator.json" in readme
+
+    # 水準の答えを消すと (画面は空白だけの欄を null で送る), 既定の水準に戻る
+    view = client.put(f"{url}/answers",
+                      json={"id": levels, "value": None}).json()
+    assert view["handoff"]["demand"]["levels"] == [0.1, 0.25, 0.5, 0.75,
+                                                   0.9]
+
+    # 損が 0 だと確かめに出て, 受け渡せないが書き出せる
+    view = client.put(f"{url}/answers", json={
+        "id": "action.decision",
+        "value": {"type": "order", "shortage_cost": "3",
+                  "holding_cost": "0", "max_order": "60"}}).json()
+    assert any(f["id"].startswith("action.decision")
+               for f in view["open_errors"]), view["open_errors"]
+    assert view["exportable"] is True, view["export_error"]
+
+    # 表の列と答え直すと時間をまたぐ量の判断の問いは要らなくなる
+    view = client.put(f"{url}/answers", json={"id": f"{part}.target.kind",
+                                             "value": "column"}).json()
+    applies = {q["id"]: q["applies"] for q in view["questions"]}
+    assert not any(applies[f"{part}.demand.{key}"]
+                   for key in ("product", "date", "units", "levels"))
+    assert applies[f"{part}.target.column"]
+
+
 def test_guard_counted(client: TestClient) -> None:
     """
     守る指標の数える量の問いが 7 の節に意思決定の型で絞った選択肢で出て,

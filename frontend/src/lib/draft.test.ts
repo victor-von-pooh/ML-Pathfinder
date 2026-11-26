@@ -3,6 +3,7 @@ import {
   decisionDraft,
   decisionFields,
   decisionText,
+  listText,
   sameDecision,
   splitLines,
   toLevers,
@@ -78,6 +79,14 @@ describe('数の並びの欄', () => {
     expect(sameDecision(draft, saved)).toBe(true)
     expect(sameDecision({ ...draft, candidates: '-0.1, 0' }, saved)).toBe(false)
     expect(decisionText(saved.candidates)).toBe('-0.1, 0, 0.1')
+  })
+})
+
+describe('listText', () => {
+  it('区切りの前後の空白をそろえ, 空の要素は消さずに残す (誤りは ML-Quest が知らせる)', () => {
+    expect(listText('0.1,0.5 ,  0.9')).toBe('0.1, 0.5, 0.9')
+    expect(listText('0.1, 0.9,')).toBe('0.1, 0.9, ')
+    expect(listText('0.1,,0.9')).toBe('0.1, , 0.9')
   })
 })
 

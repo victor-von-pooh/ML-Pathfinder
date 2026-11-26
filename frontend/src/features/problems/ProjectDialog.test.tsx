@@ -427,6 +427,54 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/介入の記録の表とモデルの定義を置いて/)).toBeInTheDocument()
   })
 
+  it('時間をまたぐ量の判断は, 需要の記録の表の次にすることと実験の名前と, 損と上限の注意を出す', async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'predict' }
+    const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'scratch' }
+    const problem = problemWith([
+      { level: 'error', id: 'action.decision.holding_cost', message: '正の数で答えてください' },
+    ])
+    const { unmount } = renderDialog({
+      ...problem,
+      questions: [{ ...KIND, value: 'demand' }, role, method, OWNER],
+    })
+    expect(screen.getByText(/日ごとの売れた数の列と受け持ちから/)).toBeInTheDocument()
+    expect(screen.getByText(/需要の記録の表とモデルの定義を置いて/)).toBeInTheDocument()
+    expect(screen.getByText(/発注の判断の損と上限を付けずに/)).toHaveTextContent(
+      '空のままでは学習の前に止まります',
+    )
+    expect(screen.queryByText(/推論の一式は意思決定の既定値を付けずに/)).toBeNull()
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
+    fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
+    expect(
+      await screen.findByText(/需要の記録の表 \(1 行が商品と発注を決める日/),
+    ).toHaveTextContent('describe_demand')
+    expect(screen.getByText(/tabular_demand/)).toHaveTextContent('分位点 quantiles')
+    expect(screen.getByText(/demand_orders\.csv/)).toHaveTextContent('前の期間と同じ数の発注の損')
+    expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent(
+      'ML-Inference の需要の一式を実験の inference/ に作る',
+    )
+    expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent(
+      '発注の判断の損と上限は空 (config の order) のまま',
+    )
+    expect(screen.queryByText(/目的の列/)).toBeNull()
+    unmount()
+
+    // 既製のモデルをそのまま使うと, 時間をまたぐ量の判断の説明にしない
+    renderDialog({
+      ...problemWith([]),
+      questions: [{ ...KIND, value: 'demand' }, role, { ...method, value: 'pretrained' }, OWNER],
+    })
+    expect(screen.queryByText(/需要の記録の表/)).toBeNull()
+    expect(screen.getByText(/既製のモデルの推論の一式を作る骨組み/)).toBeInTheDocument()
+  })
+
   it('まとめるで既製のモデルをそのまま使う答えは, まとめるの説明にしない', () => {
     const role: Question = { ...KIND, id: 'ml.parts.0.role', value: 'group' }
     const method: Question = { ...KIND, id: 'ml.parts.0.method', value: 'pretrained' }

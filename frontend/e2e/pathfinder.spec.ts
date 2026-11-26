@@ -1701,6 +1701,179 @@ test('効果を見積もるで今ある記録の値段を変えたと画面で�
   expect(config).toMatch(/^ {2}max_change: 0\.1$/m)
 })
 
+test('予測するで先の期間の需要と画面で答え, 日ごとの売れた数の記録を入れると, 列と学ぶ水準と発注の判断を選べて時間をまたぐ量の判断の骨組みを書き出す', async ({
+  page,
+}) => {
+  // 4 つの商品の 28 日の売れた数の記録 (商品ごとに売れ方が違う)
+  const rows = ['record_id,product_id,date,category,units,stock,waste']
+  for (let index = 0; index < 4 * 28; index++) {
+    const product = index % 4
+    const day = String(1 + Math.floor(index / 4)).padStart(2, '0')
+    rows.push(
+      `r${index},p${product},2026-01-${day},${product % 2},${3 + (index % 5) + product},2,${index % 3}`,
+    )
+  }
+  const file = `${process.cwd()}/e2e/.work/daily.csv`
+  writeFileSync(file, rows.join('\n') + '\n')
+
+  await page.goto('/api/auth?token=e2e-token')
+  await page.getByLabel(/問題の名前/).fill('商品の発注')
+  await page.getByRole('button', { name: '作る', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '商品の発注' })).toBeVisible()
+
+  // 受け持ちに依らない節 (1 から 4, 9, 10) は API で答える
+  const id = new URL(page.url()).pathname.split('/').pop() ?? ''
+  const answers: [string, unknown][] = [
+    ['issue.owner', '発注の係'],
+    ['issue.pain', '品切れと売れ残りが多く, 利益を逃している'],
+    ['issue.current', '前の週と同じ数を発注する'],
+    ['issue.kpi.name', '品切れと売れ残りの損'],
+    ['issue.kpi.unit', '円 / 週'],
+    ['issue.kpi.better', 'lower'],
+    [
+      'decomposition',
+      [{ cause: '売れる数が商品と曜日で違う', lever: '商品ごとに発注の数を変える', ml: true }],
+    ],
+    ['action.who', '発注の係'],
+    ['action.when', '週の初め'],
+    ['action.what', '商品ごとの発注の数'],
+    ['ml.reason', '売れる数は商品と曜日で違い, 決まりで書けない'],
+    ['verification.method', 'trial'],
+    ['verification.trial', '店を無作為に分けて, 決めた発注の数と前の週と同じ数を比べる'],
+    ['verification.success', '損が 1 割減る'],
+    ['operation.review', '週に 1 回'],
+    ['operation.approver', '店の長'],
+    ['operation.stop', '損が前の週と同じ数の発注より増えたら'],
+  ]
+  for (const [key, value] of answers) {
+    const response = await page.request.put(`/api/problems/${id}/answers`, {
+      data: { id: key, value },
+    })
+    expect(response.ok()).toBe(true)
+  }
+  await page.reload()
+
+  // 5 の節で, 予測するで正解の種類が先の期間の需要と画面で答える
+  const nav = page.getByRole('navigation', { name: '問いの節' })
+  await nav.getByRole('button', { name: /^5\b/ }).click()
+  await choose(page, '機械学習を使いますか', 'はい')
+  await choose(page, '機械学習は何を受け持ちますか', /^予測する/)
+  await choose(page, '1 件の単位は', /^行/)
+  await choose(page, '出力の形は', /^分布/)
+  await choose(page, '正解は誰が, いつ, どう確定させますか (正解の出どころ)', /^データの列/)
+  await choose(page, 'どう作りますか (作り方)', /^一から学習/)
+  await choose(page, '正解 (出力) の種類は', /^先の期間の需要/)
+  await write(page, '何を出させますか', '先の 7 日の売れる数')
+  await write(page, '1 件は何ですか', '商品と発注を決める日ごとの 1 行')
+  await write(page, '機械学習を使わない比べる相手は', '前の 7 日と同じ数を発注する')
+  // 列の予測の問いは出ない
+  await expect(page.getByText('目的の列は', { exact: true })).toHaveCount(0)
+
+  // 手元のデータに日ごとの売れた数の記録を選んで入れる
+  await page.getByRole('button', { name: 'データを入れる' }).click()
+  const picker = page.getByRole('dialog')
+  await picker.getByLabel('パス').fill(file)
+  await picker.getByRole('button', { name: '移動' }).click()
+  await picker.getByRole('button', { name: '選ぶ', exact: true }).click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByText('112 行, 7 列')).toBeVisible({ timeout: 20_000 })
+
+  // 商品の id, 日付, 売れた数, 在庫の数, 行の id の列と, 商品の特徴の列を答える
+  for (const [title, column] of [
+    ['商品の id の列は', 'product_id'],
+    ['日付の列は', 'date'],
+    ['日ごとの売れた数の列は', 'units'],
+    ['在庫の数の列は (あれば)', 'stock'],
+    ['行の id の列は (あれば)', 'record_id'],
+  ]) {
+    await page.getByLabel(title, { exact: true }).selectOption(column)
+    await expect(page.getByText(`「${title}」を保存しました`)).toBeVisible()
+  }
+  const columns = page.getByRole('group', {
+    name: '需要の予測に使う商品の特徴の列は (あれば)',
+    exact: true,
+  })
+  await columns.getByLabel('category', { exact: true }).click()
+  await expect(columns.getByLabel('category', { exact: true })).toBeChecked()
+  await write(page, '何日先までの需要の合計を予測しますか (先の期間の日数)', '7')
+
+  // 学ぶ水準は数の並びをカンマで区切って書く. 末尾のカンマは ML-Quest の誤りが欄の下に出て,
+  // 書いた文は残る. 直すと保存し, 保存した並びもカンマで区切って出す
+  const title = '学ぶ分位点の水準は'
+  const levels = page.getByRole('textbox', { name: title, exact: true })
+  await expect(levels).toHaveAttribute('placeholder', '数をカンマで区切って並べる')
+  await levels.fill('0.1,0.9,')
+  await levels.blur()
+  await expect(page.getByText(/空の要素があります/)).toBeVisible()
+  await expect(levels).toHaveValue('0.1,0.9,')
+  await write(page, title, '0.1,0.9')
+  await expect(levels).toHaveValue('0.1, 0.9')
+
+  // 7 の節で, 損の比で発注の数を決める判断と, 2 つの損と上限を答える
+  await nav.getByRole('button', { name: /^7\b/ }).click()
+  await page.getByLabel('行動の損得と制約は', { exact: true }).selectOption('order')
+  await page.getByLabel(/^1 つ足りないときの損 \(/).fill('3')
+  await page.getByLabel(/^1 つ余ったときの損 \(/).fill('1')
+  await page.getByLabel(/^発注の数の上限 \(/).fill('60')
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByText('「行動の損得と制約は」を保存しました')).toBeVisible()
+  await expect(page.getByText('保存していません')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /値を決める手伝い/ })).toHaveCount(0)
+
+  // 8 の節で分位点の損失を答える
+  await nav.getByRole('button', { name: /^8\b/ }).click()
+  await choose(page, '最も良いモデルを何で選びますか', /^検証用の分割での損失/)
+  await write(
+    page,
+    'その指標が良くなると, 課題の指標はどう良くなりますか',
+    '分位点の損失が小さいほど, 発注の数の損の見込みが当たる',
+  )
+
+  // 確かめに直すところが無く, 書き出せる
+  const list = page.getByRole('list', { name: '確かめ', exact: true })
+  await expect(list.getByText('直す', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
+
+  // 後ろの段階に渡す値に, 列, 期間, 水準と τ, 評価, 発注の判断が出る
+  const card = page
+    .locator('section')
+    .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
+  await expect(card).toContainText('受け持ち: 予測する')
+  await expect(card.getByText(/^商品の id の列/)).toHaveText(/product_id/)
+  await expect(card.getByText(/^日付の列/)).toHaveText(/date/)
+  await expect(card.getByText(/^日ごとの売れた数の列/)).toHaveText(/units/)
+  await expect(card.getByText(/^在庫の数の列/)).toHaveText(/stock/)
+  await expect(card.getByText(/^予測に使う商品の特徴の列/)).toHaveText(/category/)
+  await expect(card.getByText(/^除く列/)).toHaveText(/waste/)
+  await expect(card.getByText(/分割は時刻の順/)).toBeVisible()
+  await expect(card.getByText(/^商品と発注を決める日ごとに/)).toContainText('先の 7 日')
+  await expect(card.getByText(/^学ぶ分位点の水準は/)).toContainText('0.1, 0.5, 0.75, 0.9')
+  await expect(card.getByText(/^発注に使う水準 τ/)).toContainText('は 0.75')
+  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_demand/)
+  await expect(card.getByText(/^入力は行 x/)).toContainText('大きさ 4')
+  await expect(card.getByText(/監視する指標/)).toHaveText(/valid\/loss/)
+  await expect(card.getByText(/^意思決定:/)).toContainText('損の比で発注の数を決める')
+  await expect(card.getByText(/^意思決定:/)).toContainText('発注の数の上限: 60')
+  await expect(card.getByText(/^意思決定:/)).toContainText('水準 τ: 0.75')
+  await expect(card.getByText(/demand_estimator\.json/)).toBeVisible()
+  await expect(card.getByText(/^発注の数は見積もりです/)).toBeVisible()
+  await expect(card).not.toContainText(/目的の列/)
+
+  // 書き出すと, 時間をまたぐ量の判断の手順と, 入れた表の写しができる
+  const target = await exportProject(page, 'demand-project', [
+    '需要の記録の表 (1 行が商品と発注を決める日',
+    'tabular_demand',
+    'demand_orders.csv',
+    'demand_estimator.json',
+  ])
+  for (const name of ['train.py', 'README.md', 'configs/default/train.yaml', 'data/daily.csv'])
+    expect(existsSync(`${target}/${name}`), name).toBe(true)
+  const config = readFileSync(`${target}/configs/default/train.yaml`, 'utf8')
+  expect(config).toContain('valid/loss')
+  expect(config).toContain('units_demand')
+  expect(config).toMatch(/^ {2}max_order: 60$/m)
+})
+
 test('守る指標の数える量は 7 の節に意思決定の型に合う選択肢で出て, 受け渡しに言葉で出る', async ({
   page,
 }) => {

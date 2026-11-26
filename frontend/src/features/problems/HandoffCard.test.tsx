@@ -437,7 +437,8 @@ describe('HandoffCard', () => {
         ['few', '少し (確かめの組だけ)'],
       ]),
       score,
-      { ...choice('action.decision', null, [['triage', '振り分ける (人が確かめる, 再検査)']]) },
+      // ML-Quest は異常の検知で振り分けを選択肢に出さない (列の予測の型に絞る)
+      { ...choice('action.decision', null, []) },
     ]
     const { rerender } = render(
       <HandoffCard problem={problemWith(anomaly, questions)} splits={SPLITS} />,
@@ -778,6 +779,185 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^商品の id の列/)).toHaveTextContent('無し (行ごとに値段を選ぶ)')
     expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
     expect(screen.getByText(/^今の値段は/)).toHaveTextContent('その行の記録の値段')
+  })
+
+  it('時間をまたぐ量の判断は, 商品と日付と売れた数と在庫の列, 期間と水準, τ, 評価と発注の判断を出す', () => {
+    const demand: Handoff = {
+      ...POINT_CLOUD,
+      part: {
+        ...POINT_CLOUD.part,
+        role: 'predict',
+        unit: 'row',
+        output: 'distribution',
+        target_kind: 'demand',
+        target_source: 'column',
+        target_process: null,
+      },
+      data: {
+        ...POINT_CLOUD.data,
+        target: 'units',
+        task: 'demand',
+        split: 'time',
+        known: ['category'],
+        drop: ['waste'],
+        id: 'record_id',
+        product: 'product_id',
+        date: 'date',
+        stock: 'stock',
+        horizon: 7,
+        unlabeled: 'drop',
+      },
+      model: {
+        ...POINT_CLOUD.model,
+        role: 'predict',
+        target_kind: 'demand',
+        outputs: 4,
+        example: 'tabular_demand',
+      },
+      training: {
+        metric: 'loss',
+        monitor: 'valid/loss',
+        mode: 'min',
+        role: 'predict',
+        target_kind: 'demand',
+      },
+      inference: {
+        decision: { type: 'order', shortage_cost: 3, holding_cost: 1, max_order: 60 },
+        conclusion: {},
+        horizon: null,
+        guard: null,
+        ready: null,
+      },
+      demand: {
+        product: 'product_id',
+        date: 'date',
+        units: 'units',
+        stock: 'stock',
+        id: 'record_id',
+        columns: ['category'],
+        horizon: 7,
+        levels: [0.1, 0.5, 0.75, 0.9],
+      },
+    }
+    const decision: Question = {
+      ...choice(
+        'action.decision',
+        { type: 'order', shortage_cost: 3, holding_cost: 1, max_order: 60 },
+        [],
+      ),
+      choices: [
+        {
+          value: 'order',
+          label: '損の比で発注の数を決める (商品ごとの先の期間の発注)',
+          fields: [
+            {
+              key: 'shortage_cost',
+              label: '1 つ足りないときの損 (売り逃した利益など)',
+              required: true,
+            },
+            {
+              key: 'holding_cost',
+              label: '1 つ余ったときの損 (捨てる原価か持ち越す費用)',
+              required: true,
+            },
+            { key: 'max_order', label: '発注の数の上限 (守る指標)', required: true },
+          ],
+        },
+      ],
+    }
+    const questions = [
+      choice('ml.parts.0.role', 'predict', [['predict', '予測する (先の値, クラス)']]),
+      choice('ml.parts.0.output', 'distribution', [['distribution', '分布 (分位点)']]),
+      choice('ml.parts.0.target.source', 'column', [['column', 'データの列 (記録に残る)']]),
+      decision,
+    ]
+    const { rerender } = render(
+      <HandoffCard problem={problemWith(demand, questions)} splits={SPLITS} />,
+    )
+    expect(screen.getByText('受け持ち: 予測する')).toBeInTheDocument()
+    expect(screen.getByText(/^商品の id の列/)).toHaveTextContent(
+      'product_id (発注の数を決める単位',
+    )
+    expect(screen.getByText(/^日付の列/)).toHaveTextContent('date (日ごと')
+    expect(screen.getByText(/^日ごとの売れた数の列/)).toHaveTextContent(
+      'units (先の期間の合計が予測する値',
+    )
+    expect(screen.getByText(/^在庫の数の列/)).toHaveTextContent('stock (その日の始めの在庫')
+    expect(screen.getByText(/^行の id の列/)).toHaveTextContent('record_id')
+    expect(screen.getByText(/分割は時刻の順/)).toHaveTextContent('発注を決める日の順に分ける')
+    expect(screen.getByText(/^予測に使う商品の特徴の列/)).toHaveTextContent('category')
+    expect(screen.getByText(/^除く列/)).toHaveTextContent('waste')
+    expect(screen.getByText(/^先の期間の合計が分からない行/)).toBeInTheDocument()
+    expect(screen.getByText(/^商品と発注を決める日ごとに/)).toHaveTextContent('先の 7 日の需要')
+    expect(screen.getByText(/^学ぶ分位点の水準は/)).toHaveTextContent('0.1, 0.5, 0.75, 0.9')
+    expect(screen.getByText(/^発注に使う水準 τ/)).toHaveTextContent(
+      '発注に使う水準 τ (1 つ足りないときの損 / (1 つ足りないときの損 + 1 つ余ったときの損)) は 0.75',
+    )
+    expect(screen.getByText(/^発注の数は, τ の分位点/)).toHaveTextContent(
+      '商品 1 つあたりの同じお金の単位',
+    )
+    expect(screen.getByText(/^発注の数は, τ の分位点/)).toHaveTextContent(
+      '切り捨てと切り上げ (0 より下は 0) のうち見込みの損の小さい方',
+    )
+    expect(screen.getByText(/^評価は, 0.5 の分位点の誤差/)).toHaveTextContent('発注の数の損')
+    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_demand')
+    expect(screen.getByText(/^入力は行 x/)).toHaveTextContent('quantiles (大きさ 4. 学ぶ水準の数)')
+    expect(screen.getByText(/監視する指標/)).toHaveTextContent('valid/loss')
+    expect(screen.getByText(/^意思決定:/)).toHaveTextContent(
+      '意思決定: 損の比で発注の数を決める1 つ足りないときの損: 31 つ余ったときの損: 1発注の数の上限: 60水準 τ: 0.75',
+    )
+    expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent('demand_orders.csv')
+    expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent(
+      'ML-Inference の需要の一式',
+    )
+    expect(screen.getByText(/^発注の数は見積もりです/)).toHaveTextContent(
+      '欠品で抑えられた過去の売れた数から学ぶと需要を少なめに見積もります',
+    )
+    // 列の予測の欄と守る指標は出さない
+    expect(screen.queryByText(/目的の列/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/守る指標:/)).not.toBeInTheDocument()
+
+    // 在庫と行の id が無く, 損の比が 1/3 なら, 在庫を 0 とし, τ を短く出す
+    rerender(
+      <HandoffCard
+        problem={problemWith(
+          {
+            ...demand,
+            data: { ...demand.data, id: null, stock: null },
+            inference: {
+              ...demand.inference,
+              decision: { type: 'order', shortage_cost: 0.1, holding_cost: 0.2, max_order: 5 },
+            },
+            demand: {
+              ...demand.demand!,
+              id: null,
+              stock: null,
+              levels: [0.1, 1 / 3, 0.5, 0.9],
+            },
+          },
+          questions,
+        )}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^在庫の数の列/)).toHaveTextContent('無し (在庫を 0 として発注する)')
+    expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
+    expect(screen.getByText(/^学ぶ分位点の水準は/)).toHaveTextContent('0.1, 0.333, 0.5, 0.9')
+    expect(screen.getByText(/^発注に使う水準 τ/)).toHaveTextContent('は 0.333')
+
+    // 損を決めていなければ, 水準の文は τ に触れない
+    rerender(
+      <HandoffCard
+        problem={problemWith(
+          { ...demand, inference: { ...demand.inference, decision: null } },
+          questions,
+        )}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^学ぶ分位点の水準は/)).toHaveTextContent('(0.5 を含む. 0.9 は')
+    expect(screen.getByText(/^学ぶ分位点の水準は/)).not.toHaveTextContent('τ')
+    expect(screen.getByText(/^発注に使う水準 τ/)).toHaveTextContent('損を決めると出ます')
   })
 
   it('守る指標のたどり直しで数える量を, 名前でなく選択肢の言葉で出す', () => {

@@ -1,4 +1,4 @@
-import type { Choice, Problem } from '../../api/types'
+import type { Choice, Decision, Problem } from '../../api/types'
 import { Card } from '../../components/ui'
 
 /** 受け持ちの問いの識別子の頭 (ML-Quest の版 2. 受け持ちは今は 1 つ) */
@@ -580,7 +580,10 @@ function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[
   const distance = anomaly.score === 'distance'
   const labeled = anomaly.label !== null
   const decision = inference.decision
+  // 型の名前は今の答えに合う選択肢から引き, 引けなければ振り分けの言葉 (異常の検知では 7 の型の
+  // 問いが出ず, ML-Quest が選択肢を列の予測の型に絞ると振り分けが無いため)
   const triage = choicesOf(problem, 'action.decision').find((choice) => choice.value === 'triage')
+  const triageName = triage?.label.split(' (')[0] ?? '振り分ける'
   return (
     <Card title="後ろの段階に渡す値">
       <dl className="flex flex-col gap-3 text-sm">
@@ -689,7 +692,7 @@ function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[
           <dd className="flex flex-col gap-1">
             {decision && (
               <span className="flex flex-wrap items-center gap-1">
-                意思決定: {triage?.label.split(' (')[0] ?? decision.type}
+                意思決定: {triageName}
                 {decision.capacity !== undefined && (
                   <Code>{`件数の上限: ${String(decision.capacity)}`}</Code>
                 )}
@@ -1068,6 +1071,211 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
   )
 }
 
+/** 分位点の水準の言葉 (小数の 3 桁まで. 1/3 のような水準を短く出す) */
+function levelText(level: number): string {
+  return String(Number(level.toFixed(3)))
+}
+
+/**
+ * 発注に使う水準 τ = 品切れの損 / (品切れの損 + 売れ残りの損) (ML-Quest の docs/DESIGN.md の
+ * 5 節の発注の判断の式. 出すだけで, 学ぶ水準と発注の数は ML-Quest と ML-Inference が決める).
+ * 2 つの損が有限の正の数でなければ null
+ */
+function orderLevel(decision: Decision | null): number | null {
+  if (decision?.type !== 'order') return null
+  const shortage = decision.shortage_cost
+  const holding = decision.holding_cost
+  if (typeof shortage !== 'number' || typeof holding !== 'number') return null
+  if (!Number.isFinite(shortage) || !Number.isFinite(holding) || shortage <= 0 || holding <= 0)
+    return null
+  return shortage / (shortage + holding)
+}
+
+/**
+ * 時間をまたぐ量の判断の値 (受け渡しの demand があるときだけ). 列の予測の欄と分け, 商品の id,
+ * 日付, 売れた数, 在庫の数の列, 先の期間の日数と学ぶ水準, 損の比から決まる水準 τ, 分位点の誤差と
+ * 損失と発注の数の損の比べで数える評価と, 発注の判断を言葉で出す (列の予測の量を決める型と違う
+ * 言葉のため)
+ */
+function DemandHandoff({ problem, splits }: { problem: Problem; splits: Choice[] }) {
+  const handoff = problem.handoff
+  const demand = handoff?.demand
+  if (!handoff || !demand) return null
+  const { part, data, model, inference } = handoff
+  const decision = inference.decision?.type === 'order' ? inference.decision : null
+  const choice = choicesOf(problem, 'action.decision').find((item) => item.value === 'order')
+  // 欄の名前は ML-Quest の欄の言葉の括弧の前まで (引けなければ ML-Quest の名前と同じ言葉)
+  const nameOf = (key: string, fallback: string) =>
+    choice?.fields?.find((field) => field.key === key)?.label.split(' (')[0] ?? fallback
+  const shortageName = nameOf('shortage_cost', '品切れの損')
+  const holdingName = nameOf('holding_cost', '売れ残りの損')
+  const maxName = nameOf('max_order', '発注の数の上限')
+  const tau = orderLevel(decision)
+  const values: [string, unknown][] = decision
+    ? [
+        [shortageName, decision.shortage_cost],
+        [holdingName, decision.holding_cost],
+        [maxName, decision.max_order],
+      ]
+    : []
+  const rows: [string, string | null][] = [
+    ['受け持ち', partLabel(problem, 'role', part.role)],
+    ['出力の形', partLabel(problem, 'output', part.output)],
+    ['正解の出どころ', partLabel(problem, 'target.source', part.target_source)],
+  ]
+  return (
+    <Card title="後ろの段階に渡す値">
+      <dl className="flex flex-col gap-3 text-sm">
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">機械学習の受け持ち</dt>
+          <dd className="flex flex-col gap-1">
+            {rows
+              .filter(([, value]) => value !== null)
+              .map(([name, value]) => (
+                <span key={name}>
+                  {name}: {value}
+                </span>
+              ))}
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dd className="flex flex-col gap-1">
+            <span className="flex flex-wrap items-center gap-1">
+              商品の id の列 <Code>{demand.product ?? ''}</Code> (発注の数を決める単位.
+              予測には使わない)
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              日付の列 <Code>{demand.date ?? ''}</Code> (日ごと. 曜日はデータの分析で列にする)
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              日ごとの売れた数の列 <Code>{demand.units ?? ''}</Code> (先の期間の合計が予測する値.
+              過去の売れた数はずらした列にして予測に使う)
+            </span>
+            {demand.stock ? (
+              <span className="flex flex-wrap items-center gap-1">
+                在庫の数の列 <Code>{demand.stock}</Code> (その日の始めの在庫. 発注の数から引く.
+                予測には使わない)
+              </span>
+            ) : (
+              <span>
+                在庫の数の列: <span className="text-ink-3">無し (在庫を 0 として発注する)</span>
+              </span>
+            )}
+            {demand.id ? (
+              <span className="flex flex-wrap items-center gap-1">
+                行の id の列 <Code>{demand.id}</Code> (記録の 1 行を指す. 予測には使わない)
+              </span>
+            ) : (
+              <span>
+                行の id の列: <span className="text-ink-3">無し (行の位置で指す)</span>
+              </span>
+            )}
+            {data.split && (
+              <span>分割は{shortLabel(splits, data.split)} (発注を決める日の順に分ける)</span>
+            )}
+            <span className="flex flex-wrap items-center gap-1">
+              予測に使う商品の特徴の列 <Names names={demand.columns} />
+              (過去の売れた数と曜日の列はデータの分析で足す)
+            </span>
+            <span className="flex flex-wrap items-center gap-1">
+              除く列 <Names names={data.drop} />
+            </span>
+            {data.unlabeled === 'drop' && (
+              <span>先の期間の合計が分からない行 (記録の終わりの近く) は学習と評価に使わない</span>
+            )}
+            {data.source ? (
+              <span>
+                データ <Code>{data.source.source}</Code> (データの分析から推論までのアプリも,
+                写したこのファイルを同じ読み方で開く)
+              </span>
+            ) : (
+              <span className="text-ink-3">データは入れていません</span>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            発注の数の決め方 (データの分析, 学習, 評価)
+          </dt>
+          <dd className="flex flex-col gap-1">
+            <span>
+              商品と発注を決める日ごとに, 先の {demand.horizon} 日の需要 (売れる数の合計)
+              を分位点で予測する
+            </span>
+            <span>
+              学ぶ分位点の水準は {demand.levels.map(levelText).join(', ')} (
+              {tau !== null ? '0.5 と発注に使う水準 τ を含む' : '0.5 を含む'}. 0.9 は 9
+              割の場合でこれより少ない数)
+            </span>
+            <span>
+              {tau !== null
+                ? `発注に使う水準 τ (${shortageName} / (${shortageName} + ${holdingName})) は ${levelText(tau)}`
+                : `発注に使う水準 τ (${shortageName} / (${shortageName} + ${holdingName})) は, 損を決めると出ます`}
+            </span>
+            <span>
+              発注の数は, τ の分位点から在庫の数を引いた数の切り捨てと切り上げ (0 より下は 0)
+              のうち見込みの損の小さい方 (同じなら少ない方) を, {maxName}で切ったもの. 2 つの損は,
+              商品 1 つあたりの同じお金の単位で書く
+            </span>
+            <span className="text-xs text-ink-2">
+              評価は, 0.5 の分位点の誤差, 分位点の損失と, 実際の需要での発注の数の損
+              (前の期間と同じ数を発注した損との比べ) で数えます
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">
+            モデルの作成 (ML-CreateArchitecture)
+          </dt>
+          <dd className="flex flex-col gap-1">
+            <ModelExample problem={problem} />
+            <span>
+              入力は行 x (学習に使う列), 出力は水準の小さい順の分位点 quantiles
+              {model.outputs !== null && ` (大きさ ${model.outputs}. 学ぶ水準の数)`}
+            </span>
+          </dd>
+        </div>
+        <TrainingRow problem={problem} />
+        <RequiresRow problem={problem} />
+        <ProjectRow problem={problem} />
+        <div>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+          <dd className="flex flex-col gap-1">
+            {decision ? (
+              <span className="flex flex-wrap items-center gap-1">
+                意思決定: {choice?.label.split(' (')[0] ?? decision.type}
+                {values.map(([name, value]) => (
+                  <Code key={name}>{`${name}: ${String(value)}`}</Code>
+                ))}
+                {tau !== null && <Code>{`水準 τ: ${levelText(tau)}`}</Code>}
+              </span>
+            ) : (
+              <span>
+                意思決定: <span className="text-ink-3">まだ決めていません</span>
+              </span>
+            )}
+            <span>
+              新しい日ごとの記録の商品ごとに, 最も遅い日を発注を決める日とし, 先の {demand.horizon}{' '}
+              日の需要の τ の分位点から在庫を引いて, {maxName}の中で発注します
+            </span>
+            <span>
+              学習の後に, 推論の段階が読む需要の決め方 (demand_estimator.json)
+              と発注を決める日ごとの発注の数 (demand_orders.csv) を実験に残し, ML-Inference
+              の需要の一式を実験の inference/ に作ります (仮のモデルでは作らない)
+            </span>
+            <span className="text-xs text-ink-2">
+              発注の数は見積もりです. 品切れの日の売れた数は需要より少ないので,
+              欠品で抑えられた過去の売れた数から学ぶと需要を少なめに見積もります.
+              実際の損は発注の後の売れた数で確かめます
+            </span>
+          </dd>
+        </div>
+      </dl>
+    </Card>
+  )
+}
+
 /** 後ろの段階ごとに, 各段階の画面で選ぶ値 */
 export function HandoffCard({
   problem,
@@ -1099,6 +1307,8 @@ export function HandoffCard({
   if (handoff.uplift) return <UpliftHandoff problem={problem} splits={splits} />
   // 値段を変える判断も, タスクがあっても列の予測と別の欄
   if (handoff.price) return <PriceHandoff problem={problem} splits={splits} />
+  // 時間をまたぐ量の判断も, タスクがあっても列の予測と別の欄
+  if (handoff.demand) return <DemandHandoff problem={problem} splits={splits} />
   // 列の予測でなければ, タスクが無い (受け持ちごとの表示)
   if (handoff.data.task === null)
     return <PartHandoff problem={problem} splits={splits} onJump={onJump} />

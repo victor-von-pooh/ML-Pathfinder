@@ -28,6 +28,7 @@ export type QuestionKind =
   | 'column'
   | 'columns'
   | 'list'
+  | 'numbers'
   | 'levers'
   | 'decision'
   | 'source'
@@ -66,7 +67,7 @@ export interface Lever {
 
 /** 意思決定の型と損得と制約 (ML-Inference の形. 値は数か列の名前か, 値段の候補の数の並び) */
 export interface Decision {
-  type: 'quantity' | 'select' | 'triage' | 'treat' | 'price' | 'none'
+  type: 'quantity' | 'select' | 'triage' | 'treat' | 'price' | 'order' | 'none'
   [field: string]: string | number | number[] | undefined
 }
 
@@ -209,6 +210,26 @@ export interface Price {
   columns: string[]
 }
 
+/** 時間をまたぐ量の判断の列, 先の期間の日数と学ぶ水準 (時間をまたぐ量の判断のときだけ. ML-Quest の受け渡しの demand) */
+export interface Demand {
+  /** 商品の id の列 (発注の数を決める単位) */
+  product: string | null
+  /** 日付の列 (日ごと) */
+  date: string | null
+  /** 日ごとの売れた数の列 */
+  units: string | null
+  /** 在庫の数の列 (答えていなければ null. 在庫を 0 として発注する) */
+  stock: string | null
+  /** 行の id の列 (答えていなければ null) */
+  id: string | null
+  /** 需要の予測に使う商品の特徴の列の名前の並び */
+  columns: string[]
+  /** 先の期間の日数 */
+  horizon: number
+  /** 学ぶ分位点の水準 (小さい順. 0.5 と発注に使う水準 τ を含む) */
+  levels: number[]
+}
+
 /** 推論の段階のたどり直しで数える守る指標 (列の予測で, 名前を答えたときだけ. ML-Quest の guard_of) */
 export interface Guard {
   name: string
@@ -271,9 +292,9 @@ export interface Handoff {
     } | null
     /** 書き出したプロジェクトのデータセットの置き場 (絶対パス. 書き出していなければ null) */
     project_dataset?: string | null
-    /** 行の id の列 (異常の検知, 効果の見積もり, 値段を変える判断だけ. 答えていなければ null) */
+    /** 行の id の列 (異常の検知, 効果の見積もり, 値段を変える判断, 時間をまたぐ量の判断だけ. 答えていなければ null) */
     id?: string | null
-    /** 正解の欠けた行の扱い (異常の検知で正解の列があれば normal, 効果の見積もりと値段を変える判断は drop) */
+    /** 正解の欠けた行の扱い (異常の検知で正解の列があれば normal, 効果の見積もり, 値段を変える判断, 時間をまたぐ量の判断は drop) */
     unlabeled?: string | null
     /** 処置の列 (効果の見積もりだけ) */
     treatment?: string | null
@@ -283,8 +304,14 @@ export interface Handoff {
     price?: string | null
     /** 原価の列 (値段を変える判断だけ. 答えていなければ null) */
     cost?: string | null
-    /** 商品の id の列 (値段を変える判断だけ. 答えていなければ null) */
+    /** 商品の id の列 (値段を変える判断と時間をまたぐ量の判断だけ. 値段を変える判断では答えていなければ null) */
     product?: string | null
+    /** 日付の列 (時間をまたぐ量の判断だけ) */
+    date?: string | null
+    /** 在庫の数の列 (時間をまたぐ量の判断だけ. 答えていなければ null) */
+    stock?: string | null
+    /** 先の期間の日数 (時間をまたぐ量の判断だけ) */
+    horizon?: number | null
   }
   model: {
     task: string | null
@@ -327,6 +354,8 @@ export interface Handoff {
   uplift?: Uplift | null
   /** 値段を変える判断の列 (値段を変える判断でなければ null) */
   price?: Price | null
+  /** 時間をまたぐ量の判断の列, 期間と水準 (時間をまたぐ量の判断でなければ null) */
+  demand?: Demand | null
   /** 書き出したプロジェクト (書き出していなければ path は null) */
   project?: { path: string | null }
 }

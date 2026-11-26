@@ -61,6 +61,53 @@ describe('QuestionField', () => {
     expect(screen.getByRole('textbox').tagName).toBe('TEXTAREA')
   })
 
+  it('数の並びの問いは 1 行の欄にカンマで区切って書き, そろえた文で送り, 保存した並びもカンマで出す', () => {
+    const levels: Question = {
+      id: 'ml.parts.0.demand.levels',
+      section: 5,
+      kind: 'numbers',
+      title: '学ぶ分位点の水準は',
+      help: '',
+      required: false,
+      choices: [],
+      value: [0.1, 0.9],
+      answered: true,
+      applies: true,
+      multiline: false,
+    }
+    const onAnswer = vi.fn()
+    const props = { columns: [], findings: [], saving: false, onAnswer }
+    const { rerender } = render(<QuestionField question={levels} {...props} error={null} />)
+    const input = screen.getByRole('textbox')
+    expect(input.tagName).toBe('INPUT')
+    expect(input).toHaveValue('0.1, 0.9')
+    expect(input).toHaveAttribute('placeholder', '数をカンマで区切って並べる')
+    // 空白だけの違いは送らない
+    fireEvent.change(input, { target: { value: '0.1,0.9' } })
+    fireEvent.blur(input)
+    expect(onAnswer).not.toHaveBeenCalled()
+    fireEvent.change(input, { target: { value: ' 0.1,0.5 ,0.9 ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onAnswer).toHaveBeenLastCalledWith('0.1, 0.5, 0.9')
+    // 末尾のカンマは消さずに送り, ML-Quest の誤りを欄の下に出す (書いた文は残す)
+    fireEvent.change(input, { target: { value: '0.1, 0.9,' } })
+    fireEvent.blur(input)
+    expect(onAnswer).toHaveBeenLastCalledWith('0.1, 0.9, ')
+    rerender(
+      <QuestionField
+        question={levels}
+        {...props}
+        error="ml.parts.0.demand.levels に空の要素があります"
+      />,
+    )
+    expect(screen.getByText(/空の要素があります/)).toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveValue('0.1, 0.9,')
+    // 空にすると答えを消す
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: ' ' } })
+    fireEvent.blur(screen.getByRole('textbox'))
+    expect(onAnswer).toHaveBeenLastCalledWith(null)
+  })
+
   it('手元のデータの場所が誤っている間も, 欄に誤りを出して外せる', () => {
     const onDetach = vi.fn()
     vi.stubGlobal('confirm', () => true)
