@@ -93,6 +93,8 @@ def test_standalone_checks(
 
     # 違うトークンは 401, 合うトークンは Cookie を置いて画面へ
     assert client.get("/api/auth?token=x").status_code == 401
+    # GET でない /api/auth はトークンの確かめを通らない
+    assert client.post("/api/auth?token=x").status_code == 401
     assert client.get("/api/problems").status_code == 401
     moved = client.get(f"/api/auth?token={TOKEN}", follow_redirects=False)
     assert moved.status_code == 303 and moved.headers["location"] == "/"
