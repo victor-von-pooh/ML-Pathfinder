@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { ChevronDown, ChevronRight, Play } from 'lucide-react'
 import { useId, useState } from 'react'
 
-import { api } from '../../api/client'
+import { useApi } from '../../api/client'
 import type {
   Decision,
   Question,
@@ -158,6 +158,7 @@ export function SensitivityPanel({
   /** 意思決定の型ごとの, 幅を渡せる項目 (/api/info の sensitivity_fields) */
   fields: Record<string, string[]> | undefined
 }) {
+  const api = useApi()
   const id = useId()
   const [open, setOpen] = useState(false)
   const [ranges, setRanges] = useState<Record<string, { low: string; high: string }>>({})
