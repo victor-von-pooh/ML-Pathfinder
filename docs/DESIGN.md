@@ -134,6 +134,8 @@ API と, 確かめと画面の配信を, 2 つの FastAPI のアプリに分け�
     - `problems_dir` は問題の設定の置き場 (下の「6. 置き場」の `problems/`). 渡さなければ `data_dir` (無ければ既定の置き場) の下の `problems`. 渡せば `data_dir` は使わない (このアプリのデータは全て問題の設定の置き場の中にあるため). 殻は後ろの段階のアプリと同じ置き場を渡す
     - 例外ハンドラ, 子プロセス, プロセス全体の登録簿は持たない
 - `create_app(data_dir=None, token=None, allowed_hosts=None)`: 単独で起動するアプリ. 確かめ (トークン, Origin, ホスト名), `/api/auth`, 画面の配信を持つ外側のアプリに, `create_api(data_dir)` を `/api` で mount する. 確かめは外側の middleware なので, mount した API にも効く
+    - `token` が `None` か空の場合は, 環境変数 `ML_PATHFINDER_TOKEN` (無いか空ならランダム) を使う. 環境変数も無いか空の場合は開き方の URL (`/api/auth?token=...`) を表示する (空のトークンでは誰でも API を呼べるため)
+    - 画面の配信は GET と HEAD を受け付ける. 画面の置き場にあるファイルはそのまま返し, それ以外の経路は `index.html` を返す (画面の中の移動先のため). NUL の字を含む経路や長すぎる名前のように, ファイルとして調べられない経路も `index.html` にする. `/api` の下の無い経路は 404
 - 画面の型を作る仕様 (`ml-pathfinder --openapi`) は `create_api` の仕様のパスに `/api` を付けて書き出す (外側のアプリの仕様には mount した API が入らないため)
 - ポートはアプリが持たず, 起動の `ml-pathfinder --port` (か殻) が決める
 
