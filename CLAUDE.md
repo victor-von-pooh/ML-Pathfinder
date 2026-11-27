@@ -14,7 +14,6 @@ ML-Quest を使って, 機械学習に向けた問題を設計するローカル
 - Python: [ML-Quest/CODING_STYLE.md](ML-Quest/CODING_STYLE.md) に従う (日本語の NumPy 形式の docstring, コメントは体言止め, 79 文字以内など). Ruff と mypy (strict) を通す
 - TypeScript: Prettier と oxlint に従い, `strict` で型検査を通す. コメントは日本語で書く
 - ドキュメントとコードのコメントでは, 「機械学習を全て GUI 上で行う」という目的のために開発しているリポジトリ (今は ML-Found, ML-Dashboard, ML-ModelControl, ML-CreateArchitecture, ML-EDA, ML-Fathom, ML-Inference, ML-Provide, ML-Quest, ML-Pathfinder, ML-Studio) 以外に触れない. ローカルのディレクトリ構成やパスも書かない
-- ML_tester (他のリポジトリを試す場. いずれ無くなる) は, 文書, コード, コメント, テスト, TODO のどこからも指さない. 消えた後に読めない情報を残さないため, このリポジトリの中だけで分かるように書く
 
 ## 文書
 
