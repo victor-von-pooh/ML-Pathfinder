@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import { ArrowUp, Database, File, Folder, Home, Package } from 'lucide-react'
 import { useState } from 'react'
 
-import { api } from '../api/client'
+import { useApi } from '../api/client'
 import { formatBytes } from '../lib/format'
 import { Dialog } from './Dialog'
 import { Button, ErrorBox, Spinner } from './ui'
@@ -29,6 +29,7 @@ export function PathPicker({
   onClose: () => void
   onPick: (path: string) => void
 }) {
+  const api = useApi()
   const [dir, setDir] = useState(start)
   const [typed, setTyped] = useState('')
   // 開けないディレクトリの後も, 前の一覧と「上へ」を使えるように

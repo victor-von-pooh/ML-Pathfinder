@@ -1,14 +1,15 @@
 import { useIsMutating, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { CheckCircle2, Download, FolderOutput, Pencil, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
-import { api } from '../../api/client'
+import { useApi } from '../../api/client'
 import type { Finding, Problem } from '../../api/types'
 import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatTime } from '../../lib/format'
 import { LEVEL_NAMES } from '../../lib/labels'
+import { useStage } from '../../lib/stage'
 import { HandoffCard } from './HandoffCard'
 import { ProjectDialog } from './ProjectDialog'
 import { QuestionField } from './QuestionField'
@@ -197,10 +198,23 @@ function FindingsCard({
 
 /** 1 つの問題の設定を, 節ごとの問いで埋める画面 */
 export function ProblemPage() {
+  const api = useApi()
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const client = useQueryClient()
   const query = useQuery({ queryKey: ['problem', id], queryFn: () => api.problem(id) })
+  const { project, onProjectChange, onProjectsChange } = useStage()
+  // 殻の選びは知らせるかを決めるときだけ読む (殻が選びを替えたときに, 前の問題の設定を
+  // 知らせ直さないため)
+  const shell = useRef({ project, onProjectChange })
+  useLayoutEffect(() => {
+    shell.current = { project, onProjectChange }
+  }, [project, onProjectChange])
+  const opened = query.isSuccess
+  // 開けたら殻に知らせる (殻の選びと同じなら知らせない. 知らせが行き来し続けないため)
+  useEffect(() => {
+    if (opened && shell.current.project !== id) shell.current.onProjectChange(id)
+  }, [opened, id])
   // 今の問題の設定の形の版 (ファイルが古い版なら知らせるため. ML-Quest の版)
   const info = useQuery({ queryKey: ['info'], queryFn: api.info })
   const formatVersion = info.data?.format_version
@@ -261,6 +275,7 @@ export function ProblemPage() {
     mutationFn: (name: string) => api.rename(id, name),
     onSuccess: (view) => {
       store(view)
+      onProjectsChange()
       setRenaming(null)
     },
   })
@@ -268,7 +283,10 @@ export function ProblemPage() {
     mutationFn: () => api.remove(id),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ['problems'] })
-      navigate('/')
+      onProjectsChange()
+      // 殻で選んでいた問題の設定を消したら, 選びを外す
+      if (shell.current.project === id) shell.current.onProjectChange(null)
+      void navigate('/')
     },
   })
 

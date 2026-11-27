@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, FolderOutput } from 'lucide-react'
 import { Fragment, useState } from 'react'
 
-import { api, ApiError } from '../../api/client'
+import { ApiError, useApi } from '../../api/client'
 import type { Finding, Problem } from '../../api/types'
 import { Dialog } from '../../components/Dialog'
 import { PathField } from '../../components/PathPicker'
@@ -49,6 +49,7 @@ function questionTitle(problem: Problem, finding: Finding): string | null {
 
 /** ML-Found のプロジェクトの骨組みを書き出す対話 */
 export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose: () => void }) {
+  const api = useApi()
   // 画像の領域と点群, 画像と表の生成, 並べる, まとめる, 異常の検知, 効果の見積もり, 値段を変える判断, 時間をまたぐ量の判断, 方策の, 列の予測と違う既定の名前と次にすること
   // 骨組みの型は ML-Quest の skeleton_type (書き出せるのは機械学習を使うときだけなので, 無いか知らない型なら列の予測)
   const given = problem.skeleton_type

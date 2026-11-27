@@ -3,11 +3,12 @@ import { CheckCircle2, Compass, FileInput, Plus, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 
-import { api } from '../../api/client'
-import type { ProblemItem } from '../../api/types'
+import { useApi } from '../../api/client'
+import type { Problem, ProblemItem } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
 import { Button, Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
 import { formatTime } from '../../lib/format'
+import { useStage } from '../../lib/stage'
 
 /** 一覧の行の状態 (渡せる, 機械学習を使わないで終えた, 直すところ, 途中) */
 function Status({ item }: { item: ProblemItem }) {
@@ -29,18 +30,25 @@ function Status({ item }: { item: ProblemItem }) {
 
 /** 問題の設定の一覧と, 新しく作る欄 */
 export function ProblemsPage() {
+  const api = useApi()
   const navigate = useNavigate()
+  const { onProjectsChange } = useStage()
+  // 作るか取り込んだら, 殻に一覧の変化を知らせて開く (開いた知らせは問題の設定の画面が出す)
+  const opened = (view: Problem) => {
+    onProjectsChange()
+    void navigate(`/problems/${view.id}`)
+  }
   const items = useQuery({ queryKey: ['problems'], queryFn: api.problems })
   const info = useQuery({ queryKey: ['info'], queryFn: api.info })
   const [name, setName] = useState('')
   const [importing, setImporting] = useState(false)
   const create = useMutation({
     mutationFn: api.create,
-    onSuccess: (view) => navigate(`/problems/${view.id}`),
+    onSuccess: opened,
   })
   const importProblem = useMutation({
     mutationFn: api.importProblem,
-    onSuccess: (view) => navigate(`/problems/${view.id}`),
+    onSuccess: opened,
   })
   return (
     <>
