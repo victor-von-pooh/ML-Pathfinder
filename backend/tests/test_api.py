@@ -10,11 +10,12 @@ import ml_quest
 import pandas as pd
 import pytest
 import yaml
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from ml_eda import synthetic
 
 from ml_pathfinder import api
-from ml_pathfinder.app import create_app
+from ml_pathfinder.app import cookie_name, create_api, create_app
 
 # テストのトークン
 TOKEN = "test-token"
@@ -57,9 +58,118 @@ def test_token_required(tmp_path: Path) -> None:
     None
     """
     # ヘッダーも Cookie も無い
-    app = create_app(data_dir=tmp_path, token=TOKEN,
-                     allowed_hosts=["testserver"])
-    assert TestClient(app).get("/api/problems").status_code == 401
+    standalone = create_app(data_dir=tmp_path, token=TOKEN,
+                            allowed_hosts=["testserver"])
+    assert TestClient(standalone).get("/api/problems").status_code == 401
+
+
+def test_standalone_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    単独の起動のアプリが確かめ, /api/auth, 画面の配信を持つことを
+    確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        一時ディレクトリ
+    monkeypatch: pytest.MonkeyPatch
+        画面の置き場の差し替え
+
+    Returns
+    ----------
+    None
+    """
+    # ビルド済みの画面の代わり
+    static_dir = (tmp_path / "static").resolve()
+    (static_dir / "assets").mkdir(parents=True)
+    (static_dir / "index.html").write_text("画面", encoding="utf-8")
+    (static_dir / "assets" / "a.js").write_text("1", encoding="utf-8")
+    monkeypatch.setattr("ml_pathfinder.app.STATIC_DIR", static_dir)
+    standalone = create_app(data_dir=tmp_path / "home", token=TOKEN,
+                            allowed_hosts=["testserver"])
+    client = TestClient(standalone)
+
+    # 違うトークンは 401, 合うトークンは Cookie を置いて画面へ
+    assert client.get("/api/auth?token=x").status_code == 401
+    assert client.get("/api/problems").status_code == 401
+    moved = client.get(f"/api/auth?token={TOKEN}", follow_redirects=False)
+    assert moved.status_code == 303 and moved.headers["location"] == "/"
+    assert cookie_name(TOKEN) in moved.cookies
+    assert client.get("/api/problems").json() == []
+
+    # 別の Origin の書き込みは 403, 同じ Origin は受け付ける
+    foreign = client.post("/api/problems", json={"name": "試し"},
+                          headers={"origin": "http://evil.example"})
+    assert foreign.status_code == 403
+    same = client.post("/api/problems", json={"name": "試し"},
+                       headers={"origin": "http://testserver"})
+    assert same.status_code == 201
+    assert (tmp_path / "home" / "problems" / same.json()["id"]
+            / "problem.yaml").is_file()
+
+    # 別のホスト名は断る
+    other = client.get("/api/problems", headers={"host": "evil.example"})
+    assert other.status_code == 400
+
+    # 画面の配信と, 無い API と仕様の画面の 404
+    assert client.get("/").text == "画面"
+    assert client.get(f"/problems/{same.json()['id']}").text == "画面"
+    assert client.get("/assets/a.js").text == "1"
+    for path in ["/api", "/api/nothing", "/api/openapi.json", "/api/docs"]:
+        assert client.get(path).status_code == 404, path
+
+
+def test_create_api_mounted(tmp_path: Path) -> None:
+    """
+    API だけのアプリを別の頭の下に mount して動き, 確かめを持たない
+    ことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 殻の代わりのアプリ (確かめは殻が持つので, ここでは付けない)
+    problems_dir = tmp_path / "shared" / "problems"
+    shell = FastAPI()
+    shell.mount("/api/problem",
+                create_api(tmp_path / "unused", problems_dir=problems_dir))
+    client = TestClient(shell)
+
+    # トークン無しで, 別の Origin からも作れる (確かめは殻の役目)
+    assert client.get("/api/problem/problems").json() == []
+    created = client.post("/api/problem/problems", json={"name": "試し"},
+                          headers={"origin": "http://other.example"})
+    assert created.status_code == 201, created.text
+    problem_id = created.json()["id"]
+    assert (problems_dir / problem_id / "problem.yaml").is_file()
+    assert not (tmp_path / "unused").exists()
+
+    # 答え, 読み, 一覧に出る
+    url = f"/api/problem/problems/{problem_id}"
+    answered = client.put(f"{url}/answers",
+                          json={"id": "issue.pain", "value": "廃棄が多い"})
+    assert answered.json()["progress"]["answered"] == 1
+    assert client.get(url).json()["name"] == "試し"
+    items = client.get("/api/problem/problems").json()
+    assert [item["id"] for item in items] == [problem_id]
+    assert client.get(f"{url}/download").status_code == 200
+
+    # /auth も仕様の画面も持たない
+    for path in ["/auth", "/openapi.json", "/docs", "/redoc"]:
+        assert client.get(f"/api/problem{path}").status_code == 404, path
+
+    # problems_dir を渡さなければ data_dir の下の problems
+    default = TestClient(create_api(tmp_path / "home"))
+    created = default.post("/problems", json={"name": "試し"})
+    assert (tmp_path / "home" / "problems" / created.json()["id"]
+            / "problem.yaml").is_file()
 
 
 def test_create_answer_and_list(client: TestClient) -> None:

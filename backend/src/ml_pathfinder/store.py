@@ -17,29 +17,10 @@ READ_ERRORS = (OSError, ValueError, yaml.YAMLError)
 
 
 class Store:
-    def __init__(self, home: Path):
-        # 置き場を保存
-        self.home = home
+    def __init__(self, problems_dir: Path):
+        # 問題の設定の置き場を保存
+        self.problems_dir = problems_dir
         self.lock = threading.Lock()
-
-    @property
-    def problems_dir(self) -> Path:
-        """
-        問題の設定を置くディレクトリを返す関数
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        ----------
-        path: Path
-            置き場の problems
-        """
-        # 1 つの問題の設定に 1 つのディレクトリ
-        path = self.home / "problems"
-
-        return path
 
     def place(self, problem_id: str) -> Path:
         """

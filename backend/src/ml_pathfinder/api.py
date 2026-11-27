@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 
 from ml_pathfinder.store import ID_PATTERN, READ_ERRORS, Store
 
-router = APIRouter(prefix="/api")
+# 頭なしの router (頭は mount する側が決める)
+router = APIRouter()
 
 # 読んで答えて書く間を 1 つずつにする鍵 (答えが消えないように)
 EDIT_LOCK = threading.Lock()
