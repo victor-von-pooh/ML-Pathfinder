@@ -261,7 +261,7 @@ def test_create_answer_and_list(client: TestClient) -> None:
     assert client.get("/api/problems/../x").status_code == 404
 
 
-def test_example_copy_names(client: TestClient) -> None:
+def test_example_copy_names(client: TestClient, tmp_path: Path) -> None:
     """
     見本の写しの名前に, 一覧に無い最小の番号が付くことを確かめる関数
 
@@ -269,6 +269,8 @@ def test_example_copy_names(client: TestClient) -> None:
     ----------
     client: TestClient
         利用者
+    tmp_path: Path
+        一時ディレクトリ
 
     Returns
     ----------
@@ -297,10 +299,12 @@ def test_example_copy_names(client: TestClient) -> None:
     assert names() == sorted([example, f"{example} (2)", f"{example} (3)"])
 
     # 消した番号は使い直し, 残っている番号とは重ならない
-    client.delete(f"/api/problems/{views[1]['id']}")
+    deleted = client.delete(f"/api/problems/{views[1]['id']}")
+    assert deleted.status_code == 204
     assert open_example()["name"] == f"{example} (2)"
     assert open_example()["name"] == f"{example} (4)"
-    client.delete(f"/api/problems/{views[0]['id']}")
+    deleted = client.delete(f"/api/problems/{views[0]['id']}")
+    assert deleted.status_code == 204
     assert open_example()["name"] == example
     assert len(names()) == len(set(names())) == 4
 
@@ -312,12 +316,36 @@ def test_example_copy_names(client: TestClient) -> None:
     assert created["name"] == f"{example} (5)"
     assert open_example()["name"] == f"{example} (6)"
 
-    # 新しく作るときの名前と, 他の見本の名前は番号を付けない
+    # 新しく作るときは, 同じ名前でも番号を付けない
     assert client.post("/api/problems",
                        json={"name": "試し"}).json()["name"] == "試し"
     assert client.post("/api/problems",
                        json={"name": "試し"}).json()["name"] == "試し"
     assert open_example()["name"] == f"{example} (7)"
+
+    # 名前の変更と取り込みも, 同じ名前のまま (番号を付けない)
+    renamed = client.put(f"/api/problems/{views[2]['id']}/name",
+                         json={"name": example})
+    assert renamed.status_code == 200 and renamed.json()["name"] == example
+    copy = tmp_path / "copy.yaml"
+    copy.write_bytes(
+        client.get(f"/api/problems/{views[2]['id']}/download").content
+    )
+    imported = client.post("/api/problems/import",
+                           json={"path": str(copy)})
+    assert imported.status_code == 201 and imported.json()["name"] == example
+
+    # 括弧を含む見本の名前にも, 後ろに番号を付ける
+    photo = "写真の仕分け (既製のモデル)"
+    first = client.post("/api/problems", json={"example": photo}).json()
+    second = client.post("/api/problems", json={"example": photo}).json()
+    assert [first["name"], second["name"]] == [photo, f"{photo} (2)"]
+
+    # 見本の名前が無く「(2)」だけあれば, 見本の名前のまま作る
+    deleted = client.delete(f"/api/problems/{first['id']}")
+    assert deleted.status_code == 204
+    third = client.post("/api/problems", json={"example": photo}).json()
+    assert third["name"] == photo
 
 
 def test_example_copy_names_concurrent(tmp_path: Path) -> None:
