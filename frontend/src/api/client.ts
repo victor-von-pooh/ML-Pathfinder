@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react'
 
+import { errorText } from '../components/common-utils'
+
 import type {
   Info,
   Insight,
@@ -20,24 +22,10 @@ export class ApiError extends Error {
   }
 }
 
-/** エラーのレスポンスから表示する文を取り出す */
+/** 誤りの応答から画面の文を作る (本文が JSON でなければ状態の番号と文) */
 async function readError(response: Response): Promise<string> {
-  try {
-    const body: unknown = await response.json()
-    if (body && typeof body === 'object' && 'detail' in body) {
-      const detail = (body as { detail: unknown }).detail
-      if (typeof detail === 'string') return detail
-      // 構造で返す誤り (書き出しの 409 など) は画面の文
-      if (detail && typeof detail === 'object' && 'message' in detail) {
-        const message = (detail as { message: unknown }).message
-        if (typeof message === 'string') return message
-      }
-      return JSON.stringify(detail)
-    }
-  } catch {
-    // JSON でない場合は状態の文を使う
-  }
-  return `${response.status} ${response.statusText}`
+  const body: unknown = await response.json().catch(() => undefined)
+  return errorText(response.status, response.statusText, body)
 }
 
 /** JSON の API を呼ぶ */

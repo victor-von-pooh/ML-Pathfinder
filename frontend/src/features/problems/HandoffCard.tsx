@@ -1,5 +1,5 @@
 import type { Choice, Decision, Problem } from '../../api/types'
-import { Card } from '../../components/ui'
+import { Card } from '../../components/common'
 
 /** 受け持ちの問いの識別子の頭 (ML-Quest の版 2. 受け持ちは今は 1 つ) */
 const PART = 'ml.parts.0'

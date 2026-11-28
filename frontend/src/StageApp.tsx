@@ -93,7 +93,10 @@ export function StageApp({
           <StageContext.Provider value={stage}>
             <BrowserRouter basename={basename}>
               <FollowProject project={project} embedded={embedded} />
-              <App />
+              {/* 段階の画面の範囲 (殻の R9. 箱を作らない) */}
+              <div data-stage-root="" className="contents">
+                <App />
+              </div>
             </BrowserRouter>
           </StageContext.Provider>
         </ApiContext.Provider>

@@ -1,12 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ArrowUp, Database, File, Folder, Home, Package } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState, type Ref } from 'react'
 
 import { useApi } from '../api/client'
 import { formatBytes } from '../lib/format'
-import { Dialog } from './Dialog'
-import { Button, ErrorBox, Spinner } from './ui'
+import { Button, Dialog, ErrorBox, Spinner } from './common'
 
 /**
  * 手元のファイルかディレクトリを選ぶ対話 (ML-Found のプロジェクトと, ML-EDA のデータセットの
@@ -40,8 +39,10 @@ export function PathPicker({
   })
   const [picked, setPicked] = useState<string | null>(null)
   const [missing, setMissing] = useState('')
+  // 開いたらパスを打つ欄に focus を置く (打って移るのが最初の操作のため)
+  const pathInput = useRef<HTMLInputElement>(null)
   return (
-    <Dialog title={title} onClose={onClose}>
+    <Dialog title={title} onClose={onClose} initialFocus={pathInput}>
       {description && <p className="mb-3 text-xs text-ink-2">{description}</p>}
       <form
         className="mb-3 flex gap-2"
@@ -64,7 +65,10 @@ export function PathPicker({
           パス
         </label>
         <input
+          ref={pathInput}
           id="picker-path"
+          aria-invalid={!!missing}
+          aria-describedby={missing ? 'picker-missing' : undefined}
           value={typed}
           onChange={(event) => setTyped(event.target.value)}
           placeholder={listing.data?.path ?? '~/'}
@@ -72,10 +76,11 @@ export function PathPicker({
         />
         <Button type="submit">移動</Button>
       </form>
+      {/* 開けなかった場所 (API の誤り) はパスの欄に結ぶ */}
       {missing && (
-        <p role="alert" className="mb-2 text-xs text-critical-text">
-          {missing}
-        </p>
+        <div className="mb-2">
+          <ErrorBox id="picker-missing" live={false} error={missing} />
+        </div>
       )}
       <div className="mb-2 flex items-center gap-2 text-xs text-ink-3">
         <Button
@@ -177,6 +182,7 @@ export function PathField({
   pickDirs,
   pickFiles,
   hint,
+  inputRef,
 }: {
   id: string
   label: string
@@ -185,6 +191,8 @@ export function PathField({
   pickDirs?: boolean
   pickFiles?: boolean
   hint?: string
+  /** パスの欄 (対話の枠の最初の focus に使う) */
+  inputRef?: Ref<HTMLInputElement>
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -194,6 +202,7 @@ export function PathField({
       </label>
       <div className="flex gap-2">
         <input
+          ref={inputRef}
           id={id}
           value={value}
           onChange={(event) => onChange(event.target.value)}

@@ -1,6 +1,8 @@
 import clsx from 'clsx'
-import { Compass, ListChecks, Moon, Sun } from 'lucide-react'
-import { NavLink, Route, Routes } from 'react-router'
+import { Compass, ListChecks, Moon, SearchX, Sun } from 'lucide-react'
+import { Link, NavLink, Route, Routes } from 'react-router'
+
+import { EmptyState, PageHeader } from './components/common'
 
 import { ProblemPage } from './features/problems/ProblemPage'
 import { ProblemsPage } from './features/problems/ProblemsPage'
@@ -25,6 +27,20 @@ function NavItem({ to, icon: Icon, label }: { to: string; icon: typeof Compass; 
       <Icon size={16} aria-hidden />
       {label}
     </NavLink>
+  )
+}
+
+/** 段階の中の知らない経路 (段階の頭の画面へのリンクを出す) */
+function NotFound() {
+  return (
+    <>
+      <PageHeader title="問題の設定" />
+      <EmptyState icon={SearchX} title="ページが見つかりません">
+        <Link to="/" className="text-accent-text hover:underline">
+          問題の一覧へ戻る
+        </Link>
+      </EmptyState>
+    </>
   )
 }
 
@@ -93,7 +109,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<ProblemsPage />} />
           <Route path="/problems/:id" element={<ProblemPage />} />
-          <Route path="*" element={<p className="text-ink-3">ページが見つかりません.</p>} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
     </div>

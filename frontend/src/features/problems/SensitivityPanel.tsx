@@ -11,7 +11,8 @@ import type {
   SensitivityField,
   SensitivityOutcome,
 } from '../../api/types'
-import { Button, ErrorBox } from '../../components/ui'
+import { Button, ErrorBox, FieldError } from '../../components/common'
+import { describedBy } from '../../components/common-utils'
 import { bySwing, parseRanges, rangeFields } from '../../lib/sensitivity'
 
 const INPUT = 'w-full rounded-lg border border-line bg-surface px-2 text-sm'
@@ -60,7 +61,7 @@ function FieldTable({
   const monthly = field.points.some((point) => point.per_30_days)
   const withBest = result.type === 'triage' && field.points.some((point) => point.best)
   return (
-    <section aria-label={`${field.label}の幅`} className="flex flex-col gap-1">
+    <div role="group" aria-label={`${field.label}の幅`} className="flex flex-col gap-1">
       <h4 className="flex flex-wrap items-baseline gap-2 text-sm font-medium">
         {field.label}
         {lead && (
@@ -106,8 +107,19 @@ function FieldTable({
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
   )
+}
+
+/** 書いた幅の誤りの項目 (片方だけか数でない最初の項目. 無ければ null) */
+function badField(ranges: Record<string, { low: string; high: string }>): string | null {
+  for (const [field, { low, high }] of Object.entries(ranges)) {
+    const texts = [low.trim(), high.trim()]
+    if (!texts[0] && !texts[1]) continue
+    if (!texts[0] || !texts[1]) return field
+    if (texts.some((text) => !Number.isFinite(Number(text.replace(/,/g, ''))))) return field
+  }
+  return null
 }
 
 /** 求めた結論の変わり方 (今の値, 知らせ, 決め手の順の項目) */
@@ -116,7 +128,7 @@ function SensitivityResult({ result }: { result: Sensitivity }) {
   const top = fields[0]
   const leads = top && ((top.swing.loss ?? 0) > 0 || (top.swing.rule ?? 0) > 0)
   return (
-    <div className="flex flex-col gap-3" aria-label="値を変えたときの結論">
+    <div role="group" className="flex flex-col gap-3" aria-label="値を変えたときの結論">
       <p className="text-xs">
         保存した値では, {result.rule}は {ruleText(result.base.rule)}
         {result.base.limit !== undefined && `, 件数の上限は ${limitText(result.base.limit)}`}
@@ -163,7 +175,9 @@ export function SensitivityPanel({
   const [open, setOpen] = useState(false)
   const [ranges, setRanges] = useState<Record<string, { low: string; high: string }>>({})
   const [points, setPoints] = useState(5)
-  const [invalid, setInvalid] = useState<string | null>(null)
+  // 入力の確かめの誤り (どの項目の欄か. 何も書いていないときは項目無し)
+  const [invalid, setInvalid] = useState<{ message: string; field: string | null } | null>(null)
+  const invalidId = `${id}-invalid`
   // 求めた元の保存した値 (値が変われば古い結果を見せない)
   const saved = JSON.stringify(question.value)
   const run = useMutation({
@@ -195,7 +209,7 @@ export function SensitivityPanel({
     )
     const parsed = parseRanges(shown, labels)
     if (typeof parsed === 'string') {
-      setInvalid(parsed)
+      setInvalid({ message: parsed, field: badField(shown) })
       run.reset()
       return
     }
@@ -244,6 +258,8 @@ export function SensitivityPanel({
                 {usable.map((field) => {
                   const label = labels[field] ?? field
                   const range = ranges[field] ?? { low: '', high: '' }
+                  // 誤りの項目の欄 (何も書いていない誤りは全ての欄に結ぶ)
+                  const wrong = !!invalid && (invalid.field === null || invalid.field === field)
                   const update = (side: 'low' | 'high', text: string) =>
                     setRanges({ ...ranges, [field]: { ...range, [side]: text } })
                   return (
@@ -255,6 +271,8 @@ export function SensitivityPanel({
                       <td className="pr-2 pb-1">
                         <input
                           aria-label={`${label}の下`}
+                          aria-invalid={wrong}
+                          aria-describedby={describedBy(wrong && invalidId)}
                           inputMode="decimal"
                           value={range.low}
                           onChange={(event) => update('low', event.target.value)}
@@ -264,6 +282,8 @@ export function SensitivityPanel({
                       <td className="pb-1">
                         <input
                           aria-label={`${label}の上`}
+                          aria-invalid={wrong}
+                          aria-describedby={describedBy(wrong && invalidId)}
                           inputMode="decimal"
                           value={range.high}
                           onChange={(event) => update('high', event.target.value)}
@@ -303,11 +323,7 @@ export function SensitivityPanel({
               )}
             </div>
           )}
-          {invalid && (
-            <p role="alert" className="text-xs text-critical-text">
-              {invalid}
-            </p>
-          )}
+          {invalid && <FieldError id={invalidId}>{invalid.message}</FieldError>}
           {run.error && !stale && <ErrorBox error={run.error} />}
           {stale && run.data && (
             <p className="text-xs text-warning-text">

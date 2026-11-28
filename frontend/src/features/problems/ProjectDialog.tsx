@@ -1,12 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, FolderOutput } from 'lucide-react'
-import { Fragment, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 
 import { ApiError, useApi } from '../../api/client'
 import type { Finding, Problem } from '../../api/types'
-import { Dialog } from '../../components/Dialog'
 import { PathField } from '../../components/PathPicker'
-import { Button, ErrorBox } from '../../components/ui'
+import { Button, Dialog, ErrorBox } from '../../components/common'
 
 /** 問いの答え (受け渡しの値は直すところが残ると無いので, 問いの答えから読む) */
 function answerOf(problem: Problem, id: string): string | null {
@@ -60,6 +59,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 方策の環境の登録名 (次にすることの環境の手順の出し分け)
   const envId = answerOf(problem, 'ml.parts.0.env_id')?.trim() || null
   const [path, setPath] = useState('')
+  // 開いたら書き出すディレクトリの欄に focus を置く (最初に打つ欄のため)
+  const pathInput = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
   const [overwrite, setOverwrite] = useState(false)
   // 「それでも書き出す」は確かめた一覧の印で覚える (一覧が変われば確かめ直す)
@@ -107,7 +108,12 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   ]
   const places = entries.filter((entry): entry is [string, string] => !!entry[1])
   return (
-    <Dialog title="学習のプロジェクトを書き出す" onClose={onClose}>
+    <Dialog
+      title="学習のプロジェクトを書き出す"
+      onClose={onClose}
+      busy={write.isPending}
+      initialFocus={pathInput}
+    >
       <p className="mb-3 text-xs text-ink-2">
         {type === 'group_ready' ? (
           <>
@@ -156,6 +162,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
       </p>
       <div className="flex flex-col gap-3">
         <PathField
+          inputRef={pathInput}
           id="project-path"
           label="書き出すディレクトリ (無ければ作る)"
           value={path}
@@ -626,7 +633,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
           </div>
         )}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
+          {/* 書き出す途中は枠の閉じるのボタンと同じく閉じない (結果を見せるため) */}
+          <Button variant="ghost" onClick={onClose} disabled={write.isPending}>
             閉じる
           </Button>
           <Button

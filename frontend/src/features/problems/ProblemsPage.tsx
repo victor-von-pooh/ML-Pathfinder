@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router'
 import { useApi } from '../../api/client'
 import type { Problem, ProblemItem } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
-import { Button, Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { Button, Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/common'
 import { formatTime } from '../../lib/format'
 import { useStage } from '../../lib/stage'
 
@@ -62,7 +62,7 @@ export function ProblemsPage() {
           {items.error && <ErrorBox error={items.error} live={false} />}
           {items.data?.length === 0 && (
             <div className="p-4">
-              <EmptyState icon={Compass} title="まだ問題がありません">
+              <EmptyState icon={Compass} title="まだ問題がありません" level={3}>
                 右の欄で名前を書いて作るか, 見本を開いてください.
               </EmptyState>
             </div>

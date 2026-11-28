@@ -1,6 +1,7 @@
 import { ExternalLink, Wrench } from 'lucide-react'
 
 import type { FeatureRequirement } from '../../api/types'
+import { Card } from '../../components/common'
 
 /** 外の案内として開いてよい URL (http か https だけ) */
 function safeUrl(url: string | null): string | null {
@@ -70,15 +71,17 @@ function FeatureAction({ item }: { item: FeatureRequirement }) {
 export function RequiresCard({ requires }: { requires: FeatureRequirement[] }) {
   if (requires.length === 0) return null
   return (
-    <section
-      aria-labelledby="requires-title"
-      className="mb-4 rounded-xl border border-accent/30 bg-accent-soft p-4"
+    <Card
+      tone="accent"
+      className="mb-4"
+      title={
+        <span className="flex items-center gap-1.5">
+          <Wrench className="size-4" aria-hidden />
+          学習・評価の段階の準備: この問題には次の機能が要ります
+        </span>
+      }
     >
-      <h2 id="requires-title" className="flex items-center gap-1.5 text-sm font-semibold">
-        <Wrench className="size-4" aria-hidden />
-        学習・評価の段階の準備: この問題には次の機能が要ります
-      </h2>
-      <p className="mt-1 mb-3 text-xs text-ink-2">
+      <p className="mb-3 text-xs text-ink-2">
         今の答えから分かったものです. この段階はこのまま続けられます.
         学習・評価の段階で学習を始める前に, 学習の環境に入れてください.
       </p>
@@ -87,6 +90,6 @@ export function RequiresCard({ requires }: { requires: FeatureRequirement[] }) {
           <FeatureAction key={item.name} item={item} />
         ))}
       </ul>
-    </section>
+    </Card>
   )
 }

@@ -20,6 +20,32 @@ const OUTPUT: Question = {
 }
 
 describe('QuestionField', () => {
+  it('保存の誤りは ErrorBox で欄に結び, 読み上げの alert にしない', () => {
+    const question: Question = {
+      ...OUTPUT,
+      id: 'issue.pain',
+      kind: 'text',
+      title: '何に困っていますか',
+      choices: [],
+      value: null,
+      answered: false,
+    }
+    render(
+      <QuestionField
+        question={question}
+        columns={[]}
+        findings={[]}
+        saving={false}
+        error="書けません"
+        onAnswer={vi.fn()}
+      />,
+    )
+    const box = screen.getByRole('textbox', { name: '何に困っていますか' })
+    expect(box).toHaveAttribute('aria-invalid', 'true')
+    expect(box).toHaveAccessibleDescription('保存できませんでした: 書けません')
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('今の選択肢に無い答えは印を付けて出し, 外せる', () => {
     const onAnswer = vi.fn()
     render(

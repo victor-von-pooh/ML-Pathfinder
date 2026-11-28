@@ -71,6 +71,41 @@ afterEach(() => {
 })
 
 describe('ProjectDialog', () => {
+  it('開くと書き出すディレクトリの欄に focus を置き, 書き出す途中は閉じない', async () => {
+    let finish: (response: Response) => void = () => undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (finish = resolve))),
+    )
+    const client = new QueryClient()
+    const onClose = vi.fn()
+    render(
+      <QueryClientProvider client={client}>
+        <ProjectDialog problem={problemWith([])} onClose={onClose} />
+      </QueryClientProvider>,
+    )
+    const dialog = screen.getByRole('dialog', { name: '学習のプロジェクトを書き出す' })
+    const path = screen.getByLabelText(/書き出すディレクトリ/)
+    expect(path).toHaveFocus()
+
+    // 書き出す途中は閉じるのボタンを押せず, Esc でも閉じない
+    fireEvent.change(path, { target: { value: '/x' } })
+    fireEvent.click(screen.getByRole('button', { name: '書き出す' }))
+    const closes = screen.getAllByRole('button', { name: '閉じる' })
+    await waitFor(() => closes.forEach((close) => expect(close).toBeDisabled()))
+    // Esc の知らせ (cancel) はブラウザに閉じさせない (既定の動きを止める)
+    const cancel = new Event('cancel', { cancelable: true })
+    fireEvent(dialog, cancel)
+    expect(cancel.defaultPrevented).toBe(true)
+    expect(onClose).not.toHaveBeenCalled()
+
+    // 終わると閉じられる
+    finish(Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }))
+    await waitFor(() => closes.forEach((close) => expect(close).toBeEnabled()))
+    fireEvent.click(closes[0]!)
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('直すところが残れば一覧を出し, 確かめたときだけ accept_errors を送る', async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
