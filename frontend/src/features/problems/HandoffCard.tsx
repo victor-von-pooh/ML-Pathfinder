@@ -315,7 +315,19 @@ function RankRow({ problem }: { problem: Problem }) {
     ['品物の列', rank.item, '並べる品物'],
     ['反応の時刻の列', rank.time, '古い反応で学び, 新しい反応で確かめる'],
     ['反応の強さの列', rank.reaction, '0 より大きい行だけを反応とみなす'],
+    [
+      '見せただけの印の列',
+      rank.shown,
+      '見せただけの品物を学習の負の例にし, 1 回の提示の中で選んだ品物を上に並べられたかも確かめる',
+    ],
+    ['提示の列', rank.presentation, '同じ利用者と提示の行を 1 回の提示とみなす'],
   ]
+  // 答えていない列の言葉 (提示の列は見せただけの印の列があるときだけ)
+  const absent: Record<string, string | undefined> = {
+    反応の強さの列: '全ての行を反応とみなす',
+    見せただけの印の列: '選んだ反応だけで学ぶ',
+    提示の列: rank.shown ? '同じ利用者と時刻の行を 1 回の提示とみなす' : undefined,
+  }
   return (
     <div>
       <dt className="mb-1 text-xs font-medium text-ink-2">並べ方 (データの分析, 学習, 評価)</dt>
@@ -330,9 +342,9 @@ function RankRow({ problem }: { problem: Problem }) {
             <span key={name} className="flex flex-wrap items-center gap-1">
               {name} <Code>{value}</Code> ({role})
             </span>
-          ) : name === '反応の強さの列' ? (
+          ) : absent[name] ? (
             <span key={name}>
-              {name}: <span className="text-ink-3">無し (全ての行を反応とみなす)</span>
+              {name}: <span className="text-ink-3">無し ({absent[name]})</span>
             </span>
           ) : null,
         )}
@@ -792,6 +804,14 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
       ? shortLabel(question.choices, uplift.outcome_kind)
       : uplift.outcome_kind
   const amount = uplift.outcome_kind === 'amount'
+  // 効果の決め方 (S-learner は処置の列を入力に足した 1 つの予測で, 推論の一式を作らない)
+  const sLearner = uplift.learner === 's_learner'
+  const learnerQuestion = problem.questions.find((q) => q.id === `${PART}.uplift.learner`)
+  const learnerName = sLearner ? 'S-learner' : 'T-learner'
+  // 選択肢の言葉の括弧の前まで (問いが無ければ名前だけ)
+  const learner = learnerQuestion?.choices
+    ? `${shortLabel(learnerQuestion.choices, uplift.learner)} (${learnerName})`
+    : learnerName
   const decision = inference.decision
   const treat = choicesOf(problem, 'action.decision').find((choice) => choice.value === 'treat')
   const budget = treat?.fields?.find((field) => field.key === 'budget')
@@ -874,6 +894,7 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
                   : '確率の差'}
               )
             </span>
+            <span>効果の決め方は {learner}</span>
             <span>
               {uplift.k !== null
                 ? `評価の上位 K 割の K (効果の見積もりの高い順に上位の何割を見るか) は ${uplift.k}`
@@ -892,11 +913,19 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
           <dt className="mb-1 text-xs font-medium text-ink-2">モデルの作成・選定</dt>
           <dd className="flex flex-col gap-1">
             <ModelExample problem={problem} />
-            <span>
-              出力は処置したときの予測 treated としないときの予測 control の 2 つ
-              {model.outputs !== null && ` (それぞれの大きさ ${model.outputs})`}.
-              処置の列は入力に入れない
-            </span>
+            {sLearner ? (
+              <span>
+                出力は結果の予測 outcome の 1 つ
+                {model.outputs !== null && ` (大きさ ${model.outputs})`}. 処置の列 (1 か 0)
+                を入力の行の特徴の最後に足すので, 入力の幅は見積もりに使う列の数 + 1
+              </span>
+            ) : (
+              <span>
+                出力は処置したときの予測 treated としないときの予測 control の 2 つ
+                {model.outputs !== null && ` (それぞれの大きさ ${model.outputs})`}.
+                処置の列は入力に入れない
+              </span>
+            )}
           </dd>
         </div>
         <TrainingRow problem={problem} />
@@ -920,10 +949,19 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
             <span>
               効果の高い順に, {budgetName}まで配ります (確率としきい値でなく, 数の上限で配る)
             </span>
-            <span>
-              学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json) と行ごとの効果
-              (uplift_effects.csv) を実験に残します
-            </span>
+            {sLearner ? (
+              <span>
+                学習の後に, 効果の決め方 (uplift_estimator.json) と行ごとの効果 (uplift_effects.csv)
+                を実験に残します. 推論の段階が読む効果の一式 (inference/) は作りません
+                (推論の段階の効果の一式は T-learner の成果物だけを読むため).
+                行ごとの効果の表を効果の高い順に並べて配ります
+              </span>
+            ) : (
+              <span>
+                学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json) と行ごとの効果
+                (uplift_effects.csv) を実験に残します
+              </span>
+            )}
             <span className="text-xs text-ink-2">
               効果は無作為に配った記録からの見積もりです. 配った効果は,
               配る相手を無作為に分けて試して確かめます

@@ -234,7 +234,15 @@ describe('HandoffCard', () => {
         role: 'rank',
         target_kind: null,
       },
-      rank: { user: 'member', item: 'item_id', time: 'ts', reaction: 'qty', k: 10 },
+      rank: {
+        user: 'member',
+        item: 'item_id',
+        time: 'ts',
+        reaction: 'qty',
+        shown: null,
+        presentation: null,
+        k: 10,
+      },
     }
     const questions = [
       choice('ml.parts.0.role', 'rank', [['rank', '並べる (多くの候補から要求に合うものを順に)']]),
@@ -257,6 +265,10 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^反応の強さの列/)).toHaveTextContent(
       '反応の強さの列 qty (0 より大きい行だけを反応とみなす)',
     )
+    expect(screen.getByText(/^見せただけの印の列/)).toHaveTextContent(
+      '見せただけの印の列: 無し (選んだ反応だけで学ぶ)',
+    )
+    expect(screen.queryByText(/^提示の列/)).not.toBeInTheDocument()
     expect(screen.getByText(/分割は時刻の順/)).toHaveTextContent('反応の時刻の列 ts の順')
     expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent('two_tower_retrieval')
     expect(screen.getByText(/推論に使う一式を実験の inference\/ に作ります/)).toBeInTheDocument()
@@ -270,6 +282,32 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText(/^反応の強さの列/)).toHaveTextContent(
       '反応の強さの列: 無し (全ての行を反応とみなす)',
+    )
+
+    // 見せただけの印の列を答えると, 負の例と提示の決め方を出す
+    rerender(
+      <HandoffCard
+        problem={problemWith({ ...rank, rank: { ...rank.rank!, shown: 'shown_only' } }, questions)}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^見せただけの印の列/)).toHaveTextContent(
+      '見せただけの印の列 shown_only (見せただけの品物を学習の負の例にし',
+    )
+    expect(screen.getByText(/^提示の列/)).toHaveTextContent(
+      '提示の列: 無し (同じ利用者と時刻の行を 1 回の提示とみなす)',
+    )
+    rerender(
+      <HandoffCard
+        problem={problemWith(
+          { ...rank, rank: { ...rank.rank!, shown: 'shown_only', presentation: 'impression_id' } },
+          questions,
+        )}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^提示の列/)).toHaveTextContent(
+      '提示の列 impression_id (同じ利用者と提示の行を 1 回の提示とみなす)',
     )
 
     // 並べるでなければ並べ方を出さない
@@ -549,6 +587,7 @@ describe('HandoffCard', () => {
         id: 'customer_id',
         columns: ['age', 'visits'],
         k: 0.3,
+        learner: 't_learner',
       },
     }
     const kind = choice('ml.parts.0.uplift.outcome_kind', 'binary', [
@@ -604,6 +643,7 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText(/効果の高い順に, 配る数の上限まで/)).toBeInTheDocument()
     expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent('uplift_effects.csv')
+    expect(screen.getByText(/^効果の決め方は/)).toHaveTextContent('効果の決め方は T-learner')
     // 列の予測の欄と守る指標は出さない
     expect(screen.queryByText(/目的の列/)).not.toBeInTheDocument()
     expect(screen.queryByText(/守る指標:/)).not.toBeInTheDocument()
@@ -627,6 +667,35 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^結果の列/)).toHaveTextContent('(量)')
     expect(screen.getByText(/^効果は, 処置したとき/)).toHaveTextContent('値の差')
     expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
+
+    // S-learner は, 結果の予測 1 つの出力と, 推論の一式を作らないこと
+    const learner = choice('ml.parts.0.uplift.learner', 's_learner', [
+      ['t_learner', '処置の群と対照の群で 2 つの予測を別々に学ぶ (T-learner)'],
+      ['s_learner', '処置の列を入力の終わりに足して 1 つの予測で学ぶ (S-learner)'],
+    ])
+    rerender(
+      <HandoffCard
+        problem={problemWith(
+          {
+            ...uplift,
+            model: { ...uplift.model, example: 'tabular_uplift_s' },
+            uplift: { ...uplift.uplift!, learner: 's_learner' },
+          },
+          [...questions, learner],
+        )}
+        splits={SPLITS}
+      />,
+    )
+    expect(screen.getByText(/^効果の決め方は/)).toHaveTextContent(
+      '効果の決め方は 処置の列を入力の終わりに足して 1 つの予測で学ぶ (S-learner)',
+    )
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent('tabular_uplift_s')
+    expect(screen.getByText(/^出力は結果の予測 outcome/)).toHaveTextContent('列の数 + 1')
+    expect(screen.queryByText(/^出力は処置したとき/)).toBeNull()
+    expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
+      '効果の一式 (inference/) は作りません',
+    )
+    expect(screen.queryByText(/s_learner/)).toBeNull()
   })
 
   it('値段を変える判断は, 値段と売れた数と原価の列, 今の値段, 候補と上限, 評価と値段の判断を出す', () => {

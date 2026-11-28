@@ -1139,8 +1139,9 @@ def test_rank(client: TestClient, tmp_path: Path) -> None:
                               json={"id": f"{part}.{key}", "value": value})
         assert response.status_code == 200, (key, response.json())
 
-    # 5 の節に列の問い 4 つと数の問いが ML-Quest の並びのまま出て, 列の
-    # 予測の問いは出ない. 答えるまでは書き出せない
+    # 5 の節に列の問い 5 つ (提示の列は見せただけの印の列を答えるまで出な
+    # い) と数の問いが ML-Quest の並びのまま出て, 列の予測の問いは出ない.
+    # 答えるまでは書き出せない
     view = client.get(url).json()
     shown = [q for q in view["questions"] if q["applies"]]
     ranks = [q for q in shown if q["id"].startswith(f"{part}.rank.")]
@@ -1150,6 +1151,7 @@ def test_rank(client: TestClient, tmp_path: Path) -> None:
         (f"{part}.rank.item", "column", True, 5),
         (f"{part}.rank.time", "column", True, 5),
         (f"{part}.rank.reaction", "column", False, 5),
+        (f"{part}.rank.shown", "column", False, 5),
         (f"{part}.rank.k", "number", True, 5),
     ]
     ids = [q["id"] for q in shown]
@@ -1185,7 +1187,9 @@ def test_rank(client: TestClient, tmp_path: Path) -> None:
     # 受け渡しに並べ方 (件数は数), 時刻の順の分割, 2 塔の雛形, NDCG の監視
     handoff = view["handoff"]
     assert handoff["rank"] == {"user": "member", "item": "item_id",
-                               "time": "ts", "reaction": "qty", "k": 10}
+                               "time": "ts", "reaction": "qty",
+                               "shown": None, "presentation": None,
+                               "k": 10}
     assert handoff["data"]["split"] == "time"
     assert handoff["data"]["time_column"] == "ts"
     assert handoff["data"]["target"] is None
@@ -1528,8 +1532,8 @@ def test_uplift(client: TestClient, tmp_path: Path) -> None:
                               json={"id": f"{part}.{key}", "value": value})
         assert response.status_code == 200, (key, response.json())
 
-    # ML-Quest の並びのままの 5 の節の効果の見積もりの問い 5 つと 8 の節の
-    # 上位の割合. 出ない列の予測の問いと, 配る判断だけの意思決定の型
+    # ML-Quest の並びのままの 5 の節の効果の見積もりの問い 6 つ (効果の決め
+    # 方は任意) と 8 の節の上位の割合. 出ない列の予測の問いと, 配る判断だけの意思決定の型
     view = client.get(url).json()
     shown = [q for q in view["questions"] if q["applies"]]
     uplift = [(q["id"], q["kind"], q["required"], q["section"])
@@ -1540,6 +1544,7 @@ def test_uplift(client: TestClient, tmp_path: Path) -> None:
         (f"{part}.uplift.outcome_kind", "choice", True, 5),
         (f"{part}.uplift.id", "column", False, 5),
         (f"{part}.uplift.columns", "columns", True, 5),
+        (f"{part}.uplift.learner", "choice", False, 5),
         (f"{part}.uplift.k", "number", True, 8),
     ]
     ids = [q["id"] for q in shown]
@@ -1586,7 +1591,7 @@ def test_uplift(client: TestClient, tmp_path: Path) -> None:
     assert handoff["uplift"] == {
         "treatment": "coupon", "outcome": "purchased",
         "outcome_kind": "binary", "id": "customer_id",
-        "columns": ["age", "visits"], "k": 0.3,
+        "columns": ["age", "visits"], "k": 0.3, "learner": "t_learner",
     }
     assert handoff["anomaly"] is None
     assert handoff["data"]["task"] == "uplift"
@@ -1613,6 +1618,21 @@ def test_uplift(client: TestClient, tmp_path: Path) -> None:
     assert config["experiment"]["name"] == "purchased_uplift"
     readme = (target / "README.md").read_text(encoding="utf-8")
     assert "uplift_estimator.json" in readme
+
+    # 効果の決め方を S-learner にすると, 受け渡しの決め方と雛形が変わり,
+    # 骨組みの学習のスクリプトの決め方も変わる
+    view = client.put(f"{url}/answers",
+                      json={"id": f"{part}.uplift.learner",
+                            "value": "s_learner"}).json()
+    assert view["handoff"]["uplift"]["learner"] == "s_learner"
+    assert view["handoff"]["model"]["example"] == "tabular_uplift_s"
+    assert view["handoff"]["model"]["example"] in (
+        ml_quest.MODEL_EXAMPLES.values())
+    target = tmp_path / "uplift_s"
+    written = client.post(f"{url}/project", json={"path": str(target)})
+    assert written.status_code == 200, written.json()
+    script = (target / "train.py").read_text(encoding="utf-8")
+    assert 'LEARNER = "s_learner"' in script
 
     # 配る数の上限が 1 より小さいと確かめに出て, 受け渡せないが書き出せる
     view = client.put(f"{url}/answers",
