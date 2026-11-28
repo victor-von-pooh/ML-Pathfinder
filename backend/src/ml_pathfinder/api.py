@@ -796,18 +796,22 @@ def create_problem(
     HTTPException
         名前も見本も無い場合と, 無い見本の場合は 400
     """
-    # 見本は答えを順に入れたもの
+    # 見本は答えを順に入れたもの. 名前の指定が無い見本の写しは, 一覧に
+    # 同じ名前があれば番号を付ける (指定した名前はそのまま)
+    numbered = False
     try:
         if body.example:
             problem = ml_quest.example_problem(body.example)
             if body.name and body.name.strip():
                 problem["name"] = body.name.strip()
+            else:
+                numbered = True
         else:
             problem = ml_quest.new_problem(body.name or "")
     except ValueError as error:
         raise user_error(error) from error
     store = get_store(request)
-    problem_id = store.create(problem)
+    problem_id = store.create(problem, numbered=numbered)
     view = view_of(store, problem_id)
 
     return view

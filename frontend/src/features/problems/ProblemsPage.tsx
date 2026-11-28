@@ -119,6 +119,7 @@ export function ProblemsPage() {
           <Card title="見本を開く">
             <p className="mb-3 text-xs text-ink-2">
               架空の課題で答えを埋めた見本. 開くと写しが一覧に入る (元の見本は変わらない).
+              同じ名前が一覧にあれば「名前 (2)」のように番号を付ける.
             </p>
             <div className="flex flex-col gap-2">
               {info.data?.examples.map((example) => (

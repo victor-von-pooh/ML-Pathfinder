@@ -186,7 +186,9 @@ class Store:
 
         return version
 
-    def create(self, problem: dict[str, Any]) -> str:
+    def create(
+        self, problem: dict[str, Any], numbered: bool = False
+    ) -> str:
         """
         新しい問題の設定を置く関数
 
@@ -194,20 +196,51 @@ class Store:
         ----------
         problem: dict[str, Any]
             問題の設定
+        numbered: bool
+            一覧に同じ名前があれば, 名前に番号を付けるか (見本の写し)
 
         Returns
         ----------
         problem_id: str
             識別子
         """
-        # 重ならない識別子のディレクトリ
+        # 重ならない識別子のディレクトリ (名前は保存と同じ鍵の中で決め,
+        # 同時に作っても番号が重ならないように)
         with self.lock:
+            if numbered:
+                problem = {
+                    **problem,
+                    "name": free_name(problem["name"], self.names()),
+                }
             problem_id = uuid.uuid4().hex[:12]
             place = self.problems_dir / problem_id
             place.mkdir(parents=True)
             ml_quest.save_problem(problem, place / "problem.yaml")
 
         return problem_id
+
+    def names(self) -> set[str]:
+        """
+        一覧の問題の設定の名前を返す関数
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        ----------
+        names: set[str]
+            名前 (読めないファイルと, 名前が文字列でないものは除く)
+        """
+        # 置き場の全ての名前
+        names = {
+            problem["name"]
+            for _, problem in self.list_all()
+            if isinstance(problem, dict)
+            and isinstance(problem.get("name"), str)
+        }
+
+        return names
 
     def save(self, problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
         """
@@ -257,6 +290,33 @@ class Store:
             self.place(problem_id).rename(removing)
 
         return removing
+
+
+def free_name(name: str, names: set[str]) -> str:
+    """
+    一覧に無い名前を返す関数
+
+    Parameters
+    ----------
+    name: str
+        元の名前
+    names: set[str]
+        一覧の名前
+
+    Returns
+    ----------
+    free: str
+        元の名前が無ければそのまま, あれば「名前 (2)」のように, 一覧に無い
+        最小の 2 以上の番号を付けた名前
+    """
+    # 元の名前か, 空いている最小の番号
+    free = name
+    number = 2
+    while free in names:
+        free = f"{name} ({number})"
+        number += 1
+
+    return free
 
 
 def updated_of(item: tuple[str, Any]) -> datetime:
