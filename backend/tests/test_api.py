@@ -1,6 +1,7 @@
 import sys
 import types
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from ml_eda import synthetic
 
 from ml_pathfinder import api
 from ml_pathfinder.app import cookie_name, create_api, create_app
+from ml_pathfinder.store import Store
 
 # テストのトークン
 TOKEN = "test-token"
@@ -257,6 +259,92 @@ def test_create_answer_and_list(client: TestClient) -> None:
     assert client.delete(f"/api/problems/{view['id']}").status_code == 204
     assert client.get(f"/api/problems/{view['id']}").status_code == 404
     assert client.get("/api/problems/../x").status_code == 404
+
+
+def test_example_copy_names(client: TestClient) -> None:
+    """
+    見本の写しの名前に, 一覧に無い最小の番号が付くことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+
+    Returns
+    ----------
+    None
+    """
+    # 3 回開くと, 見本の名前, (2), (3)
+    example = "解約の引き止め"
+
+    def open_example(**extra: str) -> dict[str, Any]:
+        response = client.post("/api/problems",
+                               json={"example": example, **extra})
+        assert response.status_code == 201
+        view: dict[str, Any] = response.json()
+
+        return view
+
+    views = [open_example() for _ in range(3)]
+    assert [view["name"] for view in views] == [
+        example, f"{example} (2)", f"{example} (3)"
+    ]
+
+    def names() -> list[str]:
+        return sorted(item["name"]
+                      for item in client.get("/api/problems").json())
+
+    assert names() == sorted([example, f"{example} (2)", f"{example} (3)"])
+
+    # 消した番号は使い直し, 残っている番号とは重ならない
+    client.delete(f"/api/problems/{views[1]['id']}")
+    assert open_example()["name"] == f"{example} (2)"
+    assert open_example()["name"] == f"{example} (4)"
+    client.delete(f"/api/problems/{views[0]['id']}")
+    assert open_example()["name"] == example
+    assert len(names()) == len(set(names())) == 4
+
+    # 指定した名前はそのまま (同じ名前でも番号を付けない). 利用者が付けた
+    # 「(5)」の形の名前も使われている名前として数える
+    assert open_example(name=example)["name"] == example
+    created = client.post("/api/problems",
+                          json={"name": f"{example} (5)"}).json()
+    assert created["name"] == f"{example} (5)"
+    assert open_example()["name"] == f"{example} (6)"
+
+    # 新しく作るときの名前と, 他の見本の名前は番号を付けない
+    assert client.post("/api/problems",
+                       json={"name": "試し"}).json()["name"] == "試し"
+    assert client.post("/api/problems",
+                       json={"name": "試し"}).json()["name"] == "試し"
+    assert open_example()["name"] == f"{example} (7)"
+
+
+def test_example_copy_names_concurrent(tmp_path: Path) -> None:
+    """
+    同時に見本の写しを作っても, 番号が重ならないことを確かめる関数
+
+    Parameters
+    ----------
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 8 つを同時に作ると, 名前は全て違う
+    store = Store(tmp_path / "problems")
+    problem = ml_quest.example_problem("総菜の作る量")
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        ids = list(pool.map(lambda _: store.create(problem, numbered=True),
+                            range(8)))
+    names = sorted(store.load(problem_id)["name"] for problem_id in ids)
+    assert names == sorted(
+        ["総菜の作る量"] + [f"総菜の作る量 ({n})" for n in range(2, 9)]
+    )
+    # 渡した問題の設定は変えない
+    assert problem["name"] == "総菜の作る量"
 
 
 def test_version(client: TestClient, tmp_path: Path) -> None:
