@@ -4,7 +4,8 @@ import { useRef, useState, type ReactNode } from 'react'
 
 import type { Decision, Finding, Insight, Lever, Question, Suggestion } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
-import { Button } from '../../components/common'
+import { Button, ErrorBox, FieldError } from '../../components/common'
+import { describedBy } from '../../components/common-utils'
 import {
   decisionDraft,
   decisionFields,
@@ -590,13 +591,16 @@ function BaselineInput({
       : /^[1-9][0-9]*$/.test(fieldText(field.key)),
   )
   const setText = (key: string, text: string) => setTexts((old) => ({ ...old, [key]: text }))
+  // 保存した書き方が今の型で使えないまま (選び直すまで保存しない)
+  const stuck = unavailable && kind === savedType
+  const stuckId = `u-${question.id}`
   return (
     <div className="flex flex-col gap-2">
       <select
         id={`q-${question.id}`}
         value={kind}
-        aria-invalid={!!errorId}
-        aria-describedby={errorId}
+        aria-invalid={!!errorId || stuck}
+        aria-describedby={describedBy(errorId, stuck && stuckId)}
         onChange={(event) => setKind(event.target.value)}
         className={clsx(INPUT, 'h-8 max-w-96')}
       >
@@ -661,11 +665,11 @@ function BaselineInput({
           </label>
         ),
       )}
-      {unavailable && kind === savedType && (
-        <p className="text-xs text-warning-text">
+      {stuck && (
+        <FieldError id={stuckId}>
           保存した書き方 ({savedType}) は, 今の意思決定の型では使えません. 選び直すか,
           「書かない」で保存して消してください
-        </p>
+        </FieldError>
       )}
       <div className="flex gap-2">
         <Button
@@ -841,10 +845,11 @@ export function QuestionField({
           saving={saving}
         />
       )}
+      {/* 保存の誤り (API の誤り) は欄に結び, 欄の説明として読ませる (二度読まれないように live にしない) */}
       {error && (
-        <p id={errorId} role="alert" className="mt-2 text-xs text-critical-text">
-          保存できませんでした: {error}
-        </p>
+        <div className="mt-2">
+          <ErrorBox id={errorId} live={false} error={`保存できませんでした: ${error}`} />
+        </div>
       )}
       {findings.length > 0 && (
         <ul className="mt-2 flex flex-col gap-1 text-xs" aria-label={`${question.title} の確かめ`}>

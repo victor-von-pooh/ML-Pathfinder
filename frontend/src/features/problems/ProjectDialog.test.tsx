@@ -93,7 +93,10 @@ describe('ProjectDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '書き出す' }))
     const closes = screen.getAllByRole('button', { name: '閉じる' })
     await waitFor(() => closes.forEach((close) => expect(close).toBeDisabled()))
-    fireEvent(dialog, new Event('cancel', { cancelable: true }))
+    // Esc の知らせ (cancel) はブラウザに閉じさせない (既定の動きを止める)
+    const cancel = new Event('cancel', { cancelable: true })
+    fireEvent(dialog, cancel)
+    expect(cancel.defaultPrevented).toBe(true)
     expect(onClose).not.toHaveBeenCalled()
 
     // 終わると閉じられる

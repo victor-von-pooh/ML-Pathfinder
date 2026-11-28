@@ -161,7 +161,8 @@ function FindingsCard({
   )
   const titles = Object.fromEntries(problem.progress.sections.map((s) => [s.number, s.title]))
   return (
-    <Card title={`確かめ (${findings.length})`}>
+    // 件数で見出しが変わるので, 区域の名前は変わらない「確かめ」にする
+    <Card title={`確かめ (${findings.length})`} name="確かめ">
       {findings.length === 0 ? (
         <p className="text-sm text-good-text">食い違いや足りない答えはありません.</p>
       ) : (
@@ -324,7 +325,14 @@ export function ProblemPage() {
     queryFn: () => api.insight(id),
     enabled: source !== undefined && source !== null && source !== '',
   })
-  if (query.isPending) return <Spinner />
+  // 読み込み中も見出しを置く (名前が分かるまでは識別子)
+  if (query.isPending)
+    return (
+      <>
+        <PageHeader breadcrumb={<Link to="/">問題の設定</Link>} title={id} />
+        <Spinner />
+      </>
+    )
   // 開けないときも段階の頭へ戻る道と画面の見出しを置く (R12 の見出し)
   if (query.error)
     return (
@@ -481,6 +489,8 @@ export function ProblemPage() {
         <SectionList problem={problem} current={section} onSelect={select} />
         <Card
           title={`${section}. ${title}`}
+          // 見出しは節で変わるので, 区域の名前は変わらない「節の問い」にする
+          name="節の問い"
           actions={
             <div className="flex gap-2">
               <Button disabled={section <= 1} onClick={() => select(section - 1)}>

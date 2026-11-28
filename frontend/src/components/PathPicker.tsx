@@ -67,6 +67,8 @@ export function PathPicker({
         <input
           ref={pathInput}
           id="picker-path"
+          aria-invalid={!!missing}
+          aria-describedby={missing ? 'picker-missing' : undefined}
           value={typed}
           onChange={(event) => setTyped(event.target.value)}
           placeholder={listing.data?.path ?? '~/'}
@@ -74,10 +76,11 @@ export function PathPicker({
         />
         <Button type="submit">移動</Button>
       </form>
+      {/* 開けなかった場所 (API の誤り) はパスの欄に結ぶ */}
       {missing && (
-        <p role="alert" className="mb-2 text-xs text-critical-text">
-          {missing}
-        </p>
+        <div className="mb-2">
+          <ErrorBox id="picker-missing" live={false} error={missing} />
+        </div>
       )}
       <div className="mb-2 flex items-center gap-2 text-xs text-ink-3">
         <Button

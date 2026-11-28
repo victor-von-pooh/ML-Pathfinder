@@ -99,10 +99,13 @@ ML-Pathfinder の今の設計と決まりをまとめる. まだやっていな�
 
 ### 共通の部品
 
-- 共通の部品 (Card, Button, Spinner, ErrorBox, EmptyState, StatTile, Tabs, PageHeader, Dialog) と, API の誤りの文を作る `errorText`, タブの中身を結び付ける `tabPanelProps` は, 殻 (ML-Studio) の正のファイル `parts/common.tsx` と `parts/common-utils.ts` の写しを `src/components/common.tsx` と `src/components/common-utils.ts` に置いて使う. 写しは 1 字も直さない (殻の CI の `scripts/check_parts.py` が SHA-256 で正と比べ, 5 つの段階の部品の見た目と動きをそろえるため). 形を変えたいときは先に殻の正を直し, 写し直す
-- 同じ役目の部品 (自分の対話の枠, 自分の誤りの表示など) を段階の中に作らない. 段階に固有の部品 (ファイルを選ぶ対話 `PathPicker` など) は `src/components/` の別のファイルに置き, 部品は `common` から import する
-- API の誤りは `api/client.ts` の `request` が `errorText` で文にする (入力の検証の誤り (422) は欄ごとに 1 行, 画面の文 `message` を持つ形 (書き出しの 409) はその文). 対話の枠 (ファイルを選ぶ, 学習のプロジェクトを書き出す) は `Dialog` で, 最初の focus はパスを打つ欄に置き, 書き出しの途中 (`busy`) は閉じない
-- 見出しは画面ごとに `PageHeader` の `h1` を 1 つにする. 問題の一覧 (段階の頭) は段階の名前「問題の設定」, 問題の画面は問題の名前を見出しにし, パンくずの頭に「問題の設定」のリンクを置く. 問題を開けないときは「問題を開けません」, 段階の中の知らない経路は「問題の設定」の見出しと「ページが見つかりません」と問題の一覧へのリンクを出す
+- 共通の部品 (Card, Button, Spinner, ErrorBox, FieldError, EmptyState, StatTile, Tabs, PageHeader, Dialog) と, API の誤りの文を作る `errorText`, 欄の説明を結ぶ `describedBy`, タブの中身を結び付ける `tabPanelProps` は, 殻 (ML-Studio) の正のファイル `parts/common.tsx` と `parts/common-utils.ts` の写しを `src/components/common.tsx` と `src/components/common-utils.ts` に置いて使う. 写しは 1 字も直さない (殻の CI の `scripts/check_parts.py` が SHA-256 で正と比べ, 5 つの段階の部品の見た目と動きをそろえるため). 形を変えたいときは先に殻の正を直し, 写し直す
+- 同じ役目の部品 (自分の対話の枠, 自分の誤りの表示, 色違いの枠など) を段階の中に作らない. 段階に固有の部品 (ファイルを選ぶ対話 `PathPicker` など) は `src/components/` の別のファイルに置き, 部品は `common` から import する
+- 欄: 見出しが件数や節で変わる欄は `name` で変わらない区域の名前を付ける (「確かめ」, 「節の問い」). 学習・評価の段階の準備の欄は `tone="accent"`. 見出しのある欄の中の空の表示 (「まだ問題がありません」) は `EmptyState` の `level={3}`. 値を決める手伝いの項目ごとの幅と結論は区域でなく名前付きの `group`
+- 誤り: API の誤りは `api/client.ts` の `request` が `errorText` で文にする (入力の検証の誤り (422) は欄ごとに 1 行, 画面の文 `message` を持つ形 (書き出しの 409) はその文). 1 つの欄に関わる API の誤り (問いの保存の誤り, ファイルを選ぶ対話で開けなかった場所) は `ErrorBox` に `id` と `live={false}` を付け, 欄の `aria-describedby` と `aria-invalid` で結ぶ. 画面で分かる入力の確かめの誤り (値を決める手伝いの幅の書き漏れ, 今の型で使えない今のやり方の書き方) は `FieldError` で欄の下に出し, `describedBy` と `aria-invalid` で誤りの欄に結ぶ
+- 対話の枠 (ファイルを選ぶ, 学習のプロジェクトを書き出す) は `Dialog` で, 最初の focus はパスを打つ欄に置き, 書き出しの途中 (`busy`) は閉じない (対話の下の「閉じる」も押せない)
+- 見出しは画面ごとに `PageHeader` の `h1` を 1 つにする. 問題の一覧 (段階の頭) は段階の名前「問題の設定」, 問題の画面は問題の名前を見出しにし, パンくずの頭に「問題の設定」のリンクを置く. 問題の読み込み中は経路の識別子, 開けないときは「問題を開けません」を見出しにして同じパンくずを置く. 段階の中の知らない経路は「問題の設定」の見出しと「ページが見つかりません」と問題の一覧へのリンクを出す
+- 根の部品は画面の範囲の要素に `data-stage-root` を付ける (箱を作らない `display: contents`. 殻の R9). 画面は `window` と `document` でキーを聞かない
 
 ### 根の部品
 

@@ -109,7 +109,7 @@ describe('SensitivityPanel', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '求める' }))
 
-    const sections = await screen.findAllByRole('region', { name: /の幅$/ })
+    const sections = await screen.findAllByRole('group', { name: /の幅$/ })
     expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual([
       '空振りの損の幅',
       '回せる件数の幅',
@@ -139,9 +139,11 @@ describe('SensitivityPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '値を決める手伝い' }))
     fireEvent.change(screen.getByLabelText('回せる件数の下'), { target: { value: '30' } })
     fireEvent.click(screen.getByRole('button', { name: '求める' }))
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      '回せる件数の幅は, 下と上の両方を書いてください',
-    )
+    // 入力の確かめの誤りは欄の下に出し, 誤りの項目の欄に結ぶ
+    const low = screen.getByLabelText('回せる件数の下')
+    expect(low).toHaveAttribute('aria-invalid', 'true')
+    expect(low).toHaveAccessibleDescription('回せる件数の幅は, 下と上の両方を書いてください')
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText('回せる件数の上'), { target: { value: '10' } })

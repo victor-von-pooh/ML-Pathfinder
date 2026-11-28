@@ -113,6 +113,8 @@ test('画面の頭の見出しは 1 つで, 欄は区域になり, 対話の枠�
   await page.goto('/api/auth?token=e2e-token')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('問題の設定')
   await expect(page.getByRole('region', { name: '新しく作る' })).toBeVisible()
+  // 段階の画面の範囲 (殻の R9) は 1 つ
+  await expect(page.locator('[data-stage-root]')).toHaveCount(1)
 
   await page.getByRole('button', { name: '総菜の作る量' }).click()
   // 見本の写しの名前は, 一覧に同じ名前があれば番号が付く
@@ -370,7 +372,7 @@ test('値を決める手伝いで損得の幅を書くと, 振れ幅の大きい
   await page.getByLabel('1 単位余ったときの損の下').fill('150')
   await page.getByLabel('1 単位余ったときの損の上').fill('151')
   await page.getByRole('button', { name: '求める' }).click()
-  const sections = page.getByRole('region', { name: /の幅$/ })
+  const sections = page.getByRole('group', { name: /の幅$/ })
   await expect(sections).toHaveCount(2, { timeout: 20_000 })
   await expect(sections.first()).toHaveAccessibleName('足りないときの損の幅')
   await expect(sections.first()).toContainText('決め手')
