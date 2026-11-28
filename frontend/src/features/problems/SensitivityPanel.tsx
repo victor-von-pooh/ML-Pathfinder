@@ -11,7 +11,7 @@ import type {
   SensitivityField,
   SensitivityOutcome,
 } from '../../api/types'
-import { Button, ErrorBox } from '../../components/ui'
+import { Button, ErrorBox } from '../../components/common'
 import { bySwing, parseRanges, rangeFields } from '../../lib/sensitivity'
 
 const INPUT = 'w-full rounded-lg border border-line bg-surface px-2 text-sm'

@@ -6,7 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 
 import { useApi } from '../../api/client'
 import type { Finding, Problem } from '../../api/types'
-import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { Button, Card, ErrorBox, PageHeader, Spinner } from '../../components/common'
 import { formatTime } from '../../lib/format'
 import { LEVEL_NAMES } from '../../lib/labels'
 import { useStage } from '../../lib/stage'
@@ -105,7 +105,7 @@ function SectionList({
                       : 'text-ink-2 hover:bg-surface-2',
                   )}
                 >
-                  <span className="tabular w-5 text-right text-xs text-ink-3">
+                  <span className="tabular-nums w-5 text-right text-xs text-ink-3">
                     {section.number}
                   </span>
                   <span className={clsx('flex-1', empty && 'text-ink-3')}>{section.title}</span>
@@ -120,7 +120,7 @@ function SectionList({
                     </span>
                   ) : (
                     section.required > 0 && (
-                      <span className="tabular text-xs text-ink-3">
+                      <span className="tabular-nums text-xs text-ink-3">
                         {section.answered}/{section.required}
                       </span>
                     )
@@ -325,7 +325,14 @@ export function ProblemPage() {
     enabled: source !== undefined && source !== null && source !== '',
   })
   if (query.isPending) return <Spinner />
-  if (query.error) return <ErrorBox error={query.error} live={false} />
+  // 開けないときも段階の頭へ戻る道と画面の見出しを置く (R12 の見出し)
+  if (query.error)
+    return (
+      <>
+        <PageHeader breadcrumb={<Link to="/">問題の設定</Link>} title="問題を開けません" />
+        <ErrorBox error={query.error} live={false} />
+      </>
+    )
   const problem = query.data
   const columnValue = problem.questions.find((q) => q.id === 'information.columns')?.value
   const columnNames = Array.isArray(columnValue)

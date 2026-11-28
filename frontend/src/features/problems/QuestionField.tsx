@@ -4,7 +4,7 @@ import { useRef, useState, type ReactNode } from 'react'
 
 import type { Decision, Finding, Insight, Lever, Question, Suggestion } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
-import { Button } from '../../components/ui'
+import { Button } from '../../components/common'
 import {
   decisionDraft,
   decisionFields,

@@ -106,6 +106,43 @@ test('直すところが残ると, 一覧を確かめてから書き出し, READ
   expect(readme).toContain('書き出した時点で残っていた直すところ')
 })
 
+// 殻の共通の部品 (R12): 見出し, 欄の区域, 対話の枠の focus と閉じ方, 知らない経路
+test('画面の頭の見出しは 1 つで, 欄は区域になり, 対話の枠は欄に focus を置いて Esc で戻る', async ({
+  page,
+}) => {
+  await page.goto('/api/auth?token=e2e-token')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('問題の設定')
+  await expect(page.getByRole('region', { name: '新しく作る' })).toBeVisible()
+
+  await page.getByRole('button', { name: '総菜の作る量' }).click()
+  // 見本の写しの名前は, 一覧に同じ名前があれば番号が付く
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^総菜の作る量/)
+  const crumbs = page.getByRole('navigation', { name: 'パンくず' })
+  await expect(crumbs.getByRole('link', { name: '問題の設定' })).toBeVisible()
+  await expect(page.getByRole('region', { name: '後ろの段階に渡す値' })).toBeVisible()
+
+  // 開くと書き出すディレクトリの欄に focus があり, Esc で閉じると押したボタンに戻る
+  const write = page.getByRole('button', { name: '学習のプロジェクトを書き出す' })
+  await write.click()
+  const dialog = page.getByRole('dialog', { name: '学習のプロジェクトを書き出す' })
+  await expect(dialog.getByLabel('書き出すディレクトリ (無ければ作る)')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(write).toBeFocused()
+
+  // 枠の外 (背景) を押しても閉じる
+  await write.click()
+  await expect(dialog).toBeVisible()
+  await page.mouse.click(5, 5)
+  await expect(dialog).toHaveCount(0)
+
+  // 知らない経路は「ページが見つかりません」と段階の頭へのリンク
+  await page.goto('/nowhere')
+  await expect(page.getByRole('heading', { name: 'ページが見つかりません' })).toBeVisible()
+  await page.getByRole('link', { name: '問題の一覧へ戻る' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('問題の設定')
+})
+
 test('新しく作って課題に答え, 一覧に進み具合が出る', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('試しの問題')

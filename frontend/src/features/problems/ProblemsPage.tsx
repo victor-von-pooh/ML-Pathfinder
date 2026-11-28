@@ -6,7 +6,7 @@ import { Link, useNavigate } from 'react-router'
 import { useApi } from '../../api/client'
 import type { Problem, ProblemItem } from '../../api/types'
 import { PathPicker } from '../../components/PathPicker'
-import { Button, Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/ui'
+import { Button, Card, EmptyState, ErrorBox, PageHeader, Spinner } from '../../components/common'
 import { formatTime } from '../../lib/format'
 import { useStage } from '../../lib/stage'
 
