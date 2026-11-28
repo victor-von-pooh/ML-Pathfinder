@@ -85,6 +85,7 @@ function stubApi() {
 function renderStage(props: Partial<StageAppProps> = {}) {
   const onProjectChange = vi.fn()
   const onProjectsChange = vi.fn()
+  const onProgressChange = vi.fn()
   const view = render(
     <StageApp
       basename="/problem"
@@ -93,10 +94,11 @@ function renderStage(props: Partial<StageAppProps> = {}) {
       onProjectChange={onProjectChange}
       onProjectsChange={onProjectsChange}
       embedded
+      onProgressChange={onProgressChange}
       {...props}
     />,
   )
-  return { ...view, onProjectChange, onProjectsChange }
+  return { ...view, onProjectChange, onProjectsChange, onProgressChange }
 }
 
 beforeEach(() => {
@@ -153,7 +155,7 @@ describe('StageApp', () => {
 
   it('作ると一覧の変化と開いた問題の設定を知らせる', async () => {
     stubApi()
-    const { onProjectChange, onProjectsChange } = renderStage()
+    const { onProjectChange, onProjectsChange, onProgressChange } = renderStage()
     fireEvent.change(await screen.findByLabelText(/問題の名前/), {
       target: { value: '新しい課題' },
     })
@@ -161,7 +163,27 @@ describe('StageApp', () => {
     expect(await screen.findByRole('heading', { name: '新しい課題' })).toBeInTheDocument()
     expect(window.location.pathname).toBe('/problem/problems/bbbbbbbbbbbb')
     expect(onProjectsChange).toHaveBeenCalledTimes(1)
+    expect(onProgressChange).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(onProjectChange).toHaveBeenCalledWith('bbbbbbbbbbbb'))
+  })
+
+  it('殻が project を替えても履歴を増やさない', async () => {
+    stubApi()
+    const { rerender, onProjectChange, onProjectsChange } = renderStage({ project: 'aaaaaaaaaaaa' })
+    await screen.findByRole('heading', { name: '総菜の作る量' })
+    const before = window.history.length
+    rerender(
+      <StageApp
+        basename="/problem"
+        apiBase="/api/problem"
+        project="bbbbbbbbbbbb"
+        onProjectChange={onProjectChange}
+        onProjectsChange={onProjectsChange}
+        embedded
+      />,
+    )
+    await screen.findByRole('heading', { name: '新しい課題' })
+    expect(window.history.length).toBe(before)
   })
 
   it('一覧から開くと, 開いた問題の設定を知らせる', async () => {

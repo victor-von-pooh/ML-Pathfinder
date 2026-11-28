@@ -32,10 +32,11 @@ function Status({ item }: { item: ProblemItem }) {
 export function ProblemsPage() {
   const api = useApi()
   const navigate = useNavigate()
-  const { onProjectsChange } = useStage()
+  const { onProjectsChange, onProgressChange } = useStage()
   // 作るか取り込んだら, 殻に一覧の変化を知らせて開く (開いた知らせは問題の設定の画面が出す)
   const opened = (view: Problem) => {
     onProjectsChange()
+    onProgressChange()
     void navigate(`/problems/${view.id}`)
   }
   const items = useQuery({ queryKey: ['problems'], queryFn: api.problems })
