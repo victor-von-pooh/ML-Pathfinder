@@ -56,6 +56,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
   // 異常の検知の度合いの決め方と正解の出どころ (次にすることの出し分け. 距離は学習しない)
   const distance = answerOf(problem, 'ml.parts.0.anomaly.score') === 'distance'
   const labeled = answerOf(problem, 'ml.parts.0.target.source') === 'few'
+  // 効果の見積もりの効果の決め方 (S-learner は処置の列を入力に足し, 推論の一式を作らない)
+  const sLearner = answerOf(problem, 'ml.parts.0.uplift.learner') === 's_learner'
   // 方策の環境の登録名 (次にすることの環境の手順の出し分け)
   const envId = answerOf(problem, 'ml.parts.0.env_id')?.trim() || null
   const [path, setPath] = useState('')
@@ -505,9 +507,9 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   }
                 </li>
                 <li>
-                  {
-                    'モデルの作成・選定の段階で, 行の特徴 x から処置したときの予測 treated としないときの予測 control を出す定義を組み, models/model.yaml に保存する. モデルの作成・選定の段階で開ける例 tabular_uplift を, 列の数に合わせて使える (列の数は学習の記録 train.log の初めの行に出る). 定義が無いうちは仮のモデルで学習する'
-                  }
+                  {sLearner
+                    ? 'モデルの作成・選定の段階で, 行の特徴の最後に処置の列 (1 か 0) を足した x から結果の予測 outcome を出す定義を組み, models/model.yaml に保存する. モデルの作成・選定の段階で開ける例 tabular_uplift_s を, 列の数 + 1 (処置の列の分) に合わせて使える (列の数は学習の記録 train.log の初めの行に出る). 定義が無いうちは仮のモデルで学習する'
+                    : 'モデルの作成・選定の段階で, 行の特徴 x から処置したときの予測 treated としないときの予測 control を出す定義を組み, models/model.yaml に保存する. モデルの作成・選定の段階で開ける例 tabular_uplift を, 列の数に合わせて使える (列の数は学習の記録 train.log の初めの行に出る). 定義が無いうちは仮のモデルで学習する'}
                 </li>
                 <li>
                   学習・評価の段階で train.py を動かす. 検証用とテスト用の分割で, Qini の係数
@@ -516,9 +518,10 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                   に書き, 行ごとの効果 (uplift_effects.csv) を実験に残す
                 </li>
                 <li>
-                  学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json)
-                  と前処理のレシピの写しを実験に残す. 推論の 1 回で, 効果の高い順に配る数の上限まで
-                  配る. 配った効果は, 配る相手を無作為に分けて試して確かめる
+                  {sLearner
+                    ? '学習の後に, 効果の決め方 (uplift_estimator.json) と前処理のレシピの写しを実験に残す. 推論の段階が読む効果の一式 (inference/) は作らない (推論の段階の効果の一式は T-learner の成果物だけを読むため). 行ごとの効果の表 (uplift_effects.csv) を効果の高い順に並べ, 配る数の上限まで配る'
+                    : '学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json) と前処理のレシピの写しを実験に残す. 推論の 1 回で, 効果の高い順に配る数の上限まで配る'}
+                  . 配った効果は, 配る相手を無作為に分けて試して確かめる
                   {write.variables?.accept &&
                     '. README.md の最後の一覧を直すまで問題にはつながない'}
                   {write.variables?.dropped &&

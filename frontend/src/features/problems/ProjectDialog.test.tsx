@@ -397,7 +397,31 @@ describe('ProjectDialog', () => {
     )
     expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
     expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
+    expect(screen.queryByText(/tabular_uplift_s/)).toBeNull()
     unmount()
+
+    // S-learner は, 処置の列を足した入力の雛形と, 推論の一式を作らないことを出す
+    const learner: Question = { ...KIND, id: 'ml.parts.0.uplift.learner', value: 's_learner' }
+    const second = renderDialog({
+      ...problemWith([]),
+      skeleton_type: 'uplift',
+      questions: [{ ...KIND, value: null }, role, method, autonomous, collect, learner, OWNER],
+    })
+    fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), {
+      target: { value: '/x' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '書き出す' }))
+    expect(await screen.findByText(/tabular_uplift_s/)).toHaveTextContent(
+      '処置の列 (1 か 0) を足した x から結果の予測 outcome',
+    )
+    expect(screen.getByText(/tabular_uplift_s/)).toHaveTextContent('列の数 + 1')
+    expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
+      '推論の段階が読む効果の一式 (inference/) は作らない',
+    )
+    expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
+      '配る相手を無作為に分けて試して確かめる',
+    )
+    second.unmount()
 
     // 方策と答えると, 効果の見積もりの説明にしない
     renderDialog({

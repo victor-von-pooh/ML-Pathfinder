@@ -146,6 +146,10 @@ export interface Rank {
   time: string | null
   /** 反応の強さの列 (答えていなければ null. 全ての行を反応とみなす) */
   reaction: string | null
+  /** 見せただけの印の列 (答えていなければ null. 選んだ反応だけで学ぶ) */
+  shown: string | null
+  /** 提示の列 (答えていなければ null. 同じ利用者と時刻の行を 1 回の提示とみなす) */
+  presentation: string | null
   /** 利用者ごとに並べる件数 (Recall@K と NDCG の K) */
   k: number | null
 }
@@ -192,6 +196,8 @@ export interface Uplift {
   columns: string[]
   /** 評価の上位 K 割の K (0 より大きく 1 以下) */
   k: number | null
+  /** 効果の決め方 (t_learner は処置の群と対照の群の 2 つの予測, s_learner は処置の列を入力に足した 1 つの予測. 答えていなければ t_learner) */
+  learner: string
 }
 
 /** 値段を変える判断の値段, 売れた数, 原価, 商品と行の id と予測に使う列 (値段を変える判断のときだけ. ML-Quest の受け渡しの price) */
