@@ -167,8 +167,8 @@ describe('HandoffCard', () => {
       ]),
     ]
     render(<HandoffCard problem={problemWith(table, questions)} splits={SPLITS} />)
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
-      'モデルの作成の雛形: diffusion_denoiser (モデルの作成の画面で開ける例)',
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent(
+      'モデルの作成・選定の雛形: diffusion_denoiser (モデルの作成・選定の段階で開ける例)',
     )
     expect(screen.getByText(/監視する指標/)).toHaveTextContent(
       '監視する指標 valid/column_distance (作った表と本物の表の列ごとの分布の近さ)',
@@ -258,7 +258,7 @@ describe('HandoffCard', () => {
       '反応の強さの列 qty (0 より大きい行だけを反応とみなす)',
     )
     expect(screen.getByText(/分割は時刻の順/)).toHaveTextContent('反応の時刻の列 ts の順')
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('two_tower_retrieval')
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent('two_tower_retrieval')
     expect(screen.getByText(/推論に使う一式を実験の inference\/ に作ります/)).toBeInTheDocument()
 
     // 反応の強さの列を答えなければ, 全ての行を反応とみなすことを出す
@@ -344,7 +344,7 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText(/^評価は群の安定性/)).toHaveTextContent('群の要約')
     expect(screen.getByText(/分割は無作為/)).toBeInTheDocument()
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('contrastive_encoder')
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent('contrastive_encoder')
     expect(screen.getByText(/監視する指標/)).toHaveTextContent(
       '監視する指標 valid/silhouette (群のまとまり)',
     )
@@ -456,7 +456,7 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText(/件数の上限は 20 件/)).toHaveTextContent('K は 20')
     expect(screen.getByText(/上位 K 件の適合率と PR-AUC/)).toBeInTheDocument()
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_autoencoder')
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent('tabular_autoencoder')
     expect(screen.getByText(/出力の大きさ 2/)).toBeInTheDocument()
     expect(screen.getByText(/監視する指標/)).toHaveTextContent('valid/average_precision')
     expect(screen.getByText(/^意思決定:/)).toHaveTextContent('意思決定: 振り分ける件数の上限: 20')
@@ -596,7 +596,7 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/顧客ごとの正解の効果は見えない/)).toHaveTextContent(
       'でたらめに配るよりどれだけ良いか), 上位 K 割の効果の差 (処置の群と対照の群の結果の平均の差)',
     )
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_uplift')
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent('tabular_uplift')
     expect(screen.getByText(/^出力は処置したとき/)).toHaveTextContent('それぞれの大きさ 1')
     expect(screen.getByText(/監視する指標/)).toHaveTextContent('valid/qini')
     expect(screen.getByText(/^意思決定:/)).toHaveTextContent(
@@ -743,7 +743,7 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^値段を変える幅の上限 \(/)).toHaveTextContent('は 10 %')
     expect(screen.getByText(/^利益は/)).toHaveTextContent('(値段 − 原価) × 予測した売れた数')
     expect(screen.getByText(/弾力性 \(値段を 1 %/)).toHaveTextContent('見込みの利益の比べ')
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_price')
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent('tabular_price')
     expect(screen.getByText(/^入力の最後の列が値段/)).toHaveTextContent(
       '売れた数の予測 units (大きさ 1)',
     )
@@ -753,7 +753,7 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText(/^商品ごとに, 値段を変える幅の上限を超えない/)).toBeInTheDocument()
     expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent('price_choices.csv')
-    expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent('ML-Inference の値段の一式')
+    expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent('値段の推論の一式')
     // 意思決定の行も小数でなく %
     expect(screen.getByText(/^意思決定:/)).not.toHaveTextContent('0.05')
     expect(screen.getByText(/値段を試して確かめます/)).toBeInTheDocument()
@@ -901,16 +901,14 @@ describe('HandoffCard', () => {
       '切り捨てと切り上げ (0 より下は 0) のうち見込みの損の小さい方',
     )
     expect(screen.getByText(/^評価は, 0.5 の分位点の誤差/)).toHaveTextContent('発注の数の損')
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent('tabular_demand')
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent('tabular_demand')
     expect(screen.getByText(/^入力は行 x/)).toHaveTextContent('quantiles (大きさ 4. 学ぶ水準の数)')
     expect(screen.getByText(/監視する指標/)).toHaveTextContent('valid/loss')
     expect(screen.getByText(/^意思決定:/)).toHaveTextContent(
       '意思決定: 損の比で発注の数を決める1 つ足りないときの損: 31 つ余ったときの損: 1発注の数の上限: 60水準 τ: 0.75',
     )
     expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent('demand_orders.csv')
-    expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent(
-      'ML-Inference の需要の一式',
-    )
+    expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent('需要の推論の一式')
     expect(screen.getByText(/^発注の数は見積もりです/)).toHaveTextContent(
       '欠品で抑えられた過去の売れた数から学ぶと需要を少なめに見積もります',
     )
@@ -1022,27 +1020,27 @@ describe('HandoffCard', () => {
     expect(screen.queryByText(/守る指標:/)).not.toBeInTheDocument()
   })
 
-  it('モデルの作成の雛形の名前を見出しと出し, 無ければ理由を言葉で出す', () => {
+  it('モデルの作成・選定の雛形の名前を見出しと出し, 無ければ理由を言葉で出す', () => {
     const { rerender } = render(<HandoffCard problem={problemWith(POINT_CLOUD, [])} />)
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
-      'モデルの作成の雛形: point_cloud_predictor (モデルの作成の画面で開ける例)',
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent(
+      'モデルの作成・選定の雛形: point_cloud_predictor (モデルの作成・選定の段階で開ける例)',
     )
 
     // 一から学習するが合う例が無い受け持ち
     const none: Handoff = { ...POINT_CLOUD, model: { ...POINT_CLOUD.model, example: null } }
     rerender(<HandoffCard problem={problemWith(none, [])} />)
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
-      'モデルの作成の雛形: 受け持ちに合う雛形はありません (モデルの作成の画面で定義を選ぶ)',
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent(
+      'モデルの作成・選定の雛形: 受け持ちに合う雛形はありません (モデルの作成・選定の段階で定義を選ぶ)',
     )
     expect(screen.queryByText('point_cloud_predictor')).not.toBeInTheDocument()
 
     // 一から学習しない (既製の重みから学習する) 受け持ち
     const tuned: Handoff = { ...none, part: { ...none.part, method: 'finetune' } }
     rerender(<HandoffCard problem={problemWith(tuned, [])} />)
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
-      'モデルの作成の雛形: 一から学習しないので, 合う雛形はありません',
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent(
+      'モデルの作成・選定の雛形: 一から学習しないので, 合う雛形はありません',
     )
-    expect(screen.getByText(/モデルの作成の雛形/)).not.toHaveTextContent('定義を選ぶ')
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).not.toHaveTextContent('定義を選ぶ')
   })
 
   it('監視の向きが無ければ, 向きの行を出さない', () => {
@@ -1101,7 +1099,7 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/その他の指標です/)).toBeInTheDocument()
     expect(screen.queryByText(/受け持ち:/)).not.toBeInTheDocument()
     // 列の予測は合う雛形が無い (一から学習)
-    expect(screen.getByText(/モデルの作成の雛形/)).toHaveTextContent(
+    expect(screen.getByText(/モデルの作成・選定の雛形/)).toHaveTextContent(
       '受け持ちに合う雛形はありません',
     )
   })
@@ -1137,7 +1135,7 @@ describe('HandoffCard', () => {
     expect(screen.queryByText(/学習 \(ML-Found/)).not.toBeInTheDocument()
     expect(screen.queryByText(/監視する指標/)).not.toBeInTheDocument()
     expect(screen.getByText(/学習しません/)).toBeInTheDocument()
-    expect(screen.queryByText(/モデルの作成の雛形/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/モデルの作成・選定の雛形/)).not.toBeInTheDocument()
     expect(screen.getByText('torchvision')).toBeInTheDocument()
     expect(screen.getByText('resnet18')).toBeInTheDocument()
     expect(screen.getByText('IMAGENET1K_V1')).toBeInTheDocument()

@@ -32,7 +32,7 @@ function FeatureAction({ item }: { item: FeatureRequirement }) {
           <Command>{install.command}</Command>
           {install.extra_command && (
             <>
-              <p className="text-xs text-ink-2">ML-Found の追加の依存としても入れられます</p>
+              <p className="text-xs text-ink-2">ML-Found に足す依存としても入れられます</p>
               <Command>{install.extra_command}</Command>
             </>
           )}
@@ -64,7 +64,7 @@ function FeatureAction({ item }: { item: FeatureRequirement }) {
 }
 
 /**
- * 答えから要る機能を, 学習の段階の準備として早めに知らせる (この画面では何も止めない).
+ * 答えから要る機能を, 学習・評価の段階の準備として早めに知らせる (この画面では何も止めない).
  * pip で入らない道具は要るまで入れないので, 入れ方のコマンドか案内を添える
  */
 export function RequiresCard({ requires }: { requires: FeatureRequirement[] }) {
@@ -76,11 +76,11 @@ export function RequiresCard({ requires }: { requires: FeatureRequirement[] }) {
     >
       <h2 id="requires-title" className="flex items-center gap-1.5 text-sm font-semibold">
         <Wrench className="size-4" aria-hidden />
-        学習の段階の準備: この問題には次の機能が要ります
+        学習・評価の段階の準備: この問題には次の機能が要ります
       </h2>
       <p className="mt-1 mb-3 text-xs text-ink-2">
-        今の答えから分かったものです. 問題の設定はこのまま続けられます. 学習 (ML-Found,
-        ML-Dashboard) を始める前に, 学習の環境に入れてください.
+        今の答えから分かったものです. この段階はこのまま続けられます.
+        学習・評価の段階で学習を始める前に, 学習の環境に入れてください.
       </p>
       <ul className="grid gap-3 md:grid-cols-2">
         {requires.map((item) => (

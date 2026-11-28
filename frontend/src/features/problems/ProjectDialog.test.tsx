@@ -101,7 +101,7 @@ describe('ProjectDialog', () => {
     // 書き出した後は, 場所などを変えるまで押せない. 領域の一式も確かめて書き出したと添える
     expect(await screen.findByRole('button', { name: '書き出しました' })).toBeDisabled()
     expect(screen.getByText(/inference\/ に推論の一式を作るので/)).toHaveTextContent(
-      'README.md の最後の一覧を直すまで問題の設定はつながない',
+      'README.md の最後の一覧を直すまで問題にはつながない',
     )
   })
 
@@ -137,7 +137,7 @@ describe('ProjectDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
     expect(await screen.findByText(/目的の列の無いレシピ/)).toBeInTheDocument()
     expect(screen.getByText(/件数と種で画像を作る/)).toHaveTextContent(
-      'README.md の最後の一覧を直すまで問題の設定はつながない',
+      'README.md の最後の一覧を直すまで問題にはつながない',
     )
     expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
   })
@@ -164,11 +164,11 @@ describe('ProjectDialog', () => {
     })
     fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
     fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
-    expect(await screen.findByText(/ML-Fathom で表を読み/)).toBeInTheDocument()
+    expect(await screen.findByText(/データの分析の段階で表を読み/)).toBeInTheDocument()
     expect(screen.getByText(/diffusion_denoiser/)).toBeInTheDocument()
     expect(screen.getByText(/列ごとの分布の近さ/)).toHaveTextContent('小さいほど良い')
     expect(screen.getByText(/行の数と種で表を作る/)).toHaveTextContent(
-      'README.md の最後の一覧を直すまで問題の設定はつながない',
+      'README.md の最後の一覧を直すまで問題にはつながない',
     )
     // 列の予測の手順と画像の生成の手順は出さない
     expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
@@ -204,7 +204,7 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/two_tower_retrieval/)).toBeInTheDocument()
     expect(screen.getByText(/Recall@K と NDCG/)).toHaveTextContent('人気順と比べる')
     expect(screen.getByText(/推論に使う一式を実験の inference\/ に作る/)).toHaveTextContent(
-      'README.md の最後の一覧を直すまで問題の設定はつながない',
+      'README.md の最後の一覧を直すまで問題にはつながない',
     )
     // 列の予測の手順と, 他の型の inference/ の登録は出さない
     expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
@@ -250,7 +250,7 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/contrastive_encoder/)).toBeInTheDocument()
     expect(screen.getByText(/群のまとまり \(大きいほど良い\)/)).toHaveTextContent('群の要約')
     expect(screen.getByText(/推論の一式は作らない/)).toHaveTextContent(
-      'README.md の最後の一覧を直すまで問題の設定はつながない',
+      'README.md の最後の一覧を直すまで問題にはつながない',
     )
     // 列の予測の手順と, 他の型の inference/ の登録は出さない
     expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
@@ -286,7 +286,7 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/tabular_autoencoder/)).toBeInTheDocument()
     expect(screen.getByText(/上位 K 件の適合率と PR-AUC/)).toBeInTheDocument()
     expect(screen.getByText(/異常の度合いの一式/)).toHaveTextContent('仮のモデルでは作らない')
-    expect(screen.getByText(/異常の度合いの一式/)).toHaveTextContent('件数の上限まで人の確認')
+    expect(screen.getByText(/異常の度合いの一式/)).toHaveTextContent('件数の上限まで人の確かめ')
     expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
     unmount()
 
@@ -430,7 +430,7 @@ describe('ProjectDialog', () => {
       '値段の候補と変える幅の上限は空 (config の price) のまま',
     )
     expect(screen.getByText(/price_estimator\.json/)).toHaveTextContent(
-      'ML-Inference の値段の一式を実験の inference/ に作る',
+      '値段の推論の一式を実験の inference/ に作る',
     )
     expect(screen.queryByText(/まだ作らない/)).toBeNull()
     expect(screen.queryByText(/uplift_estimator/)).toBeNull()
@@ -486,7 +486,7 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/tabular_demand/)).toHaveTextContent('分位点 quantiles')
     expect(screen.getByText(/demand_orders\.csv/)).toHaveTextContent('前の期間と同じ数の発注の損')
     expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent(
-      'ML-Inference の需要の一式を実験の inference/ に作る',
+      '需要の推論の一式を実験の inference/ に作る',
     )
     expect(screen.getByText(/demand_estimator\.json/)).toHaveTextContent(
       '発注の判断の損と上限は空 (config の order) のまま',
@@ -643,12 +643,12 @@ describe('ProjectDialog', () => {
     expect(screen.getByText(/Gymnasium の CartPole-v1 \(config の env\.id\)/)).toBeInTheDocument()
     expect(screen.getByText(/config の guards に/)).toBeInTheDocument()
     // 方策の骨組みはデータセットとモデルの定義の置き場を持たない (空の場所を出さない)
-    expect(screen.getByText(/この場所を問題の設定に記録しました/)).toHaveTextContent(
-      'この場所を問題の設定に記録しました (後ろの段階のアプリ',
+    expect(screen.getByText(/この場所を問題に記録しました/)).toHaveTextContent(
+      'この場所を問題に記録しました (後ろの段階は',
     )
     expect(screen.queryByText(/データセットは/)).toBeNull()
     expect(screen.getByText(/policy\/ に守りと一緒に/)).toHaveTextContent(
-      'README.md の最後の一覧を直すまで問題の設定はつながない',
+      'README.md の最後の一覧を直すまで問題にはつながない',
     )
     expect(screen.queryByText(/意思決定の既定値は付かない/)).toBeNull()
     unmount()
@@ -685,8 +685,8 @@ describe('ProjectDialog', () => {
     })
     fireEvent.click(screen.getByRole('checkbox', { name: /それでも書き出す/ }))
     fireEvent.click(screen.getByRole('button', { name: '直すところが残ったまま書き出す' }))
-    const next = await screen.findByText(/inference\/ を ML-Provide に登録して推論する/)
-    expect(next).toHaveTextContent('README.md の最後の一覧を直すまで問題の設定はつながない')
+    const next = await screen.findByText(/inference\/ を推論の段階で登録して推論する/)
+    expect(next).toHaveTextContent('README.md の最後の一覧を直すまで問題にはつながない')
     expect(next).toHaveTextContent('一式に意思決定の既定値は付かない')
   })
 

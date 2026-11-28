@@ -514,7 +514,7 @@ function SourceInput({
       {picking && onAttach && (
         <PathPicker
           title="手元のデータを選ぶ"
-          description="表のファイルか, ML-EDA が書き出したデータセットのディレクトリ (dataset.yaml を持つもの. 画像の領域や点群の予測に使う) を選べます. データの分析の段階 (ML-Fathom) と同じ読み方で読み, 問題の設定の置き場に写します."
+          description="表のファイルか, ML-EDA が書き出したデータセットのディレクトリ (dataset.yaml を持つもの. 画像の領域や点群の予測に使う) を選べます. データの分析の段階と同じ読み方で読み, 問題の設定の置き場に写します."
           onClose={() => setPicking(false)}
           onPick={(path) => {
             setPicking(false)

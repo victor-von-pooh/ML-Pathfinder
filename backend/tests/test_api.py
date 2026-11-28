@@ -377,7 +377,7 @@ def test_example_copy_names_concurrent(tmp_path: Path) -> None:
 
 def test_version(client: TestClient, tmp_path: Path) -> None:
     """
-    他のアプリが問題の設定のファイルを書き換えると, 中身の印が変わる
+    他のアプリが問題のファイルを書き換えると, 中身の印が変わる
     ことを確かめる関数
 
     Parameters

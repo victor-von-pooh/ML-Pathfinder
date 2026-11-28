@@ -28,7 +28,7 @@ function Status({ item }: { item: ProblemItem }) {
   )
 }
 
-/** 問題の設定の一覧と, 新しく作る欄 */
+/** 問題の一覧と, 新しく作る欄 */
 export function ProblemsPage() {
   const api = useApi()
   const navigate = useNavigate()
@@ -57,18 +57,18 @@ export function ProblemsPage() {
         subtitle="課題から始めて, どの部分を機械学習に任せると課題が解けるかを決める"
       />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card title="問題の設定の一覧" padded={false}>
+        <Card title="問題の一覧" padded={false}>
           {items.isPending && <Spinner />}
           {items.error && <ErrorBox error={items.error} live={false} />}
           {items.data?.length === 0 && (
             <div className="p-4">
-              <EmptyState icon={Compass} title="まだ問題の設定がありません">
+              <EmptyState icon={Compass} title="まだ問題がありません">
                 右の欄で名前を書いて作るか, 見本を開いてください.
               </EmptyState>
             </div>
           )}
           {!!items.data?.length && (
-            <ul aria-label="問題の設定" className="divide-y divide-line">
+            <ul aria-label="問題の一覧" className="divide-y divide-line">
               {items.data.map((item) => (
                 <li key={item.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <Link
