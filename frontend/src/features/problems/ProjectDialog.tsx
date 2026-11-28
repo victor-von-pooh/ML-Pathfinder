@@ -4,6 +4,7 @@ import { Fragment, useRef, useState } from 'react'
 
 import { ApiError, useApi } from '../../api/client'
 import type { Finding, Problem } from '../../api/types'
+import { STAGE_NAMES, useStage } from '../../lib/stage'
 import { PathField } from '../../components/PathPicker'
 import { Button, Dialog, ErrorBox } from '../../components/common'
 
@@ -80,6 +81,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
     (type === 'column' || type === 'uplift' || type === 'price' || type === 'demand') &&
     decisionDropped(errors)
   const client = useQueryClient()
+  const { onStageChange, nextStage, onProgressChange } = useStage()
   const write = useMutation({
     // 書き出した時点の確かめ (読み直した一覧が変わっても, 次にすることはその時点のまま)
     mutationFn: (sent: { accept: boolean; dropped: boolean }) =>
@@ -94,6 +96,8 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
     // 印と同じなので, 他で変わった知らせは出ない)
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: ['problem', problem.id] })
+      // 書き出した場所は後ろの段階の前提の物なので, 殻に進みを読み直してもらう
+      onProgressChange()
     },
     // 画面の一覧に無い直すところが見つかった (409) ら, 読み直して一覧を出す
     onError: (error) => {
@@ -630,6 +634,13 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                     '. 損得と制約に直すところが残ったので, 一式に意思決定の既定値は付かない'}
                 </li>
               </ol>
+            )}
+            {onStageChange && nextStage && (
+              <div className="mt-2">
+                <Button variant="primary" onClick={() => onStageChange(nextStage)}>
+                  {STAGE_NAMES[nextStage]}の段階へ
+                </Button>
+              </div>
             )}
           </div>
         )}

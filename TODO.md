@@ -5,11 +5,7 @@
 
 ## 優先度 高
 
-### 書き出した後に次の段階へ移るボタンと進みの知らせ
-- 何を: 根の部品 `StageApp` の props に `onStageChange` (`(stage) => void`), `nextStage` (段階の鍵か null), `onProgressChange` (`() => void`) を受ける (どれも省ける). 書き出しの対話の「次にすること」に「<`nextStage` の段階の名前>の段階へ」のボタンを出して `onStageChange(nextStage)` を呼ぶ. `nextStage` が null (後ろの段階が全て要らない) ならボタンを出さない. 単独の起動 (`onStageChange` と `nextStage` が無い) ではボタンを出さずに文だけを出す. `onProgressChange` は問題を作る (新しく作る, 見本を開く, 取り込む), 答えを保存する, データを入れるか外す, 書き出す, 消すときに呼ぶ. 答えの保存は全てで呼ぶ (答えで後ろの段階が要らないかも替わり, 殻が `nextStage` を渡し直すため). データの有無はデータの分析の段階の前提の物のため. docs/DESIGN.md の「根の部品」の表に足す
-- なぜ: 書き出した後の手順は次の段階を名前で書くだけで, 殻の下では上の帯の並びから次の段階を探して移るため. 殻は知らせが無いと, 段階の中で問題を変えても進みを読み直さないため
-- 終わりの条件: ML-Studio の docs/DESIGN.md の 2 の節の `onStageChange`, `nextStage`, `onProgressChange`, R13, R14 の問題の設定の段階の分を満たし, `nextStage` の段階へのボタン, null でボタンが出ないこと, 知らせを画面のテストで, 単独の起動でボタンが出ないことを e2e で確かめる
-- つながり: ML-Studio の docs/DESIGN.md の 2 の節の根の部品の props, 9 の節の R13, R14. ML-Studio の TODO.md の「根の部品に段階を移る `onStageChange` を渡す」と「段階の並びに段階の進みの印を出す」
+無し
 
 ## 優先度 中
 

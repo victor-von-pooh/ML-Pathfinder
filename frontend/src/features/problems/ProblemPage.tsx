@@ -204,7 +204,7 @@ export function ProblemPage() {
   const navigate = useNavigate()
   const client = useQueryClient()
   const query = useQuery({ queryKey: ['problem', id], queryFn: () => api.problem(id) })
-  const { project, onProjectChange, onProjectsChange } = useStage()
+  const { project, onProjectChange, onProjectsChange, onProgressChange } = useStage()
   // 殻の選びは知らせるかを決めるときだけ読む (殻が選びを替えたときに, 前の問題の設定を
   // 知らせ直さないため)
   const shell = useRef({ project, onProjectChange })
@@ -232,6 +232,8 @@ export function ProblemPage() {
     client.setQueryData(['problem-version', id], { version: view.version })
     setReloaded(false)
     client.invalidateQueries({ queryKey: ['problems'] })
+    // 答えで後ろの段階が要らないかも替わるので, 殻に進みを読み直してもらう
+    onProgressChange()
     // 答えが変わったら, データからの候補も読み直す
     client.invalidateQueries({ queryKey: ['insight', id] })
   }
@@ -285,6 +287,7 @@ export function ProblemPage() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ['problems'] })
       onProjectsChange()
+      onProgressChange()
       // 殻で選んでいた問題の設定を消したら, 選びを外す
       if (shell.current.project === id) shell.current.onProjectChange(null)
       void navigate('/')

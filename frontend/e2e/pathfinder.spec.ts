@@ -28,6 +28,8 @@ async function exportProject(page: Page, name: string, texts: string[] = []): Pr
   await dialog.getByRole('button', { name: '書き出す' }).click()
   await expect(dialog.getByRole('status')).toContainText('train.py')
   for (const text of texts) await expect(dialog.getByRole('status')).toContainText(text)
+  // 単独の起動では次の段階へのボタンを出さない
+  await expect(dialog.getByRole('button', { name: /の段階へ$/ })).toHaveCount(0)
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
   return dir

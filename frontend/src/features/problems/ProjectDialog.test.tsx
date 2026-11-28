@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { Finding, Problem, Question } from '../../api/types'
+import { StageContext, type StageValue } from '../../lib/stage'
 import { ProjectDialog } from './ProjectDialog'
 
 /** 正解の種類の問い (受け渡しの値が無くても答えから読む) */
@@ -766,5 +767,60 @@ describe('ProjectDialog', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
     expect(JSON.parse(String(init.body))).not.toHaveProperty('accept_errors')
+  })
+
+  describe('書き出した後の段階へのボタン', () => {
+    /** 殻とのやり取りを渡して描き, 書き出す */
+    async function exportWith(value: Partial<StageValue>) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({ path: '/x', files: ['train.py'], project: { path: '/x' } }),
+        ),
+      )
+      const stage: StageValue = {
+        project: null,
+        onProjectChange: () => undefined,
+        onProjectsChange: () => undefined,
+        embedded: true,
+        onProgressChange: vi.fn(),
+        ...value,
+      }
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <StageContext.Provider value={stage}>
+            <ProjectDialog problem={problemWith([])} onClose={() => undefined} />
+          </StageContext.Provider>
+        </QueryClientProvider>,
+      )
+      fireEvent.change(screen.getByLabelText(/書き出すディレクトリ/), { target: { value: '/x' } })
+      fireEvent.click(screen.getByRole('button', { name: '書き出す' }))
+      await screen.findByRole('button', { name: '書き出しました' })
+      return stage
+    }
+
+    it('nextStage の段階の名前のボタンを出し, 押すと onStageChange を呼ぶ', async () => {
+      const onStageChange = vi.fn()
+      const stage = await exportWith({ onStageChange, nextStage: 'model' })
+      fireEvent.click(screen.getByRole('button', { name: 'モデルの作成・選定の段階へ' }))
+      expect(onStageChange).toHaveBeenCalledWith('model')
+      expect(stage.onProgressChange).toHaveBeenCalledTimes(1)
+    })
+
+    it('nextStage が null ならボタンを出さない', async () => {
+      await exportWith({ onStageChange: vi.fn(), nextStage: null })
+      expect(screen.queryByRole('button', { name: /の段階へ$/ })).toBeNull()
+    })
+
+    it('onStageChange があっても nextStage が undefined ならボタンを出さない', async () => {
+      await exportWith({ onStageChange: vi.fn() })
+      expect(screen.queryByRole('button', { name: /の段階へ$/ })).toBeNull()
+    })
+
+    it('単独 (onStageChange と nextStage が無い) ではボタンを出さず文だけを出す', async () => {
+      await exportWith({})
+      expect(screen.queryByRole('button', { name: /の段階へ$/ })).toBeNull()
+      expect(screen.getByText(/^次にすること \(書き出した/)).toBeInTheDocument()
+    })
   })
 })
