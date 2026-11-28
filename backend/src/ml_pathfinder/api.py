@@ -168,7 +168,7 @@ def load_or_404(store: Store, problem_id: str) -> dict[str, Any]:
     try:
         problem = store.load(problem_id)
     except KeyError as error:
-        raise HTTPException(404, "問題が見つかりません") from error
+        raise HTTPException(404, f"問題 {problem_id} が見つかりません") from error
     except READ_ERRORS as error:
         raise read_failure(store, problem_id, error) from error
 
@@ -244,7 +244,7 @@ def exists_or_404(store: Store, problem_id: str) -> None:
     try:
         store.place(problem_id)
     except KeyError as error:
-        raise HTTPException(404, "問題が見つかりません") from error
+        raise HTTPException(404, f"問題 {problem_id} が見つかりません") from error
 
 
 def local_path(text: str) -> Path:
@@ -545,9 +545,9 @@ def view_of(store: Store, problem_id: str) -> dict[str, Any]:
     try:
         problem, version, written = store.load_versioned(problem_id)
     except KeyError as error:
-        raise HTTPException(404, "問題が見つかりません") from error
+        raise HTTPException(404, f"問題 {problem_id} が見つかりません") from error
     except FileNotFoundError as error:
-        raise HTTPException(404, "問題が見つかりません") from error
+        raise HTTPException(404, f"問題 {problem_id} が見つかりません") from error
     except READ_ERRORS as error:
         raise read_failure(store, problem_id, error) from error
     view = {**problem_view(problem_id, problem), "version": version,
@@ -665,10 +665,12 @@ def browse(path: str = "~") -> dict[str, Any]:
     Raises
     ----------
     HTTPException
-        ディレクトリでない場合は 404
+        無い場合と, ディレクトリでない場合は 404
     """
     # 隠しファイルを除いて, ディレクトリを先に名前の順 (読めない子は除く)
     target = Path(path).expanduser().resolve()
+    if not target.exists():
+        raise HTTPException(404, f"ディレクトリ {target} が見つかりません")
     if not target.is_dir():
         raise HTTPException(404, f"{target} はディレクトリではありません")
     try:
@@ -905,7 +907,7 @@ def get_version(request: Request, problem_id: str) -> dict[str, Any]:
     try:
         version = {"version": store.version(problem_id)}
     except (KeyError, OSError) as error:
-        raise HTTPException(404, "問題が見つかりません") from error
+        raise HTTPException(404, f"問題 {problem_id} が見つかりません") from error
 
     return version
 

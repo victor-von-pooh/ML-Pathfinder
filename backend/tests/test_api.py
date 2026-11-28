@@ -123,6 +123,12 @@ def test_standalone_checks(
     assert client.get("/assets/a.js").text == "1"
     for path in ["/api", "/api/nothing", "/api/openapi.json", "/api/docs"]:
         assert client.get(path).status_code == 404, path
+    # 頭だけの /api は配信の側の 404, 下の知らない経路は FastAPI の既定の
+    # 404 (画面の errorText が経路の誤りと出す)
+    assert client.get("/api").json()["detail"] == (
+        "API の経路 /api が見つかりません"
+    )
+    assert client.get("/api/nothing").json()["detail"] == "Not Found"
 
     # HEAD も GET と同じく受け付け, 本体は返さない
     for path in ["/", "/problems/x", "/assets/a.js"]:
@@ -257,7 +263,9 @@ def test_create_answer_and_list(client: TestClient) -> None:
                          json={"name": "総菜"}).json()
     assert renamed["name"] == "総菜"
     assert client.delete(f"/api/problems/{view['id']}").status_code == 204
-    assert client.get(f"/api/problems/{view['id']}").status_code == 404
+    gone = client.get(f"/api/problems/{view['id']}")
+    assert gone.status_code == 404
+    assert gone.json()["detail"] == f"問題 {view['id']} が見つかりません"
     assert client.get("/api/problems/../x").status_code == 404
 
 
@@ -410,9 +418,9 @@ def test_version(client: TestClient, tmp_path: Path) -> None:
     assert client.get(f"{url}/version").json()["version"] != second
 
     # 無い問題の設定は 404
-    assert client.get("/api/problems/0123456789ab/version").status_code == (
-        404
-    )
+    missing = client.get("/api/problems/0123456789ab/version")
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "問題 0123456789ab が見つかりません"
 
 
 def test_example_handoff_and_project(
@@ -2235,9 +2243,11 @@ def test_browse(client: TestClient, tmp_path: Path) -> None:
     assert entries["p"]["project"] is True
     assert entries["p"]["dataset"] is False
     assert entries["d"]["dataset"] is True and entries["d"]["project"] is False
-    assert client.get("/api/browse", params={
-        "path": str(tmp_path / "none")
-    }).status_code == 404
+    none = client.get("/api/browse", params={"path": str(tmp_path / "none")})
+    assert none.status_code == 404
+    assert none.json()["detail"] == (
+        f"ディレクトリ {(tmp_path / 'none').resolve()} が見つかりません"
+    )
 
 
 def test_broken_files(client: TestClient, tmp_path: Path) -> None:
