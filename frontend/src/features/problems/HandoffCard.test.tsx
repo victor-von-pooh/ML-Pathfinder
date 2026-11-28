@@ -643,6 +643,9 @@ describe('HandoffCard', () => {
     )
     expect(screen.getByText(/効果の高い順に, 配る数の上限まで/)).toBeInTheDocument()
     expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent('uplift_effects.csv')
+    expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
+      '効果の推論の一式を実験の inference/ に作ります (仮のモデルでは作らない)',
+    )
     expect(screen.getByText(/^効果の決め方は/)).toHaveTextContent('効果の決め方は T-learner')
     // 列の予測の欄と守る指標は出さない
     expect(screen.queryByText(/目的の列/)).not.toBeInTheDocument()
@@ -668,7 +671,7 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^効果は, 処置したとき/)).toHaveTextContent('値の差')
     expect(screen.getByText(/^行の id の列/)).toHaveTextContent('無し (行の位置で指す)')
 
-    // S-learner は, 結果の予測 1 つの出力と, 推論の一式を作らないこと
+    // S-learner は, 結果の予測 1 つの出力と, 処置の列を入力の終わりに足した 1 つの予測の推論の一式
     const learner = choice('ml.parts.0.uplift.learner', 's_learner', [
       ['t_learner', '処置の群と対照の群で 2 つの予測を別々に学ぶ (T-learner)'],
       ['s_learner', '処置の列を入力の終わりに足して 1 つの予測で学ぶ (S-learner)'],
@@ -693,8 +696,9 @@ describe('HandoffCard', () => {
     expect(screen.getByText(/^出力は結果の予測 outcome/)).toHaveTextContent('列の数 + 1')
     expect(screen.queryByText(/^出力は処置したとき/)).toBeNull()
     expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
-      '効果の一式 (inference/) は作りません',
+      '効果の推論の一式を実験の inference/ に作ります (処置の列を入力の終わりに足した 1 つの予測の一式. 仮のモデルでは作らない)',
     )
+    expect(screen.queryByText(/作りません/)).toBeNull()
     expect(screen.queryByText(/s_learner/)).toBeNull()
   })
 

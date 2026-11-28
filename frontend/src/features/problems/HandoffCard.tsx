@@ -804,7 +804,7 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
       ? shortLabel(question.choices, uplift.outcome_kind)
       : uplift.outcome_kind
   const amount = uplift.outcome_kind === 'amount'
-  // 効果の決め方 (S-learner は処置の列を入力に足した 1 つの予測で, 推論の一式を作らない)
+  // 効果の決め方 (S-learner は処置の列を入力の終わりに足した 1 つの予測で, 推論の一式もその形)
   const sLearner = uplift.learner === 's_learner'
   const learnerQuestion = problem.questions.find((q) => q.id === `${PART}.uplift.learner`)
   const learnerName = sLearner ? 'S-learner' : 'T-learner'
@@ -917,7 +917,7 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
               <span>
                 出力は結果の予測 outcome の 1 つ
                 {model.outputs !== null && ` (大きさ ${model.outputs})`}. 処置の列 (1 か 0)
-                を入力の行の特徴の最後に足すので, 入力の幅は見積もりに使う列の数 + 1
+                を入力の終わりに足すので, 入力の幅は見積もりに使う列の数 + 1
               </span>
             ) : (
               <span>
@@ -949,19 +949,12 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
             <span>
               効果の高い順に, {budgetName}まで配ります (確率としきい値でなく, 数の上限で配る)
             </span>
-            {sLearner ? (
-              <span>
-                学習の後に, 効果の決め方 (uplift_estimator.json) と行ごとの効果 (uplift_effects.csv)
-                を実験に残します. 推論の段階が読む効果の一式 (inference/) は作りません
-                (推論の段階の効果の一式は T-learner の成果物だけを読むため).
-                行ごとの効果の表を効果の高い順に並べて配ります
-              </span>
-            ) : (
-              <span>
-                学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json) と行ごとの効果
-                (uplift_effects.csv) を実験に残します
-              </span>
-            )}
+            <span>
+              学習の後に, 推論の段階が読む効果の決め方 (uplift_estimator.json) と行ごとの効果
+              (uplift_effects.csv) を実験に残し, 効果の推論の一式を実験の inference/ に作ります (
+              {sLearner && '処置の列を入力の終わりに足した 1 つの予測の一式. '}
+              仮のモデルでは作らない)
+            </span>
             <span className="text-xs text-ink-2">
               効果は無作為に配った記録からの見積もりです. 配った効果は,
               配る相手を無作為に分けて試して確かめます

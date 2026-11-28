@@ -393,6 +393,9 @@ describe('ProjectDialog', () => {
       '効果の高い順に配る数の上限まで',
     )
     expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
+      '効果の推論の一式を実験の inference/ に作る (仮のモデルでは作らない)',
+    )
+    expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
       '配る数の上限は空 (config の uplift.budget) のまま',
     )
     expect(screen.queryByText(/右の「データの分析」の値/)).toBeNull()
@@ -400,7 +403,7 @@ describe('ProjectDialog', () => {
     expect(screen.queryByText(/tabular_uplift_s/)).toBeNull()
     unmount()
 
-    // S-learner は, 処置の列を足した入力の雛形と, 推論の一式を作らないことを出す
+    // S-learner は, 処置の列を足した入力の雛形と, 処置の列を入力の終わりに足した 1 つの予測の推論の一式を出す
     const learner: Question = { ...KIND, id: 'ml.parts.0.uplift.learner', value: 's_learner' }
     const second = renderDialog({
       ...problemWith([]),
@@ -416,7 +419,7 @@ describe('ProjectDialog', () => {
     )
     expect(screen.getByText(/tabular_uplift_s/)).toHaveTextContent('列の数 + 1')
     expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
-      '推論の段階が読む効果の一式 (inference/) は作らない',
+      '効果の推論の一式を実験の inference/ に作る (処置の列を入力の終わりに足した 1 つの予測の一式. 仮のモデルでは作らない)',
     )
     expect(screen.getByText(/uplift_estimator\.json/)).toHaveTextContent(
       '配る相手を無作為に分けて試して確かめる',
