@@ -1,20 +1,33 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Info, Problem, ProblemItem } from './api/types'
+import type { Info, Problem, ProblemItem, Question } from './api/types'
 import { ThemeProvider } from './lib/theme'
 import { useTheme } from './lib/themeContext'
 import { StageApp, type StageAppProps } from './StageApp'
 
 /** 1 つの問題の設定 (問いの無い, 作ったばかりの形) */
 function problemOf(id: string, name: string): Problem {
+  const question: Question = {
+    id: 'issue.pain',
+    section: 1,
+    kind: 'text',
+    title: '何に困っていますか',
+    help: '',
+    required: true,
+    choices: [],
+    value: null,
+    answered: false,
+    applies: true,
+    multiline: false,
+  }
   return {
     id,
     name,
     created_at: null,
     updated_at: null,
     uses_ml: null,
-    questions: [],
+    questions: [question],
     progress: {
       answered: 0,
       required: 0,
@@ -58,7 +71,8 @@ const ITEMS: ProblemItem[] = [
 ]
 
 /** API の頭 `/api/problem` の下だけに答える fetch (他の場所を呼べば 404) */
-function stubApi() {
+/** answers と remove は答えの保存と消すの応答の状態 (既定は成功) */
+function stubApi(status: { answers?: number; remove?: number } = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
     const method = init?.method ?? 'GET'
@@ -69,6 +83,11 @@ function stubApi() {
     if (path === '/problems' && method === 'POST') {
       return Response.json(problemOf('bbbbbbbbbbbb', '新しい課題'))
     }
+    if (/\/answers$/.test(path)) {
+      if (status.answers) return new Response(null, { status: status.answers })
+      return Response.json(problemOf('aaaaaaaaaaaa', '総菜の作る量'))
+    }
+    if (method === 'DELETE') return new Response(null, { status: status.remove ?? 204 })
     const match = /^\/problems\/(\w+)(\/version)?$/.exec(path)
     if (match?.[2]) return Response.json({ version: 'v1' })
     if (match) {
@@ -184,6 +203,47 @@ describe('StageApp', () => {
     )
     await screen.findByRole('heading', { name: '新しい課題' })
     expect(window.history.length).toBe(before)
+  })
+
+  describe('onProgressChange', () => {
+    /** 開いた問題の設定の答えを書き換えて欄を離れる */
+    async function answer() {
+      const box = await screen.findByRole('textbox', { name: '何に困っていますか' })
+      fireEvent.change(box, { target: { value: '作りすぎ' } })
+      fireEvent.blur(box)
+    }
+
+    it('答えの保存で呼び, 保存に失敗すれば呼ばない', async () => {
+      stubApi()
+      const ok = renderStage({ project: 'aaaaaaaaaaaa' })
+      await answer()
+      await waitFor(() => expect(ok.onProgressChange).toHaveBeenCalledTimes(1))
+      cleanup()
+
+      for (const code of [409, 500]) {
+        stubApi({ answers: code })
+        const ng = renderStage({ project: 'aaaaaaaaaaaa' })
+        await answer()
+        await screen.findByText(/保存できませんでした/)
+        expect(ng.onProgressChange).not.toHaveBeenCalled()
+        cleanup()
+      }
+    })
+
+    it('消すと呼び, 消せなければ呼ばない', async () => {
+      vi.stubGlobal('confirm', () => true)
+      stubApi()
+      const ok = renderStage({ project: 'aaaaaaaaaaaa' })
+      fireEvent.click(await screen.findByRole('button', { name: '消す' }))
+      await waitFor(() => expect(ok.onProgressChange).toHaveBeenCalledTimes(1))
+      cleanup()
+
+      stubApi({ remove: 500 })
+      const ng = renderStage({ project: 'aaaaaaaaaaaa' })
+      fireEvent.click(await screen.findByRole('button', { name: '消す' }))
+      await waitFor(() => expect(screen.getByRole('button', { name: '消す' })).toBeEnabled())
+      expect(ng.onProgressChange).not.toHaveBeenCalled()
+    })
   })
 
   it('一覧から開くと, 開いた問題の設定を知らせる', async () => {

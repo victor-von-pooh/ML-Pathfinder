@@ -812,6 +812,11 @@ describe('ProjectDialog', () => {
       expect(screen.queryByRole('button', { name: /の段階へ$/ })).toBeNull()
     })
 
+    it('onStageChange があっても nextStage が undefined ならボタンを出さない', async () => {
+      await exportWith({ onStageChange: vi.fn() })
+      expect(screen.queryByRole('button', { name: /の段階へ$/ })).toBeNull()
+    })
+
     it('単独 (onStageChange と nextStage が無い) ではボタンを出さず文だけを出す', async () => {
       await exportWith({})
       expect(screen.queryByRole('button', { name: /の段階へ$/ })).toBeNull()

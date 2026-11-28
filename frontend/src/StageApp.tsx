@@ -21,7 +21,7 @@ export interface StageAppProps {
   onProjectsChange: () => void
   /** 殻の下に載せたか (アプリの名前と明暗の切り替えを出さず, 明暗は読むだけにする) */
   embedded: boolean
-  /** 次の段階か戻る段階へのボタンで呼ぶ. 単独では渡さない (ボタンを出さずに文だけを出す) */
+  /** 次の段階へのボタンで呼ぶ. 単独では渡さない (ボタンを出さずに文だけを出す) */
   onStageChange?: (stage: StageKey) => void
   /** 次の段階の行き先. null は後ろに要る段階が無い (ボタンを出さない). 単独では渡さない */
   nextStage?: StageKey | null

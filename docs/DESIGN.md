@@ -122,7 +122,7 @@ ML-Pathfinder の今の設計と決まりをまとめる. まだやっていな�
 | `onProjectChange` | `(project: string \| null) => void` | 部品の中で問題を開いたとき (作ったか取り込んだ後に開いたときも) に識別子で, `project` の問題を消したときに null で呼ぶ | 何もしない |
 | `onProjectsChange` | `() => void` | 一覧が変わったとき (作った, 取り込んだ, 名前を変えた, 消した) に呼ぶ | 何もしない |
 | `embedded` | `boolean` | 殻の下か. true ならアプリの名前と明暗の切り替えを出さない (左の欄の「問題の設定」と, 狭い画面の上の一覧への移動は出す) | `false` |
-| `onStageChange` | `((stage: StageKey) => void) \| undefined` | 書き出した後の「<次の段階の名前>の段階へ」のボタンを押したときに `nextStage` で呼ぶ | 渡さない (ボタンを出さずに文だけを出す) |
+| `onStageChange` | `((stage: StageKey) => void) \| undefined` | 書き出した後の「<次の段階の名前>の段階へ」のボタンを押したときに, 押した段階の鍵 (`nextStage`) で呼ぶ | 渡さない (ボタンを出さずに文だけを出す) |
 | `nextStage` | `StageKey \| null \| undefined` | 次の段階の行き先. 殻が段階の進みから渡す. null は後ろに要る段階が無い (ボタンを出さない) | 渡さない |
 | `onProgressChange` | `(() => void) \| undefined` | 問題を作る, 取り込む, 答えを保存する (答えで後ろの段階が要らないかも替わるため全て), データを入れるか外す, 書き出す, 消すときに呼ぶ | 渡さない (何もしない) |
 
