@@ -423,6 +423,85 @@ def test_version(client: TestClient, tmp_path: Path) -> None:
     assert missing.json()["detail"] == "問題 0123456789ab が見つかりません"
 
 
+def test_progress(client: TestClient, tmp_path: Path) -> None:
+    """
+    GET /progress が書き出す前, 書き出した後, 答えを変えた後, 名前だけを
+    変えた後, 写しが使えないとき, 問題が無いときの状態を返すことを確かめる
+    関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 書き出す前は none (back は常に null)
+    example = client.get("/api/info").json()["examples"][0]
+    view = client.post("/api/problems", json={"example": example}).json()
+    problem_id = view["id"]
+    url = f"/api/problems/{problem_id}"
+
+    def progress() -> dict[str, Any]:
+        response = client.get("/api/progress", params={"problem": problem_id})
+        assert response.status_code == 200
+        return dict(response.json())
+
+    before = progress()
+    assert before["state"] == "none" and before["back"] is None
+    assert "まだ書き出していません" in before["summary"]
+
+    # 書き出した後は done. 名前だけを変えても done
+    target = tmp_path / "project"
+    assert client.post(f"{url}/project",
+                       json={"path": str(target)}).status_code == 200
+    done = progress()
+    assert done["state"] == "done" and done["back"] is None
+    assert "分かりません" not in done["summary"]
+    client.put(f"{url}/name", json={"name": "別の名前"})
+    assert progress()["state"] == "done"
+
+    # 答えを変えると stale (戻る段階は無い)
+    client.put(f"{url}/answers",
+               json={"id": "issue.pain", "value": "別の悩み"})
+    stale = progress()
+    assert stale["state"] == "stale" and stale["back"] is None
+    assert "答えが変わりました" in stale["summary"]
+
+    # 写しの元がこの問題でない (同じ場所に別の問題を書き出した) か,
+    # 写しが無いか読めなければ, 古いと出さずに done で分からないと書く
+    copy_path = target / "problem.yaml"
+    copy = yaml.safe_load(copy_path.read_text())
+    copy["origin"] = str(tmp_path / "other" / "problem.yaml")
+    copy_path.write_text(yaml.safe_dump(copy, allow_unicode=True))
+    other = progress()
+    assert other["state"] == "done" and "分かりません" in other["summary"]
+    copy_path.write_text(": [壊れた")
+    assert progress()["state"] == "done"
+    copy_path.unlink()
+    lost = progress()
+    assert lost["state"] == "done" and "分かりません" in lost["summary"]
+
+    # 記録の場所の学習のプロジェクトが無ければ none で書き出し直す文
+    (target / "configs" / "default" / "train.yaml").unlink()
+    gone = progress()
+    assert gone["state"] == "none" and "書き出し直して" in gone["summary"]
+
+    # 無い問題と形の違う識別子は 404, 壊れたファイルは 422
+    for bad in ("0123456789ab", "../x"):
+        missing = client.get("/api/progress", params={"problem": bad})
+        assert missing.status_code == 404
+    assert client.get("/api/progress").status_code == 422
+    place = tmp_path / "home" / "problems" / problem_id / "problem.yaml"
+    place.write_text(": [壊れた")
+    assert client.get("/api/progress",
+                      params={"problem": problem_id}).status_code == 422
+
+
 def test_example_handoff_and_project(
     client: TestClient, tmp_path: Path
 ) -> None:

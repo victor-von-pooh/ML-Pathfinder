@@ -884,6 +884,95 @@ def get_problem(request: Request, problem_id: str) -> dict[str, Any]:
     return view
 
 
+@router.get("/progress")
+def get_progress(request: Request, problem: str) -> dict[str, Any]:
+    """
+    殻の段階の並びに出す, 問題の設定の段階の進みを返す関数
+
+    書き出した学習のプロジェクトの有無と, 書き出した後に答えが変わったか
+    から決める. 問題の設定の段階は全ての問題で要り, 前提の物が無く, 長く
+    動く処理も無いので skip, blocked, running は返さない
+
+    Parameters
+    ----------
+    request: Request
+        リクエスト
+    problem: str
+        問題の識別子
+
+    Returns
+    ----------
+    progress: dict[str, Any]
+        state (none, done, stale), summary (短い文), back (常に None.
+        比べる物が自分の段階の答えで, 戻る先が無いため)
+
+    Raises
+    ----------
+    HTTPException
+        問題が置き場に無いか識別子の形が違えば 404, 壊れたファイルは 422
+    """
+    # 記録が無い, 記録の場所に学習のプロジェクトが無い場合は none
+    store = get_store(request)
+    current = load_or_404(store, problem)
+    record = project_of(current)
+    path = record["path"] if record is not None else None
+    if path is None:
+        state, summary = "none", "学習のプロジェクトをまだ書き出していません"
+    elif not (Path(path) / "configs" / "default" / "train.yaml").is_file():
+        state = "none"
+        summary = ("記録した場所に学習のプロジェクトが無いので, 書き出し"
+                   "直してください")
+    else:
+        state, summary = copy_state(store, problem, current, Path(path))
+
+    return {"state": state, "summary": summary, "back": None}
+
+
+def copy_state(
+    store: Store, problem_id: str, current: dict[str, Any], path: Path
+) -> tuple[str, str]:
+    """
+    学習のプロジェクトの problem.yaml の写しと今の問題の答えを比べる関数
+
+    Parameters
+    ----------
+    store: Store
+        置き場
+    problem_id: str
+        識別子
+    current: dict[str, Any]
+        今の問題の設定
+    path: Path
+        学習のプロジェクトのディレクトリ
+
+    Returns
+    ----------
+    result: tuple[str, str]
+        状態 (done か stale) と短い文. 写しが無い, 読めない, 写しの元が
+        この問題でない場合は, 古いと出さずに done で新しさが分からない文
+    """
+    # 印が無い物は古いと出さない
+    unknown = ("done", "学習のプロジェクトを書き出しています (問題の答えが"
+               "変わったかは, 写しが使えず分かりません)")
+    try:
+        copy = ml_quest.load_problem(path / "problem.yaml")
+        origin = copy.get("origin")
+        if not isinstance(origin, str) or Path(origin).resolve() != (
+            store.place(problem_id) / "problem.yaml"
+        ).resolve():
+            return unknown
+        same = ml_quest.answer_version(copy) == ml_quest.answer_version(
+            current
+        )
+    except (*READ_ERRORS, KeyError, TypeError, AttributeError):
+        return unknown
+    if same:
+        return "done", "学習のプロジェクトを書き出しています"
+
+    return "stale", ("学習のプロジェクトを書き出した後に問題の答えが"
+                     "変わりました")
+
+
 @router.get("/problems/{problem_id}/version")
 def get_version(request: Request, problem_id: str) -> dict[str, Any]:
     """
