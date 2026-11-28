@@ -1618,9 +1618,12 @@ def test_uplift(client: TestClient, tmp_path: Path) -> None:
     assert config["experiment"]["name"] == "purchased_uplift"
     readme = (target / "README.md").read_text(encoding="utf-8")
     assert "uplift_estimator.json" in readme
+    assert "の効果の一式 (版 12." in readme
 
     # 効果の決め方を S-learner にすると, 受け渡しの決め方と雛形が変わり,
-    # 骨組みの学習のスクリプトの決め方も変わる
+    # 骨組みの学習のスクリプトの決め方も変わる. 推論の一式は S-learner でも
+    # 実験の inference/ に作る (処置の列を入力の終わりに足した 1 つの予測の
+    # 一式. ML-Inference の推論の一式の版 18)
     view = client.put(f"{url}/answers",
                       json={"id": f"{part}.uplift.learner",
                             "value": "s_learner"}).json()
@@ -1633,6 +1636,10 @@ def test_uplift(client: TestClient, tmp_path: Path) -> None:
     assert written.status_code == 200, written.json()
     script = (target / "train.py").read_text(encoding="utf-8")
     assert 'LEARNER = "s_learner"' in script
+    readme = (target / "README.md").read_text(encoding="utf-8")
+    assert "の効果の一式 (版 18." in readme
+    assert "を実験の `inference/` に作る" in readme
+    assert "効果の決め方が s_learner なので" not in script
 
     # 配る数の上限が 1 より小さいと確かめに出て, 受け渡せないが書き出せる
     view = client.put(f"{url}/answers",

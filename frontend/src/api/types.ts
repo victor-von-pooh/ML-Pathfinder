@@ -196,7 +196,7 @@ export interface Uplift {
   columns: string[]
   /** 評価の上位 K 割の K (0 より大きく 1 以下) */
   k: number | null
-  /** 効果の決め方 (t_learner は処置の群と対照の群の 2 つの予測, s_learner は処置の列を入力に足した 1 つの予測. 答えていなければ t_learner) */
+  /** 効果の決め方 (t_learner は処置の群と対照の群の 2 つの予測, s_learner は処置の列を入力の終わりに足した 1 つの予測. 答えていなければ t_learner) */
   learner: string
 }
 
