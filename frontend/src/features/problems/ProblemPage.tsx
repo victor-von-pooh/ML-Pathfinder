@@ -222,7 +222,7 @@ export function ProblemPage() {
   const [exporting, setExporting] = useState(false)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [saved, setSaved] = useState('')
-  // 他のアプリ (ML-Fathom の書き戻しなど) の書き換えで読み直したか (知らせのため. 値の
+  // 他のアプリ (データの分析の段階の書き戻しなど) の書き換えで読み直したか (知らせのため. 値の
   // 変わった問いの入力は, QuestionField が保存した値ごとに作り直す)
   const [reloaded, setReloaded] = useState(false)
   // 保存した結果を画面に入れ, 一覧も読み直す (自分の保存の印も覚える)
@@ -429,9 +429,9 @@ export function ProblemPage() {
             role="note"
             className="mb-4 rounded-lg border border-line bg-surface-2 px-4 py-2 text-xs"
           >
-            版 {problem.file_version} の問題の設定のファイルです. 今の版 ({formatVersion})
-            に移して開いています. 次にこの問題の設定を変えると (答え, 名前, データ), 版{' '}
-            {formatVersion} で書きます.
+            版 {problem.file_version} の問題のファイルです. 今の版 ({formatVersion})
+            に移して開いています. 次にこの問題を変えると (答え, 名前, データ), 版 {formatVersion}{' '}
+            で書きます.
           </p>
         )}
       {renaming !== null && (
@@ -545,7 +545,7 @@ export function ProblemPage() {
           </p>
           <p role="status" aria-live="polite" className="mt-1 text-xs text-warning-text">
             {reloaded
-              ? '問題の設定のファイルが他 (ML-Fathom の書き戻しなど) で変わったので, 読み直しました'
+              ? '問題のファイルが他 (データの分析の段階の書き戻しなど) で変わったので, 読み直しました'
               : ''}
           </p>
         </Card>

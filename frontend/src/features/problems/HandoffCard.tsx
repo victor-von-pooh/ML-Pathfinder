@@ -48,7 +48,7 @@ function Names({ names }: { names: string[] }) {
   )
 }
 
-/** 学習の段階に渡す, 監視する指標と向き (その他の指標は記録の頼み) */
+/** 学習・評価の段階に渡す, 監視する指標と向き (その他の指標は記録の頼み) */
 function TrainingRow({ problem }: { problem: Problem }) {
   const training = problem.handoff?.training
   // 既製のモデルをそのまま使うと学習しない (監視する指標が無い)
@@ -65,7 +65,7 @@ function TrainingRow({ problem }: { problem: Problem }) {
         null)
   return (
     <div>
-      <dt className="mb-1 text-xs font-medium text-ink-2">学習 (ML-Found, ML-Dashboard)</dt>
+      <dt className="mb-1 text-xs font-medium text-ink-2">学習・評価</dt>
       <dd className="flex flex-col gap-1">
         <span className="flex flex-wrap items-center gap-1">
           監視する指標 <Code>{training.monitor}</Code>
@@ -89,7 +89,7 @@ function TrainingRow({ problem }: { problem: Problem }) {
 }
 
 /**
- * モデルの作成の雛形 (受け持ちに合う ML-ModelControl の同梱の例の名前). 無ければ理由を言葉で出す
+ * モデルの作成・選定の雛形 (受け持ちに合う ML-ModelControl の同梱の例の名前). 無ければ理由を言葉で出す
  * (雛形は学習前の定義なので, 一から学習するときだけ渡る)
  */
 function ModelExample({ problem }: { problem: Problem }) {
@@ -99,15 +99,15 @@ function ModelExample({ problem }: { problem: Problem }) {
   if (example)
     return (
       <span className="flex flex-wrap items-center gap-1">
-        モデルの作成の雛形: <Code>{example}</Code> (モデルの作成の画面で開ける例)
+        モデルの作成・選定の雛形: <Code>{example}</Code> (モデルの作成・選定の段階で開ける例)
       </span>
     )
   return (
     <span>
-      モデルの作成の雛形:{' '}
+      モデルの作成・選定の雛形:{' '}
       <span className="text-ink-3">
         {handoff.part.method === 'scratch'
-          ? '受け持ちに合う雛形はありません (モデルの作成の画面で定義を選ぶ)'
+          ? '受け持ちに合う雛形はありません (モデルの作成・選定の段階で定義を選ぶ)'
           : '一から学習しないので, 合う雛形はありません'}
       </span>
     </span>
@@ -156,7 +156,7 @@ function ReadyRow({ problem }: { problem: Problem }) {
   ]
   return (
     <div>
-      <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+      <dt className="mb-1 text-xs font-medium text-ink-2">推論</dt>
       <dd className="flex flex-col gap-1">
         <span>既製のモデルをそのまま使います (学習しません)</span>
         {rows.map(([name, value]) => (
@@ -168,7 +168,7 @@ function ReadyRow({ problem }: { problem: Problem }) {
         {!ready.sha256 && (
           <span className="text-xs text-ink-2">
             hash (重みのファイルの指紋) を決めていないので, 重みの版を固定していません.
-            一式を作ると求めた hash が出るので, 問題の設定に書くと次から固定できます
+            一式を作ると求めた hash が出るので, 問題に書くと次から固定できます
           </span>
         )}
         {readyGroup && (
@@ -361,7 +361,7 @@ function GroupRow({ problem }: { problem: Problem }) {
       <dd className="flex flex-col gap-1">
         <span>
           {group.k !== null
-            ? `${group.k} つの群に分ける (群の数. 学習の段階で群の数を変えた実験どうしで, 群のまとまりと安定性を比べられる)`
+            ? `${group.k} つの群に分ける (群の数. 学習・評価の段階で群の数を変えた実験どうしで, 群のまとまりと安定性を比べられる)`
             : '群の数はまだ答えていません'}
         </span>
         <span className="flex flex-wrap items-center gap-1">
@@ -437,10 +437,12 @@ function RequiresRow({ problem }: { problem: Problem }) {
   const labels = new Map(problem.requires.map((item) => [item.name, item.label]))
   return (
     <div>
-      <dt className="mb-1 text-xs font-medium text-ink-2">学習の段階に要る機能</dt>
+      <dt className="mb-1 text-xs font-medium text-ink-2">学習・評価の段階に要る機能</dt>
       <dd className="flex flex-col gap-1">
         <span>{names.map((name) => labels.get(name) ?? name).join(', ')}</span>
-        <span className="text-xs text-ink-2">入れ方は画面の上の「学習の段階の準備」に出ます</span>
+        <span className="text-xs text-ink-2">
+          入れ方は画面の上の「学習・評価の段階の準備」に出ます
+        </span>
       </dd>
     </div>
   )
@@ -448,7 +450,7 @@ function RequiresRow({ problem }: { problem: Problem }) {
 
 /**
  * 書き出した学習のプロジェクト. データの分析の書き出し先, モデルの定義の置き場, 学習の
- * プロジェクトは, 後ろの段階のアプリがこの記録から写さずに使う
+ * プロジェクトは, 後ろの段階がこの記録から写さずに使う
  */
 function ProjectRow({ problem }: { problem: Problem }) {
   const project = problem.project
@@ -458,7 +460,7 @@ function ProjectRow({ problem }: { problem: Problem }) {
       <dt className="mb-1 text-xs font-medium text-ink-2">学習のプロジェクト (書き出した場所)</dt>
       <dd className="flex flex-col gap-1">
         <span>
-          プロジェクト <Code>{project.path}</Code>
+          場所 <Code>{project.path}</Code>
         </span>
         {project.dataset && (
           <span>
@@ -471,7 +473,8 @@ function ProjectRow({ problem }: { problem: Problem }) {
           </span>
         )}
         <span className="text-xs text-ink-2">
-          データの分析, モデルの作成, 学習の画面はこの場所を使います (書き出し直すと置き換わる)
+          データの分析, モデルの作成・選定, 学習・評価の段階はこの場所を使います
+          (書き出し直すと記録を書き換える)
         </span>
       </dd>
     </div>
@@ -533,7 +536,7 @@ function PartHandoff({
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析</dt>
           <dd className="flex flex-col gap-1">
             {data.source ? (
               <span>
@@ -569,9 +572,7 @@ function PartHandoff({
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">
-            モデルの作成 (ML-CreateArchitecture)
-          </dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">モデルの作成・選定</dt>
           <dd className="flex flex-col gap-1">
             {handoff.inference.ready ? (
               'モデルは作りません (既製のモデルを使うため)'
@@ -594,7 +595,7 @@ function PartHandoff({
           <ReadyRow problem={problem} />
         ) : (
           <div>
-            <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
+            <dt className="mb-1 text-xs font-medium text-ink-2">推論</dt>
             <dd className="flex flex-col gap-1">
               <span>意思決定の材料は作りません (列の予測だけ)</span>
               {handoff.rank && (
@@ -661,7 +662,7 @@ function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析</dt>
           <dd className="flex flex-col gap-1">
             {labeled ? (
               <span className="flex flex-wrap items-center gap-1">
@@ -729,9 +730,7 @@ function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">
-            モデルの作成 (ML-CreateArchitecture)
-          </dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">モデルの作成・選定</dt>
           <dd className="flex flex-col gap-1">
             {distance ? (
               'モデルは作りません (距離に基づく度合いは学習しないため)'
@@ -751,7 +750,7 @@ function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[
         <RequiresRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論</dt>
           <dd className="flex flex-col gap-1">
             {decision && (
               <span className="flex flex-wrap items-center gap-1">
@@ -762,7 +761,7 @@ function AnomalyHandoff({ problem, splits }: { problem: Problem; splits: Choice[
               </span>
             )}
             <span>
-              度合いの高い順に, 件数の上限まで人の確認に回します (確率としきい値でなく,
+              度合いの高い順に, 件数の上限まで人の確かめに回します (確率としきい値でなく,
               件数の上限で回す)
             </span>
             <span>
@@ -818,7 +817,7 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析</dt>
           <dd className="flex flex-col gap-1">
             <span className="flex flex-wrap items-center gap-1">
               処置の列 <Code>{uplift.treatment ?? ''}</Code> (配ったら 1, 配らなければ 0.
@@ -890,9 +889,7 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">
-            モデルの作成 (ML-CreateArchitecture)
-          </dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">モデルの作成・選定</dt>
           <dd className="flex flex-col gap-1">
             <ModelExample problem={problem} />
             <span>
@@ -906,7 +903,7 @@ function UpliftHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
         <RequiresRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論</dt>
           <dd className="flex flex-col gap-1">
             {decision ? (
               <span className="flex flex-wrap items-center gap-1">
@@ -989,7 +986,7 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析</dt>
           <dd className="flex flex-col gap-1">
             <span className="flex flex-wrap items-center gap-1">
               値段の列 <Code>{price.price ?? ''}</Code> (売ったときの値段. 試しに値段を変えた記録
@@ -1083,9 +1080,7 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">
-            モデルの作成 (ML-CreateArchitecture)
-          </dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">モデルの作成・選定</dt>
           <dd className="flex flex-col gap-1">
             <ModelExample problem={problem} />
             <span>
@@ -1099,7 +1094,7 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
         <RequiresRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論</dt>
           <dd className="flex flex-col gap-1">
             {decision ? (
               <span className="flex flex-wrap items-center gap-1">
@@ -1120,8 +1115,8 @@ function PriceHandoff({ problem, splits }: { problem: Problem; splits: Choice[] 
             </span>
             <span>
               学習の後に, 推論の段階が読む値段の決め方 (price_estimator.json) と商品ごとの選んだ値段
-              (price_choices.csv) を実験に残し, ML-Inference の値段の一式を実験の inference/
-              に作ります (仮のモデルでは作らない)
+              (price_choices.csv) を実験に残し, 値段の推論の一式を実験の inference/ に作ります
+              (仮のモデルでは作らない)
             </span>
             <span className="text-xs text-ink-2">
               選ぶ値段は試しに値段を変えた記録からの見積もりです. 値段を変えた効き目は,
@@ -1202,7 +1197,7 @@ function DemandHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析</dt>
           <dd className="flex flex-col gap-1">
             <span className="flex flex-wrap items-center gap-1">
               商品の id の列 <Code>{demand.product ?? ''}</Code> (発注の数を決める単位.
@@ -1288,9 +1283,7 @@ function DemandHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">
-            モデルの作成 (ML-CreateArchitecture)
-          </dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">モデルの作成・選定</dt>
           <dd className="flex flex-col gap-1">
             <ModelExample problem={problem} />
             <span>
@@ -1303,7 +1296,7 @@ function DemandHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
         <RequiresRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Inference, ML-Provide)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論</dt>
           <dd className="flex flex-col gap-1">
             {decision ? (
               <span className="flex flex-wrap items-center gap-1">
@@ -1324,8 +1317,8 @@ function DemandHandoff({ problem, splits }: { problem: Problem; splits: Choice[]
             </span>
             <span>
               学習の後に, 推論の段階が読む需要の決め方 (demand_estimator.json)
-              と発注を決める日ごとの発注の数 (demand_orders.csv) を実験に残し, ML-Inference
-              の需要の一式を実験の inference/ に作ります (仮のモデルでは作らない)
+              と発注を決める日ごとの発注の数 (demand_orders.csv) を実験に残し,
+              需要の推論の一式を実験の inference/ に作ります (仮のモデルでは作らない)
             </span>
             <span className="text-xs text-ink-2">
               発注の数は見積もりです. 品切れの日の売れた数は需要より少ないので,
@@ -1359,7 +1352,7 @@ export function HandoffCard({
           {problem.finished
             ? '機械学習を使わないので, 渡す値はありません.'
             : problem.uses_ml !== true
-              ? '5 の「機械学習を使いますか」で使うと決めると, データの分析, モデルの作成, 学習, 推論の各段階で選ぶ値がここに出ます.'
+              ? '5 の「機械学習を使いますか」で使うと決めると, データの分析, モデルの作成・選定, 学習・評価, 推論の各段階で選ぶ値がここに出ます.'
               : `まだ渡せません. ${problem.handoff_error ?? ''}`}
         </p>
       </Card>
@@ -1386,7 +1379,7 @@ export function HandoffCard({
     <Card title="後ろの段階に渡す値">
       <dl className="flex flex-col gap-3 text-sm">
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析 (ML-Fathom)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">データの分析</dt>
           <dd className="flex flex-col gap-1">
             <span>
               目的の列 <Code>{data.target ?? ''}</Code>,{' '}
@@ -1430,9 +1423,7 @@ export function HandoffCard({
           </dd>
         </div>
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">
-            モデルの作成 (ML-CreateArchitecture)
-          </dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">モデルの作成・選定</dt>
           <dd className="flex flex-col gap-1">
             <ModelExample problem={problem} />
             <span>
@@ -1449,7 +1440,7 @@ export function HandoffCard({
         <PolicyRow problem={problem} />
         <ProjectRow problem={problem} />
         <div>
-          <dt className="mb-1 text-xs font-medium text-ink-2">推論 (ML-Provide)</dt>
+          <dt className="mb-1 text-xs font-medium text-ink-2">推論</dt>
           <dd className="flex flex-col gap-1">
             <span>
               意思決定:{' '}

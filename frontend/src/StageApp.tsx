@@ -17,7 +17,7 @@ export interface StageAppProps {
   project: string | null
   /** 部品の中で問題の設定を作ったか開いた (識別子), 消した (null) ときに呼ぶ */
   onProjectChange: (project: string | null) => void
-  /** 問題の設定の一覧が変わった (作った, 名前を変えた, 消した) ときに呼ぶ */
+  /** 問題の一覧が変わった (作った, 名前を変えた, 消した) ときに呼ぶ */
   onProjectsChange: () => void
   /** 殻の下に載せたか (アプリの名前と明暗の切り替えを出さず, 明暗は読むだけにする) */
   embedded: boolean

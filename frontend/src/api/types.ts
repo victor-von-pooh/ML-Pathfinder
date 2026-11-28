@@ -123,7 +123,7 @@ export interface Part {
 
 /** 方策の守り (効果を見積もるで方策と答えたときだけ. ML-Found の make_guards と同じ名前) */
 export interface Policy {
-  /** 行動の上限 (文. 学習の段階で数にする) */
+  /** 行動の上限 (文. 学習・評価の段階で数にする) */
   action_limits: string | null
   /** 1 歩ごとに方策の出力を止める条件 (文) */
   stop: string | null
@@ -249,7 +249,7 @@ export interface FeatureInstall {
   /** pip で入るか, 公式の手順に従うか */
   kind: 'pip' | 'guide' | null
   command: string | null
-  /** ML-Found の追加の依存として入れるコマンド */
+  /** ML-Found に足す依存として入れるコマンド */
   extra_command: string | null
   url: string | null
 }
@@ -318,7 +318,7 @@ export interface Handoff {
     outputs: number | null
     role: string | null
     target_kind: string | null
-    /** 受け持ちに合うモデルの作成の雛形 (ML-ModelControl の同梱の例の名前. 一から学習しないか, 合う例が無ければ null) */
+    /** 受け持ちに合うモデルの作成・選定の雛形 (ML-ModelControl の同梱の例の名前. 一から学習しないか, 合う例が無ければ null) */
     example: string | null
     /** 書き出したプロジェクトのモデルの定義の置き場 (絶対パス. 書き出していなければ null) */
     project_model_spec?: string | null
@@ -407,7 +407,7 @@ export interface Problem {
   summary: string[]
   handoff: Handoff | null
   handoff_error: string | null
-  /** 要る機能と入れ方 (答えの途中から. 学習の段階の準備) */
+  /** 要る機能と入れ方 (答えの途中から. 学習・評価の段階の準備) */
   requires: FeatureRequirement[]
   ready: boolean
   /**
@@ -433,7 +433,7 @@ export interface Problem {
   finished: boolean
   /** ファイルに書いてある版 (古い版は ML-Quest が移して読み, 次の保存で今の版に) */
   file_version: number | null
-  /** 問題の設定のファイルの中身の印 (他のアプリが書き換えたことに気付くため) */
+  /** 問題のファイルの中身の印 (他のアプリが書き換えたことに気付くため) */
   version: string
 }
 

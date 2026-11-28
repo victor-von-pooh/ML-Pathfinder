@@ -51,7 +51,7 @@ describe('RequiresCard', () => {
       },
     ]
     render(<RequiresCard requires={items} />)
-    expect(screen.getByRole('heading', { name: /学習の段階の準備/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /学習・評価の段階の準備/ })).toBeInTheDocument()
     expect(screen.getByText(/このまま続けられます/)).toBeInTheDocument()
     expect(screen.getByText('pip install "gymnasium>=1.0"')).toBeInTheDocument()
     expect(screen.getByText('pip install -e "./ML-Found[rl]"')).toBeInTheDocument()

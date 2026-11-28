@@ -148,7 +148,7 @@ await choose(page, '機械学習が, 続けて自分で行動を選びますか 
 await choose(page, '行動の結果のデータは, どう集めますか', /^シミュレータで試して集める/)
 await choose(page, 'どのシミュレータを使いますか', /^MuJoCo/)
 await write(page, 'Gymnasium の環境の登録名は (あれば)', 'Hopper-v5')
-await page.getByRole('heading', { name: /学習の段階の準備/ }).scrollIntoViewIfNeeded()
+await page.getByRole('heading', { name: /学習・評価の段階の準備/ }).scrollIntoViewIfNeeded()
 await shot(page, 'policy')
 
 await create(page, '撮影から形の点群')
@@ -196,7 +196,7 @@ await page
 await shot(page, 'point_cloud')
 
 await page.goto('/')
-await expect(page.getByRole('list', { name: '問題の設定' })).toContainText('撮影から形の点群')
+await expect(page.getByRole('list', { name: '問題の一覧' })).toContainText('撮影から形の点群')
 await shot(page, 'list')
 
 await browser.close()

@@ -126,7 +126,9 @@ export function PathPicker({
                   <File size={14} className="text-ink-3" aria-hidden />
                 )}
                 <span className="flex-1 truncate font-mono">{entry.name}</span>
-                {entry.project && <span className="text-xs text-accent-text">プロジェクト</span>}
+                {entry.project && (
+                  <span className="text-xs text-accent-text">学習のプロジェクト</span>
+                )}
                 {entry.dataset && <span className="text-xs text-accent-text">データセット</span>}
                 {!entry.is_dir && (
                   <span className="text-xs text-ink-3">{formatBytes(entry.size)}</span>

@@ -65,8 +65,8 @@ test('見本を開いて答えを変え, 学習のプロジェクトを書き出
   await dialog.getByRole('button', { name: '書き出す' }).click()
   await expect(dialog.getByRole('status')).toContainText('train.py')
 
-  // 書き出した場所は問題の設定に記録され, 受け渡しの値に出る (データセットとモデルの定義の置き場も)
-  await expect(dialog.getByRole('status')).toContainText('この場所を問題の設定に記録しました')
+  // 書き出した場所は問題に記録され, 受け渡しの値に出る (データセットとモデルの定義の置き場も)
+  await expect(dialog.getByRole('status')).toContainText('この場所を問題に記録しました')
   await expect(dialog.getByRole('status')).toContainText('検証用とテスト用で今のやり方と比べた評価')
   await page.keyboard.press('Escape')
   await expect(page.getByText('学習のプロジェクト (書き出した場所)')).toBeVisible()
@@ -116,7 +116,7 @@ test('新しく作って課題に答え, 一覧に進み具合が出る', async 
   await pain.blur()
   await expect(page.getByText('保存しました')).toBeVisible()
   await page.getByRole('link', { name: '問題の設定' }).first().click()
-  await expect(page.getByRole('list', { name: '問題の設定' })).toContainText('試しの問題')
+  await expect(page.getByRole('list', { name: '問題の一覧' })).toContainText('試しの問題')
 })
 
 test('書きかけは節を移っても残り, 列の並びは 1 行に 1 つで答えられる', async ({ page }) => {
@@ -349,7 +349,7 @@ test('値を決める手伝いで損得の幅を書くと, 振れ幅の大きい
   )
 })
 
-test('問題の設定のファイルが他で変わると, 読み直して変わった問いの入力に出す', async ({ page }) => {
+test('問題のファイルが他で変わると, 読み直して変わった問いの入力に出す', async ({ page }) => {
   await page.goto('/api/auth?token=e2e-token')
   await page.getByLabel(/問題の名前/).fill('他で変わる')
   await page.getByRole('button', { name: '作る', exact: true }).click()
@@ -363,11 +363,13 @@ test('問題の設定のファイルが他で変わると, 読み直して変わ
   const current = page.getByRole('textbox', { name: '今はどうしていますか' })
   await current.fill('前の週と同じ数')
 
-  // 他のアプリ (ML-Fathom の書き戻しなど) がファイルを書き換えたとする
+  // 他のアプリ (データの分析の段階の書き戻しなど) がファイルを書き換えたとする
   const id = new URL(page.url()).pathname.split('/').pop() ?? ''
   const file = `${process.cwd()}/e2e/.work/home/problems/${id}/problem.yaml`
   writeFileSync(file, readFileSync(file, 'utf-8').replace('問い合わせが多い', '欠品が多い'))
-  await expect(page.getByText(/他 \(ML-Fathom の書き戻しなど\) で変わったので/)).toBeVisible({
+  await expect(
+    page.getByText(/他 \(データの分析の段階の書き戻しなど\) で変わったので/),
+  ).toBeVisible({
     timeout: 15_000,
   })
   await expect(pain).toHaveValue('欠品が多い')
@@ -523,8 +525,8 @@ test('予測するで点群の正解が今の処理の出力なら, 処理を問
   await expect(card).toContainText('valid/chamfer')
   await expect(card.getByText(/監視の向き/)).toHaveText(/監視の向き\s*min\s*\(小さいほど良い\)/)
   // 一から学習する点群の予測は, 受け持ちに合う雛形の名前を渡す
-  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(
-    /モデルの作成の雛形:\s*point_cloud_predictor\s*\(モデルの作成の画面で開ける例\)/,
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toHaveText(
+    /モデルの作成・選定の雛形:\s*point_cloud_predictor\s*\(モデルの作成・選定の段階で開ける例\)/,
   )
   await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeEnabled()
   await expect(page.locator('#export-reason')).toHaveCount(0)
@@ -590,8 +592,8 @@ test('最良を選ぶ指標をその他にすると, 名前と向きを問い, �
   await expect(card.getByText(/監視する指標\s*valid\/wape/)).toBeVisible()
   await expect(card.getByText(/監視の向き\s*min\s*\(小さいほど良い\)/)).toBeVisible()
   // 列の予測には合う雛形が無いので, 言葉で出す
-  await expect(card.getByText(/モデルの作成の雛形/)).toContainText(
-    'モデルの作成の雛形: 受け持ちに合う雛形はありません',
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toContainText(
+    'モデルの作成・選定の雛形: 受け持ちに合う雛形はありません',
   )
   await expect(card.getByText(/その他の指標です/)).toBeVisible()
   await expect(page.getByRole('button', { name: '学習のプロジェクトを書き出す' })).toBeDisabled()
@@ -612,7 +614,7 @@ test('版 1 のファイルを開くと版 2 に移して描き, 保存すると
     'format_version: 1\nname: 古い版\nml: {use: true, task: regression, target: sales}\n',
   )
   await page.reload()
-  await expect(page.getByRole('note')).toContainText('版 1 の問題の設定のファイルです')
+  await expect(page.getByRole('note')).toContainText('版 1 の問題のファイルです')
   await page
     .getByRole('navigation', { name: '問いの節' })
     .getByRole('button', { name: /^5\b/ })
@@ -634,7 +636,7 @@ test('方策をシミュレータで学ぶと, 準備のカードと方策の守
   await page.getByRole('button', { name: '総菜の作る量' }).click()
   await expect(page.getByRole('heading', { name: '総菜の作る量' })).toBeVisible()
   const prepare = page.locator('section').filter({
-    has: page.getByRole('heading', { name: /学習の段階の準備/ }),
+    has: page.getByRole('heading', { name: /学習・評価の段階の準備/ }),
   })
   await expect(prepare).toHaveCount(0)
 
@@ -715,7 +717,7 @@ test('方策をシミュレータで学ぶと, 準備のカードと方策の守
   await expect(card).toContainText('安全の違反の信号: cost')
   await expect(card).toContainText('人 (設備の責任者) が決めます')
   await expect(card).toContainText('実機で動かすのは道具の外')
-  await expect(card).toContainText('学習の段階に要る機能')
+  await expect(card).toContainText('学習・評価の段階に要る機能')
 
   // 答えた環境の登録名は受け渡しの方策と保存したファイルに入る (骨組みはそこから読む)
   await expect(card).toContainText('方策を学ぶ環境 (学習, 評価)')
@@ -732,8 +734,8 @@ test('方策をシミュレータで学ぶと, 準備のカードと方策の守
     '観測と行動の空間に合わせた',
     'policy/ に守りと一緒に',
     '守りを当てたまま環境で',
-    'この場所を問題の設定に記録しました. モデルの定義は',
-    '(後ろの段階のアプリはこの記録から場所を読みます)',
+    'この場所を問題に記録しました. モデルの定義は',
+    '(後ろの段階はこの記録から場所を読みます)',
   ])
   expect(readFileSync(`${named}/configs/default/train.yaml`, 'utf8')).toContain('id: "Hopper-v5"')
   expect(existsSync(`${named}/env.py`)).toBe(false)
@@ -948,8 +950,8 @@ test('作るで表と画面で答え, 表を入れると, 列ごとの分布の�
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: '後ろの段階に渡す値' }) })
   await expect(card).toContainText('正解の種類: 表')
-  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(
-    /モデルの作成の雛形:\s*diffusion_denoiser\s*\(モデルの作成の画面で開ける例\)/,
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toHaveText(
+    /モデルの作成・選定の雛形:\s*diffusion_denoiser\s*\(モデルの作成・選定の段階で開ける例\)/,
   )
   await expect(card.getByText(/監視する指標/)).toHaveText(
     /監視する指標\s*valid\/column_distance\s*\(作った表と本物の表の列ごとの分布の近さ\)/,
@@ -962,7 +964,7 @@ test('作るで表と画面で答え, 表を入れると, 列ごとの分布の�
   // 書き出すと, 表の生成の手順と, 入れた表の写しができる
   const target = `${process.cwd()}/e2e/.work/table-project`
   await exportProject(page, 'table-project', [
-    'ML-Fathom で表を読み',
+    'データの分析の段階で表を読み',
     'diffusion_denoiser',
     '行の数と種で表を作る推論の一式',
     'データセットは',
@@ -1081,7 +1083,7 @@ test('並べると画面で答え, 反応の表を入れると, 列と件数を�
     /反応の時刻の列\s*ts\s*\(古い反応で学び, 新しい反応で確かめる\)/,
   )
   await expect(card.getByText(/分割は時刻の順/)).toBeVisible()
-  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/two_tower_retrieval/)
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toHaveText(/two_tower_retrieval/)
   await expect(card.getByText(/監視する指標/)).toHaveText(
     /監視する指標\s*valid\/ndcg\s*\(順位の良さ\)/,
   )
@@ -1215,7 +1217,7 @@ test('まとめると画面で答え, 表を入れると, 群の列と数と数�
   )
   await expect(card.getByText(/^評価は群の安定性/)).toContainText('群の要約')
   await expect(card.getByText(/分割は無作為/)).toBeVisible()
-  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/contrastive_encoder/)
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toHaveText(/contrastive_encoder/)
   await expect(card.getByText(/監視する指標/)).toHaveText(
     /監視する指標\s*valid\/silhouette\s*\(群のまとまり\)/,
   )
@@ -1351,7 +1353,7 @@ test('異常の検知と画面で答え, センサの表を入れると, 列と�
   await expect(card.getByText(/度合いの決め方:/)).toContainText('自己符号化器の再構成の誤差')
   await expect(card.getByText(/件数の上限は 5 件/)).toContainText('K は 5')
   await expect(card.getByText(/上位 K 件の適合率と PR-AUC/)).toBeVisible()
-  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_autoencoder/)
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toHaveText(/tabular_autoencoder/)
   await expect(card.getByText(/監視する指標/)).toHaveText(
     /valid\/average_precision\s*\(度合いの順の異常の当たり\)/,
   )
@@ -1510,7 +1512,7 @@ test('効果を見積もるで今ある記録からと画面で答え, クーポ
   await expect(card.getByText(/^効果は, 処置したとき/)).toContainText('確率の差')
   await expect(card.getByText(/見るか\) は 0\.3/)).toContainText('配る数の上限は 50')
   await expect(card.getByText(/Qini の曲線と/)).toContainText('上位 K 割の効果の差')
-  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_uplift/)
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toHaveText(/tabular_uplift/)
   await expect(card.getByText(/監視する指標/)).toHaveText(/valid\/qini/)
   await expect(card.getByText(/^意思決定:/)).toContainText('効果の上位から配る')
   await expect(card.getByText(/効果の高い順に, 配る数の上限まで/)).toBeVisible()
@@ -1677,7 +1679,7 @@ test('効果を見積もるで今ある記録の値段を変えたと画面で�
   await expect(card.getByText(/^値段の候補 \(/)).toContainText('-10 %, -5 %, 0 %, +5 %, +10 %')
   await expect(card.getByText(/^値段を変える幅の上限 \(/)).toContainText('は 10 %')
   await expect(card.getByText(/弾力性 \(値段を 1 %/)).toBeVisible()
-  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_price/)
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toHaveText(/tabular_price/)
   await expect(card.getByText(/監視する指標/)).toHaveText(/valid\/mae/)
   await expect(card.getByText(/^意思決定:/)).toContainText('利益が最も大きい値段を選ぶ')
   await expect(card.getByText(/^意思決定:/)).toContainText('-10 %, -5 %, 0 %, +5 %, +10 %')
@@ -1849,7 +1851,7 @@ test('予測するで先の期間の需要と画面で答え, 日ごとの売れ
   await expect(card.getByText(/^商品と発注を決める日ごとに/)).toContainText('先の 7 日')
   await expect(card.getByText(/^学ぶ分位点の水準は/)).toContainText('0.1, 0.5, 0.75, 0.9')
   await expect(card.getByText(/^発注に使う水準 τ/)).toContainText('は 0.75')
-  await expect(card.getByText(/モデルの作成の雛形/)).toHaveText(/tabular_demand/)
+  await expect(card.getByText(/モデルの作成・選定の雛形/)).toHaveText(/tabular_demand/)
   await expect(card.getByText(/^入力は行 x/)).toContainText('大きさ 4')
   await expect(card.getByText(/監視する指標/)).toHaveText(/valid\/loss/)
   await expect(card.getByText(/^意思決定:/)).toContainText('損の比で発注の数を決める')
@@ -1970,7 +1972,7 @@ test('既製のモデルの見本は, 学習の欄を出さず, 推論の一式�
   await expect(page.getByText('監視する指標')).toHaveCount(0)
   await expect(page.getByText('既製のモデルをそのまま使います')).toBeVisible()
   await expect(page.getByText(/モデルは作りません/)).toBeVisible()
-  await expect(page.getByText(/モデルの作成の雛形/)).toHaveCount(0)
+  await expect(page.getByText(/モデルの作成・選定の雛形/)).toHaveCount(0)
   await expect(page.getByText('resnet18', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '学習のプロジェクトを書き出す' }).click()

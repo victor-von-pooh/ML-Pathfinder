@@ -42,14 +42,14 @@ USER_ERRORS = (ValueError, OSError, ImportError, yaml.YAMLError)
 # 場所を調べられないとき (読む権限が無いなど) に残す記録
 LOGGER = logging.getLogger(__name__)
 
-# 学習の段階 (ML-Found) の登録簿の関数 (入っていなければ None. 読み込みは
+# 学習・評価の段階 (ML-Found) の登録簿の関数 (入っていなければ None. 読み込みは
 # 重いので 1 回だけ試す. ML-Found には依存しない)
 FOUND: dict[str, Optional[Callable[..., list[dict[str, Any]]]]] = {}
 
 # ML-Found が入っていない場合の入れ方の補足
 FEATURE_NOTE = (
-    "入れ方と足りないかの確かめは, 学習の段階 (ML-Found) の登録簿が持つ. "
-    "学習の環境で ML-Found の describe_requirements を呼ぶと, 入れ方の"
+    "入れ方と足りないかの確かめは, 学習・評価の段階が使う ML-Found の登録簿が"
+    "持つ. 学習の環境で ML-Found の describe_requirements を呼ぶと, 入れ方の"
     "コマンドか公式の手順が分かる"
 )
 
@@ -130,7 +130,7 @@ def user_error(error: Exception) -> HTTPException:
     elif isinstance(error, UnicodeDecodeError):
         message = "文字コードを読めません (UTF-8 で保存してください)"
     elif isinstance(error, ImportError):
-        message = ("このデータを読むには追加の部品が要ります "
+        message = ("このデータを読むには足りない部品があります "
                    f"({getattr(error, 'name', None) or error})")
     elif isinstance(error, yaml.YAMLError):
         message = "YAML として読めません"
@@ -168,7 +168,7 @@ def load_or_404(store: Store, problem_id: str) -> dict[str, Any]:
     try:
         problem = store.load(problem_id)
     except KeyError as error:
-        raise HTTPException(404, "問題の設定が見つかりません") from error
+        raise HTTPException(404, "問題が見つかりません") from error
     except READ_ERRORS as error:
         raise read_failure(store, problem_id, error) from error
 
@@ -179,7 +179,7 @@ def read_failure(
     store: Store, problem_id: str, error: Exception
 ) -> HTTPException:
     """
-    読めない問題の設定のファイルの 422 を作る関数
+    読めない問題のファイルの 422 を作る関数
 
     知っている版より新しいファイルは壊れていないので, 消すことを勧めず,
     アプリを新しくするように伝える (新しいアプリが書いた正しいファイルを
@@ -206,14 +206,14 @@ def read_failure(
         written = None
     if written is not None and written > ml_quest.FORMAT_VERSION:
         failure = HTTPException(
-            422, f"新しい版 (format_version: {written}) の問題の設定です. "
+            422, f"新しい版 (format_version: {written}) の問題のファイルです. "
             f"このアプリが読めるのは版 {ml_quest.FORMAT_VERSION} までです. "
-            "ファイルは壊れていないので消さずに, ML-Pathfinder を新しく"
+            "ファイルは壊れていないので消さずに, このアプリを新しく"
             "してから開いてください"
         )
     else:
         failure = HTTPException(
-            422, "問題の設定のファイルが壊れています "
+            422, "問題のファイルが壊れています "
             f"({user_error(error).detail}). 消すか, ファイルを直してください"
         )
 
@@ -222,7 +222,7 @@ def read_failure(
 
 def exists_or_404(store: Store, problem_id: str) -> None:
     """
-    問題の設定のファイルがあるかだけを確かめる関数 (中身は読まない)
+    問題のファイルがあるかだけを確かめる関数 (中身は読まない)
 
     Parameters
     ----------
@@ -244,7 +244,7 @@ def exists_or_404(store: Store, problem_id: str) -> None:
     try:
         store.place(problem_id)
     except KeyError as error:
-        raise HTTPException(404, "問題の設定が見つかりません") from error
+        raise HTTPException(404, "問題が見つかりません") from error
 
 
 def local_path(text: str) -> Path:
@@ -397,7 +397,7 @@ def requires_of(problem: dict[str, Any]) -> list[dict[str, Any]]:
     """
     答えから要る機能と, その入れ方の並びを作る関数
 
-    受け渡しの前 (答えの途中) でも返す (学習の段階の準備を早めに
+    受け渡しの前 (答えの途中) でも返す (学習・評価の段階の準備を早めに
     知らせるため)
 
     Parameters
@@ -545,9 +545,9 @@ def view_of(store: Store, problem_id: str) -> dict[str, Any]:
     try:
         problem, version, written = store.load_versioned(problem_id)
     except KeyError as error:
-        raise HTTPException(404, "問題の設定が見つかりません") from error
+        raise HTTPException(404, "問題が見つかりません") from error
     except FileNotFoundError as error:
-        raise HTTPException(404, "問題の設定が見つかりません") from error
+        raise HTTPException(404, "問題が見つかりません") from error
     except READ_ERRORS as error:
         raise read_failure(store, problem_id, error) from error
     view = {**problem_view(problem_id, problem), "version": version,
@@ -586,7 +586,7 @@ def list_item(problem_id: str, problem: dict[str, Any]) -> dict[str, Any]:
 
 def broken_item(problem_id: str, error: Exception) -> dict[str, Any]:
     """
-    読めない問題の設定の一覧の 1 行を作る関数
+    読めない問題の一覧の 1 行を作る関数
 
     Parameters
     ----------
@@ -602,7 +602,7 @@ def broken_item(problem_id: str, error: Exception) -> dict[str, Any]:
     """
     # 名前は分からないので識別子
     item = {
-        "id": problem_id, "name": f"(読めない問題の設定 {problem_id})",
+        "id": problem_id, "name": f"(読めない問題 {problem_id})",
         "updated_at": None, "uses_ml": None,
         "progress": {"answered": 0, "required": 0, "sections": []},
         "ready": False, "finished": False, "errors": 0,
@@ -746,7 +746,7 @@ def entry_order(entry: dict[str, Any]) -> tuple[bool, str]:
 @router.get("/problems")
 def list_problems(request: Request) -> list[dict[str, Any]]:
     """
-    問題の設定の一覧を返す関数
+    問題の一覧を返す関数
 
     Parameters
     ----------
@@ -850,7 +850,7 @@ def import_problem(request: Request, body: PathRequest) -> dict[str, Any]:
         raise user_error(error) from error
     except (TypeError, KeyError, AttributeError) as error:
         raise HTTPException(
-            400, f"問題の設定の形が崩れていて取り込めません ({error})"
+            400, f"問題の形が崩れていて取り込めません ({error})"
         ) from error
     store = get_store(request)
     problem_id = store.create(problem)
@@ -885,7 +885,7 @@ def get_problem(request: Request, problem_id: str) -> dict[str, Any]:
 @router.get("/problems/{problem_id}/version")
 def get_version(request: Request, problem_id: str) -> dict[str, Any]:
     """
-    問題の設定のファイルの中身の印だけを返す関数 (画面が他での書き換えに
+    問題のファイルの中身の印だけを返す関数 (画面が他での書き換えに
     気付くため. 軽いので何度も呼べる)
 
     Parameters
@@ -905,7 +905,7 @@ def get_version(request: Request, problem_id: str) -> dict[str, Any]:
     try:
         version = {"version": store.version(problem_id)}
     except (KeyError, OSError) as error:
-        raise HTTPException(404, "問題の設定が見つかりません") from error
+        raise HTTPException(404, "問題が見つかりません") from error
 
     return version
 
@@ -1462,7 +1462,7 @@ def write_project(
     request: Request, problem_id: str, body: ProjectRequest
 ) -> dict[str, Any]:
     """
-    ML-Found のプロジェクトの骨組みを書き出す関数
+    学習のプロジェクトの骨組みを書き出す関数
 
     Parameters
     ----------
@@ -1565,7 +1565,7 @@ def refuse_open_errors(
 @router.get("/problems/{problem_id}/download")
 def download_problem(request: Request, problem_id: str) -> Response:
     """
-    問題の設定のファイルを返す関数
+    問題のファイルを返す関数
 
     Parameters
     ----------
