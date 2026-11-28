@@ -911,21 +911,37 @@ def get_progress(request: Request, problem: str) -> dict[str, Any]:
     HTTPException
         問題が置き場に無いか識別子の形が違えば 404, 壊れたファイルは 422
     """
-    # 記録が無い, 記録の場所に学習のプロジェクトが無い場合は none
+    # 記録が無い, 壊れている, 記録の場所に学習のプロジェクトが無い場合は
+    # none
     store = get_store(request)
     current = load_or_404(store, problem)
     record = project_of(current)
     path = record["path"] if record is not None else None
     if path is None:
-        state, summary = "none", "学習のプロジェクトをまだ書き出していません"
-    elif not (Path(path) / "configs" / "default" / "train.yaml").is_file():
-        state = "none"
-        summary = ("記録した場所に学習のプロジェクトが無いので, 書き出し"
-                   "直してください")
-    else:
-        state, summary = copy_state(store, problem, current, Path(path))
+        return {"state": "none", "back": None,
+                "summary": "学習のプロジェクトをまだ書き出していません"}
+    if not path or not Path(path).is_absolute():
+        return {"state": "none", "back": None,
+                "summary": ("書き出した場所の記録が壊れているので, 書き出し"
+                            "直してください")}
+    try:
+        exists = (Path(path) / "configs" / "default"
+                  / "train.yaml").is_file()
+    except OSError as error:
+        LOGGER.warning("学習のプロジェクトを調べられません", exc_info=error)
+        return {"state": "done", "back": None, "summary": UNKNOWN}
+    if not exists:
+        return {"state": "none", "back": None,
+                "summary": ("記録した場所に学習のプロジェクトが無いので, "
+                            "書き出し直してください")}
+    state, summary = copy_state(store, problem, current, Path(path))
 
     return {"state": state, "summary": summary, "back": None}
+
+
+# 写しが使えず, 問題の答えが変わったか分からないときの文
+UNKNOWN = ("学習のプロジェクトを書き出しています (問題の答えが変わったかは, "
+           "写しが使えず分かりません)")
 
 
 def copy_state(
@@ -952,10 +968,13 @@ def copy_state(
         この問題でない場合は, 古いと出さずに done で新しさが分からない文
     """
     # 印が無い物は古いと出さない
-    unknown = ("done", "学習のプロジェクトを書き出しています (問題の答えが"
-               "変わったかは, 写しが使えず分かりません)")
+    unknown = ("done", UNKNOWN)
+    place = path / "problem.yaml"
     try:
-        copy = ml_quest.load_problem(path / "problem.yaml")
+        # FIFO や特殊ファイルへのリンクを開いて止まらないように
+        if place.is_symlink() or not place.is_file():
+            return unknown
+        copy = ml_quest.load_problem(place)
         origin = copy.get("origin")
         if not isinstance(origin, str) or Path(origin).resolve() != (
             store.place(problem_id) / "problem.yaml"
@@ -964,7 +983,7 @@ def copy_state(
         same = ml_quest.answer_version(copy) == ml_quest.answer_version(
             current
         )
-    except (*READ_ERRORS, KeyError, TypeError, AttributeError):
+    except (*READ_ERRORS, KeyError, TypeError, AttributeError, RuntimeError):
         return unknown
     if same:
         return "done", "学習のプロジェクトを書き出しています"

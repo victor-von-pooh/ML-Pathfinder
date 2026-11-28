@@ -1,3 +1,4 @@
+import os
 import sys
 import types
 from collections.abc import Callable
@@ -500,6 +501,85 @@ def test_progress(client: TestClient, tmp_path: Path) -> None:
     place.write_text(": [壊れた")
     assert client.get("/api/progress",
                       params={"problem": problem_id}).status_code == 422
+
+
+def test_progress_unusable_copy(client: TestClient, tmp_path: Path) -> None:
+    """
+    GET /progress が使えない写しと壊れた記録で止まらず, 古いと出さずに
+    返すことを確かめる関数
+
+    Parameters
+    ----------
+    client: TestClient
+        利用者
+    tmp_path: Path
+        一時ディレクトリ
+
+    Returns
+    ----------
+    None
+    """
+    # 書き出した問題
+    example = client.get("/api/info").json()["examples"][0]
+    problem_id = client.post("/api/problems",
+                             json={"example": example}).json()["id"]
+    target = tmp_path / "project"
+    assert client.post(f"/api/problems/{problem_id}/project",
+                       json={"path": str(target)}).status_code == 200
+    copy_path = target / "problem.yaml"
+    saved = copy_path.read_text()
+
+    def progress() -> dict[str, Any]:
+        response = client.get("/api/progress", params={"problem": problem_id})
+        assert response.status_code == 200
+        return dict(response.json())
+
+    def unknown() -> None:
+        result = progress()
+        assert result["state"] == "done" and "分かりません" in result["summary"]
+
+    # FIFO は開かずに新しさ不明
+    copy_path.unlink()
+    os.mkfifo(copy_path)
+    unknown()
+    copy_path.unlink()
+
+    # 特殊ファイルへのリンクも開かない
+    copy_path.symlink_to("/dev/zero")
+    unknown()
+    copy_path.unlink()
+
+    # 写しの元の循環リンクで落ちない
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    copy = yaml.safe_load(saved)
+    copy["origin"] = str(loop / "problem.yaml")
+    copy_path.write_text(yaml.safe_dump(copy, allow_unicode=True))
+    unknown()
+
+    # 元が文字でない
+    copy["origin"] = 5
+    copy_path.write_text(yaml.safe_dump(copy, allow_unicode=True))
+    unknown()
+    copy_path.write_text(saved)
+    assert progress()["state"] == "done"
+
+    # 権限が無くて学習のプロジェクトを調べられないとき (root は除く)
+    if os.geteuid() != 0:
+        target.chmod(0)
+        try:
+            unknown()
+        finally:
+            target.chmod(0o755)
+
+    # 記録の場所が空か相対なら記録が壊れている
+    place = tmp_path / "home" / "problems" / problem_id / "problem.yaml"
+    for broken in ("", "relative/project"):
+        problem = ml_quest.load_problem(place)
+        problem["project"]["path"] = broken
+        ml_quest.save_problem(problem, place)
+        result = progress()
+        assert result["state"] == "none" and "壊れて" in result["summary"]
 
 
 def test_example_handoff_and_project(
