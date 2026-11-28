@@ -343,7 +343,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
                 <li>
                   {envId
                     ? `環境は Gymnasium の ${envId} (config の env.id). 学習する環境に ML-Found と Gymnasium を入れる`
-                    : '環境の登録名を答えていないので, 自作の環境の雛形 env.py (ProjectEnv) を課題の環境 (自作のシミュレータ, 実機とのつなぎ) に書き換える. 登録した環境なら config の env.id に名前を書く'}
+                    : '環境の登録名を答えていないので, 自作の環境の雛形 env.py (ProjectEnv) を実際の環境 (自作のシミュレータ, 実機とのつなぎ) に書き換える. 登録した環境なら config の env.id に名前を書く'}
                 </li>
                 <li>
                   守り: config の guards に, 問題の守り (行動の上限と止める条件の文)
@@ -468,7 +468,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   {
-                    'データの分析の段階か ML-EDA の書き出しで, 異常の検知の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 学習用は正常の行だけで, 異常の行は検証用とテスト用に入る. 欠けた値と種類の列は前処理で無くす (表を入れていれば data/ に写してある)'
+                    'データの分析の段階で, 異常の検知の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 学習用は正常の行だけで, 異常の行は検証用とテスト用に入る. 欠けた値と種類の列は前処理で無くす (表を入れていれば data/ に写してある)'
                   }
                 </li>
                 <li>
@@ -494,7 +494,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   {
-                    'データの分析の段階か ML-EDA の書き出しで, 介入の記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は処置で層を作り, 全ての分割に処置の群と対照の群が入る. 処置は無作為に配った記録を前提にするので, ML-EDA の describe_uplift で群の釣り合いと配った後に決まる列を確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
+                    'データの分析の段階で, 介入の記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は処置で層を作り, 全ての分割に処置の群と対照の群が入る. 処置は無作為に配った記録を前提にするので, ML-EDA の describe_uplift で群の釣り合いと配った後に決まる列を確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
                   }
                 </li>
                 <li>
@@ -522,7 +522,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   {
-                    'データの分析の段階か ML-EDA の書き出しで, 値段を変えた記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は値段の段 (値段の高さで行を分けた組) で層を作る. 値段は試しに変えた記録 (無作為に近い) を前提にするので, ML-EDA の describe_price で商品ごとの試した値段と, 値段と他の列の偏りを確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
+                    'データの分析の段階で, 値段を変えた記録の表をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は値段の段 (値段の高さで行を分けた組) で層を作る. 値段は試しに変えた記録 (無作為に近い) を前提にするので, ML-EDA の describe_price で商品ごとの試した値段と, 値段と他の列の偏りを確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
                   }
                 </li>
                 <li>
@@ -554,7 +554,7 @@ export function ProjectDialog({ problem, onClose }: { problem: Problem; onClose:
               <ol className="list-decimal pl-5 text-xs">
                 <li>
                   {
-                    'データの分析の段階か ML-EDA の書き出しで, 需要の記録の表 (1 行が商品と発注を決める日. 正解は先の期間の売れた数の合計) をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は発注を決める日の順. 過去の売れた数はずらした列 (lag) に, 曜日は列 (datetime_parts) にする. ML-EDA の describe_demand で商品ごとの記録の日数, 抜けの日と在庫が 0 の日を確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
+                    'データの分析の段階で, 需要の記録の表 (1 行が商品と発注を決める日. 正解は先の期間の売れた数の合計) をデータセットの書き出し先 (config の data.dataset. 既定は outputs/dataset) に書き出す. 分割は発注を決める日の順. 過去の売れた数はずらした列 (lag) に, 曜日は列 (datetime_parts) にする. ML-EDA の describe_demand で商品ごとの記録の日数, 抜けの日と在庫が 0 の日を確かめる. 欠けた値は前処理で無くし, 種類の列は one_hot で数の列にする (表を入れていれば data/ に写してある)'
                   }
                 </li>
                 <li>
