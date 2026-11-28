@@ -6,24 +6,18 @@
 ## 優先度 高
 
 ### `GET /progress` で段階の進みを返す
-- 何を: `create_api` に `GET /progress?problem=<識別子>` を足し, `state`, `summary`, `back` を返す. 書き出したプロジェクトの記録 (`project.path`) が無ければ `none`. 記録の場所に学習のプロジェクトが無ければ `none` で書き出し直す文. あれば学習のプロジェクトの写し (`<場所>/problem.yaml`) を読んで今の問題と答えを比べ, 同じなら `done`, 違えば `stale` で「学習のプロジェクトを書き出した後に問題の答えが変わりました」の文. `skip`, `blocked`, `running` は返さない (問題の設定の段階は全ての問題で要り, 前提の物が無く, 長く動く処理も無いため). `back` は常に null (比べる物が自分の段階の答えのため. ML-Studio の docs/DESIGN.md の `back` の定義と同じ). 問題が置き場に無いか識別子の形が違えば 404, 壊れたファイルは `GET /problems/{id}` と同じ 422. 「4. API」の経路の表と, 状態の写し方を docs/DESIGN.md に書く. 比べ方: `GET /problems/{id}/version` (store.py の `version`. ファイルの全体の sha256) は使わない. 写しは ML-Quest の `make_project` が版 2 に移し, `project` を外し, 元の場所 (`origin`) を足し, データを入れていれば `data.source` をプロジェクトの `data` の写しに替えて `data.origin` に元の場所を残したもので, 保存のたびに `updated_at` も替わるため. 両方を版 2 に移してから, 名前, 作った時刻と更新の時刻, `project`, `origin`, データの場所 (`data.source`, `data.origin`) を除いた中身で比べる. データの分析の段階が書き戻す所のうち答えでない所 (`data.export`, `data.recipe`) を比べるかは, 骨組みと学習が使うかを確かめて決め, 理由と一緒に書く. 決まりは「答えの版を返す API」と同じ 1 か所に置く (段階の進みと後ろの段階の印が食い違わないため). 写しが無い, 読めない, 写しの `origin` がこの問題のファイルを指さない (同じ場所に別の問題を書き出した) ときは, `done` で新しさが分からないと書く (殻の R15 の「印が無い物は古いと出さない」)
+- 何を: `create_api` に `GET /progress?problem=<識別子>` を足し, `state`, `summary`, `back` を返す. 書き出したプロジェクトの記録 (`project.path`) が無ければ `none`. 記録の場所に学習のプロジェクトが無ければ `none` で書き出し直す文. あれば学習のプロジェクトの写し (`<場所>/problem.yaml`) を読んで今の問題と答えを比べ, 同じなら `done`, 違えば `stale` で「学習のプロジェクトを書き出した後に問題の答えが変わりました」の文. `skip`, `blocked`, `running` は返さない (問題の設定の段階は全ての問題で要り, 前提の物が無く, 長く動く処理も無いため). `back` は常に null (比べる物が自分の段階の答えのため. ML-Studio の docs/DESIGN.md の `back` の定義と同じ). 問題が置き場に無いか識別子の形が違えば 404, 壊れたファイルは `GET /problems/{id}` と同じ 422. 「4. API」の経路の表と, 状態の写し方を docs/DESIGN.md に書く. 比べ方: `GET /problems/{id}/version` (store.py の `version`. ファイルの全体の sha256) は使わない. 写しは ML-Quest の `make_project` が版 2 に移し, `project` を外し, 元の場所 (`origin`) を足し, データを入れていれば `data.source` をプロジェクトの `data` の写しに替えて `data.origin` に元の場所を残したもので, 保存のたびに `updated_at` も替わるため. 写しと今の問題のそれぞれで ML-Quest の `answer_version` を取って比べる (除く項目は ML-Quest の「問題の答えの版を返す関数を足す」が 1 か所で持つ. 段階の進みと後ろの段階の印が食い違わないため). 写しが無い, 読めない, 写しの `origin` がこの問題のファイルを指さない (同じ場所に別の問題を書き出した) ときは, `done` で新しさが分からないと書く (殻の R15 の「印が無い物は古いと出さない」)
 - なぜ: 殻が段階の並びに進みを出すのに, 問題の設定の段階は進みを返す API を持たず, 書き出した後に答えを変えても古いと分からないため
 - 終わりの条件: ML-Studio の docs/DESIGN.md の 2 の節の `GET /progress` の形と R13, R15 の問題の設定の段階の分を満たし, 書き出す前, 書き出した後, 書き出した後に答えを変えた後, 名前だけを変えた後, データの分析の段階が書き戻した後, 写しを消した後の状態を backend のテストで確かめる
-- つながり: ML-Studio の docs/DESIGN.md の 2 の節の `GET /progress`, 9 の節の R13, R15. ML-Studio の TODO.md の「段階の並びに段階の進みの印を出す」. 後ろの段階が要らない (`skip`) かは, ML-Quest の受け渡しの段階ごとの要否を各段階が読む (判定の条件は ML-Quest の「受け渡しに段階ごとの要否を足す」に移した). この段階は答えの保存のたびに `onProgressChange` を呼び, 殻が要否の変わった進みを読み直す
+- つながり: ML-Studio の docs/DESIGN.md の 2 の節の `GET /progress`, 9 の節の R13, R15. ML-Studio の TODO.md の「段階の並びに段階の進みの印を出す」. ML-Quest の「問題の答えの版を返す関数を足す」の後. 後ろの段階が要らない (`skip`) かは, 各段階が ML-Quest の「受け渡しに段階ごとの要否を足す」の `stage_needs` を読む. この段階は答えの保存のたびに `onProgressChange` を呼び, 殻が要否の変わった進みを読み直す
+
+## 優先度 中
 
 ### 書き出した後に次の段階へ移るボタンと進みの知らせ
 - 何を: 根の部品 `StageApp` の props に `onStageChange` (`(stage) => void`), `nextStage` (段階の鍵か null), `onProgressChange` (`() => void`) を受ける (どれも省ける). 書き出しの対話の「次にすること」に「<`nextStage` の段階の名前>の段階へ」のボタンを出して `onStageChange(nextStage)` を呼ぶ. `nextStage` が null (後ろの段階が全て要らない) ならボタンを出さない. 単独の起動 (`onStageChange` と `nextStage` が無い) ではボタンを出さずに文だけを出す. `onProgressChange` は問題を作る (新しく作る, 見本を開く, 取り込む), 答えを保存する, データを入れるか外す, 書き出す, 消すときに呼ぶ. 答えの保存は全てで呼ぶ (答えで後ろの段階が要らないかも替わり, 殻が `nextStage` を渡し直すため). データの有無はデータの分析の段階の前提の物のため. docs/DESIGN.md の「根の部品」の表に足す
 - なぜ: 書き出した後の手順は次の段階を名前で書くだけで, 殻の下では上の帯の並びから次の段階を探して移るため. 殻は知らせが無いと, 段階の中で問題を変えても進みを読み直さないため
 - 終わりの条件: ML-Studio の docs/DESIGN.md の 2 の節の `onStageChange`, `nextStage`, `onProgressChange`, R13, R14 の問題の設定の段階の分を満たし, `nextStage` の段階へのボタン, null でボタンが出ないこと, 知らせを画面のテストで, 単独の起動でボタンが出ないことを e2e で確かめる
 - つながり: ML-Studio の docs/DESIGN.md の 2 の節の根の部品の props, 9 の節の R13, R14. ML-Studio の TODO.md の「根の部品に段階を移る `onStageChange` を渡す」と「段階の並びに段階の進みの印を出す」
-
-## 優先度 中
-
-### 答えの版を返す API
-- 何を: 答えだけの版 (`GET /progress` と同じ決まりで除いた中身の sha256) を返す API を足す. `GET /problems/{id}` の応答にも入れる. 今の `GET /problems/{id}/version` は全体の sha256 で, 他での書き換えに気付くために残す. 経路の名前と形を docs/DESIGN.md の「4. API」に書く
-- なぜ: データの分析の段階がデータセットを書き出すときに問題の答えの版を残し, 後で比べて古いと出すため. 全体の sha256 は名前の変更, 場所の記録, データの分析の段階の書き戻しでも替わり, 答えを変えていないのに後ろが古いと出るため. 書き戻しの中には群分けや選ぶ問いの答えのように答えを変えるものがあるので, データの分析の段階は書き戻した後の版を残し直す (ML-Fathom の「データセットを書き出すときに問題の答えの版を残す」で扱う)
-- 終わりの条件: ML-Studio の docs/DESIGN.md の 9 の節の段階の物の表の「問題の答えの版」と R15 の問題の設定の段階の分を満たし, 名前の変更と書き出しの記録では版が替わらず, 答えとデータを変えると替わることを backend のテストで確かめる
-- つながり: ML-Studio の docs/DESIGN.md の 9 の節の段階の物の表と R15. 「`GET /progress` で段階の進みを返す」の比べ方の後. ML-Fathom の「データセットを書き出すときに問題の答えの版を残す」の前
 
 ## 優先度 低
 
